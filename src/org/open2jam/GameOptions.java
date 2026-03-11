@@ -4,7 +4,7 @@ import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.util.ArrayList;
 import java.util.List;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.DisplayMode;
 import org.open2jam.parsers.Event;
 
 /**
@@ -241,16 +241,21 @@ public class GameOptions {
     }
     
     public void setDisplay(DisplayMode dm) {
-        this.displayWidth = dm.getWidth();
-        this.displayHeight = dm.getHeight();
-        this.displayBitsPerPixel = dm.getBitsPerPixel();
-        this.displayFrequency = dm.getFrequency();
+        this.displayWidth = dm.width();
+        this.displayHeight = dm.height();
+        this.displayBitsPerPixel = dm.bitsPerPixel();
+        this.displayFrequency = dm.refreshRate();
+    }
+    
+    public DisplayMode getDisplay() {
+        if (displayWidth == 0) return null;
+        return new DisplayMode(displayWidth, displayHeight, displayFrequency, displayBitsPerPixel);
     }
     
     public boolean isDisplaySaved(DisplayMode dm)
     {
-        return dm.getWidth() == displayWidth && dm.getHeight() == displayHeight &&
-               dm.getBitsPerPixel() == displayBitsPerPixel && dm.getFrequency() == displayFrequency;
+        return dm.width() == displayWidth && dm.height() == displayHeight &&
+               dm.bitsPerPixel() == displayBitsPerPixel && dm.refreshRate() == displayFrequency;
     }
     
     private double clamp(double value, double min, double max) {

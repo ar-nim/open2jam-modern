@@ -3,6 +3,7 @@ package org.open2jam.render;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.net.URL;
+import java.util.List;
 import org.open2jam.GameOptions;
 import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.lwjgl.LWJGLSprite;
@@ -50,6 +51,7 @@ public class ResourceFactory {
  	 * @param renderingType The type of rendering to use
 	 */
 	public void setRenderingType(int renderingType) {
+        if (this.renderingType == renderingType) return;
 		// If the rendering type is unrecognised tell the caller
 		if (renderingType != OPENGL_LWJGL) {
 			// Note, we could create our own exception to be thrown here but it
@@ -132,5 +134,9 @@ public class ResourceFactory {
                     }
             }
             throw new RuntimeException("Unknown rendering type: "+renderingType);
+        }
+
+        public List<DisplayMode> getAvailableDisplayModes() {
+            return getGameWindow().getAvailableDisplayModes();
         }
 }

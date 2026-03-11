@@ -10,10 +10,8 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.table.DefaultTableModel;
-import org.lwjgl.LWJGLException;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.lwjgl.Keyboard;
+import org.open2jam.render.DisplayMode;
 import org.lwjgl.opengl.GL11;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
@@ -240,11 +238,33 @@ public class Configuration extends javax.swing.JPanel {
                 int code;
                 try {
                     code = read_keyboard_key(lastkey);
-                } catch(LWJGLException e) {
+                } catch(Exception e) {
                     return;
                 }
-                if(kb_map.containsValue(code)) return; //check for duplicates, TODO something informing about the duplicate
+                // Duplicate handling is now merged into swap logic.
                 Event.Channel c = table_map.get(row);
+                
+                // Swap logic: if key is already bound to another channel, clear that channel.
+                if(kb_map.containsValue(code)) {
+                    Event.Channel oldC = null;
+                    for (Map.Entry<Event.Channel, Integer> entry : kb_map.entrySet()) {
+                        if (entry.getValue() == code) {
+                            oldC = entry.getKey();
+                            break;
+                        }
+                    }
+                    if (oldC != null && oldC != c) {
+                        kb_map.put(oldC, Keyboard.KEY_NONE);
+                        // find row for oldC and update it
+                        for (int i = 0; i < tKeys.getRowCount(); i++) {
+                            if (table_map.get(i) == oldC) {
+                                tKeys.setValueAt(Keyboard.getKeyName(Keyboard.KEY_NONE), i, 1);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
                 kb_map.put(c, code);
                 tKeys.setValueAt(Keyboard.getKeyName(code), row, 1);
             }
@@ -310,53 +330,40 @@ public class Configuration extends javax.swing.JPanel {
     
     private static Font font = new Font("Tahoma", Font.BOLD, 14);
 
-    private int read_keyboard_key(int lastkey) throws LWJGLException
+    private int read_keyboard_key(int lastkey)
     {
-        String place = tKeys.getValueAt(tKeys.getSelectedRow(), 0).toString();
-        if(Display.isCreated())throw new LWJGLException();
-        Display.setDisplayMode(new DisplayMode(220,50));
-        Display.setTitle(place);
-        Display.setVSyncEnabled(true);
-        Display.setIcon(null);
-        Display.create();
-        Display.setLocation(-1, -1);
-
-        // enable textures since we're going to use these for our sprites
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-
-        // disable the OpenGL depth test since we're rendering 2D graphics
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-
-        // enable apha blending
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-        GL11.glMatrixMode(GL11.GL_PROJECTION);
-        GL11.glLoadIdentity();
-
-        GL11.glOrtho(0, 220, 50, 0, -1, 1);
-
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-        GL11.glMatrixMode(GL11.GL_MODELVIEW);
-        GL11.glLoadIdentity();
-
-        TrueTypeFont trueTypeFont = new TrueTypeFont(font, false);
-
-        int code;
-        do{
-            Display.update();
-            trueTypeFont.drawString(10, 18, "Press a KEY for " + place, 1, -1);
-            trueTypeFont.drawString(10, 34, "Last assign was " + Keyboard.getKeyName(lastkey), 1, -1);
-            trueTypeFont.drawString(10, 50, "Press ESC or close to cancel", 1, -1);
-            Keyboard.next();
-            if(Display.isCloseRequested() || Keyboard.getEventKey() == Keyboard.KEY_ESCAPE)
-                code = lastkey;
-            else
-                code = Keyboard.getEventKey();
-        }
-        while(code == Keyboard.CHAR_NONE);
-        trueTypeFont.destroy();
-        Display.destroy();
-        return code;
+        final int[] result = {lastkey};
+        final javax.swing.JDialog dialog = new javax.swing.JDialog((javax.swing.JFrame)javax.swing.SwingUtilities.getWindowAncestor(this), "Press a Key", true);
+        dialog.setLayout(new java.awt.BorderLayout());
+        javax.swing.JLabel label = new javax.swing.JLabel("Press a Key for " + tKeys.getValueAt(tKeys.getSelectedRow(), 0).toString(), javax.swing.SwingConstants.CENTER);
+        label.setFont(font);
+        dialog.add(label, java.awt.BorderLayout.CENTER);
+        java.awt.KeyEventDispatcher dispatcher = new java.awt.KeyEventDispatcher() {
+            @Override
+            public boolean dispatchKeyEvent(java.awt.event.KeyEvent e) {
+                if (e.getID() == java.awt.event.KeyEvent.KEY_PRESSED) {
+                    if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ESCAPE) {
+                        result[0] = lastkey;
+                        dialog.dispose();
+                    } else {
+                        int lwjglKey = Keyboard.toLWJGL(e.getKeyCode());
+                        if (lwjglKey != Keyboard.KEY_NONE) {
+                            result[0] = lwjglKey;
+                            dialog.dispose();
+                        }
+                    }
+                }
+                return true;
+            }
+        };
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher);
+        
+        dialog.setSize(300, 100);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true); // This blocks until disposed
+        
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(dispatcher);
+        
+        return result[0];
     }
 }

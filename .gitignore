@@ -1,13 +1,67 @@
+# Compiled class files
 *.class
-*~
-*.obj
-dist/
+
+# Log files
+*.log
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Gradle
+.gradle/
 build/
-nbproject/private
-nbproject/genfiles.properties
-nbproject/build-impl.xml
-/config.vl
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.swp
+*.swo
+*~
+
+# NetBeans (legacy)
+nbproject/
+nbbuild/
+dist/
+nbdist/
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# User configuration files (generated at runtime)
+/config.vl
+/game-options.xml
 game_options.properties
 
-game-options.xml
+# Crash dumps and core files
+hs_err_pid*.log
+replay_pid*.log
+core
+core.*
+*.dump
+
+# Backup files
+*.bak
+*.tmp
+*.temp

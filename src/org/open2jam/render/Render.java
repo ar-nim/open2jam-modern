@@ -7,7 +7,7 @@ import org.open2jam.game.Latency;
 import com.github.dtinth.partytime.Client;
 import com.github.dtinth.partytime.server.Connection;
 import com.github.dtinth.partytime.server.Server;
-import org.open2jam.sound.FmodExSoundSystem;
+import org.open2jam.sound.ALSoundSystem;
 import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -21,8 +21,8 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.lwjgl.Keyboard;
+import org.open2jam.render.DisplayMode;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.game.speed.SpeedMultiplier;
@@ -294,14 +294,14 @@ public class Render implements GameWindowCallback
     
     protected final boolean AUTOSOUND;
     boolean disableAutoSound = false;
-    
+
     public Render(Chart chart, GameOptions opt, DisplayMode dm) throws SoundSystemException
     {
         keyboard_map = Config.getKeyboardMap(Config.KeyboardType.K7);
         keyboard_misc = Config.getKeyboardMisc();
         window = ResourceFactory.get().getGameWindow();
-        
-        soundSystem = new FmodExSoundSystem(opt.getBufferSize());
+
+        soundSystem = new ALSoundSystem();
         soundSystem.setMasterVolume(opt.getMasterVolume());
         soundSystem.setBGMVolume(opt.getBGMVolume());
         soundSystem.setKeyVolume(opt.getKeyVolume());
@@ -431,6 +431,15 @@ public class Render implements GameWindowCallback
     @Override
     public void initialise()
     {
+        // Threading Fix: Initialize sound system here on the RenderThread
+        if (soundSystem instanceof ALSoundSystem) {
+            try {
+                ((ALSoundSystem) soundSystem).init();
+            } catch (SoundSystemException e) {
+                Logger.global.log(Level.SEVERE, "Failed to initialize SoundSystem: {0}", e.getMessage());
+            }
+        }
+
         lastLoopTime = SystemTimer.getTime();
 
         // skin load
@@ -594,7 +603,8 @@ public class Render implements GameWindowCallback
         update_note_buffer(0, 0);
 
         // get the chart sound samples
-	sounds = new HashMap<Integer, Sound>();
+        sounds = new HashMap<Integer, Sound>();
+        int soundIdx = 0;
         for(Entry<Integer, SampleData> entry : chart.getSamples().entrySet())
         {
             SampleData sampleData = entry.getValue();
@@ -609,12 +619,14 @@ public class Render implements GameWindowCallback
 	    } catch (IOException ex) {
 		java.util.logging.Logger.getLogger(Render.class.getName()).log(Level.SEVERE, "{0}", ex);
 	    }
+            soundIdx++;
 	}
+
 	
         trueTypeFont = new TrueTypeFont(new Font("Tahoma", Font.BOLD, 14), false);
         
         //clean up
-        System.gc();
+        // Removed System.gc() - it triggers native heap corruption during sound buffer transitions
 
         // wait a bit.. 5 seconds at min
         SystemTimer.sleep((int) (5000 - (SystemTimer.getTime() - lastLoopTime)));
@@ -818,7 +830,6 @@ public class Render implements GameWindowCallback
             if (finish_time == -1) {
                 finish_time = System.currentTimeMillis() + 10000;
             } else if (System.currentTimeMillis() > finish_time) {
-                soundSystem.release();
                 window.destroy();
             }
         }
@@ -1563,17 +1574,8 @@ public class Render implements GameWindowCallback
      */
     @Override
     public void windowClosed() {
-	bgaEntity.release();
+        bgaEntity.release();
         soundSystem.release();
-	System.gc();        
-        if (syncingLatency != null && autosyncCallback != null) {
-            SwingUtilities.invokeLater(new Runnable() {
-                @Override
-                public void run() {
-                    autosyncCallback.autosyncFinished(syncingLatency.getLatency());
-                }
-            });
-        }
     }
     
     private double clamp(double value, double min, double max)

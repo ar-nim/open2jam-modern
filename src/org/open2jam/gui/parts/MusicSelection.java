@@ -22,9 +22,7 @@ import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableRowSorter;
-import org.lwjgl.LWJGLException;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.DisplayMode;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.GameOptions.ChannelMod;
@@ -37,6 +35,7 @@ import org.open2jam.parsers.BMSWriter;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.render.Render;
+import org.open2jam.render.ResourceFactory;
 import org.open2jam.game.judgment.BeatJudgment;
 import org.open2jam.game.judgment.TimeJudgment;
 import org.open2jam.sound.SoundSystemException;
@@ -58,7 +57,7 @@ public class MusicSelection extends javax.swing.JPanel
         public void run() {
             c.setEnabled(false);
             r.startRendering();
-            c.setEnabled(true);
+            javax.swing.SwingUtilities.invokeLater(() -> c.setEnabled(true));
         }
     }
     
@@ -99,7 +98,7 @@ public class MusicSelection extends javax.swing.JPanel
     private ChartListTableModel model_songlist;
     private ChartTableModel model_chartlist;
     //private File cwd;
-    private DisplayMode[] display_modes;
+// Removed display_modes array
     private int rank = 0;
     private ChartList selected_chart;
     private Chart selected_header;
@@ -136,6 +135,7 @@ public class MusicSelection extends javax.swing.JPanel
     public MusicSelection() {
         initLogic();
         initComponents();
+        populateDisplayUI();
         load_progress.setVisible(false);
         
         List<File> list = Config.getDirsList();
@@ -237,10 +237,11 @@ public class MusicSelection extends javax.swing.JPanel
         txt_displayLag.setText(go.getDisplayLag() + "");
         txt_audioLatency.setText(go.getAudioLatency() + "");
         
-        for(DisplayMode dm : display_modes)
-        {
-            if(go.isDisplaySaved(dm))
-                combo_displays.setSelectedItem(dm);
+        DisplayMode dm = go.getDisplay();
+        if (dm != null) {
+            combo_displays.setSelectedItem(dm.getWidth() + "x" + dm.getHeight());
+            combo_refreshRates.setSelectedItem(dm.refreshRate());
+            combo_colorDepths.setSelectedItem(dm.bitsPerPixel());
         }
 
         jc_full_screen.setSelected(go.isDisplayFullscreen());
@@ -266,10 +267,25 @@ public class MusicSelection extends javax.swing.JPanel
         go.setSpeedMultiplier((Double)js_hispeed.getValue());
         go.setSpeedType((SpeedType)combo_speedType.getSelectedItem());
         go.setDisplayFullscreen(jc_full_screen.isSelected());
-        go.setDisplayVsync(jc_vsync.isSelected());
         go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
         
-        go.setDisplay((DisplayMode)combo_displays.getSelectedItem());
+        String resS = (String) combo_displays.getSelectedItem();
+        if (resS != null) {
+            String[] parts = resS.split("x");
+            int w = Integer.parseInt(parts[0]);
+            int h = Integer.parseInt(parts[1]);
+            int rr = (Integer) (combo_refreshRates.getSelectedItem() != null ? combo_refreshRates.getSelectedItem() : 60);
+            int bpp = (Integer) (combo_colorDepths.getSelectedItem() != null ? combo_colorDepths.getSelectedItem() : 32);
+            
+            DisplayMode selectedMode = new DisplayMode(w, h, rr, bpp);
+            for (DisplayMode rdm : ResourceFactory.get().getAvailableDisplayModes()) {
+                if (rdm.getWidth() == w && rdm.getHeight() == h && rdm.refreshRate() == rr && rdm.bitsPerPixel() == bpp) {
+                    selectedMode = rdm;
+                    break;
+                }
+            }
+            go.setDisplay(selectedMode);
+        }
         
         Config.setGameOptions(go);
     }
@@ -301,6 +317,11 @@ public class MusicSelection extends javax.swing.JPanel
         txt_res_width = new javax.swing.JTextField();
         jc_vsync = new javax.swing.JCheckBox();
         lbl_display = new javax.swing.JLabel();
+        panel_display_options = new javax.swing.JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 5, 0));
+        lbl_refreshRate = new javax.swing.JLabel("Refresh Rate:");
+        combo_refreshRates = new javax.swing.JComboBox();
+        lbl_colorDepth = new javax.swing.JLabel("Color Depth:");
+        combo_colorDepths = new javax.swing.JComboBox();
         jc_custom_size = new javax.swing.JCheckBox();
         lbl_res_x = new javax.swing.JLabel();
         jc_full_screen = new javax.swing.JCheckBox();
@@ -401,7 +422,11 @@ public class MusicSelection extends javax.swing.JPanel
             }
         });
 
-        combo_displays.setModel(new javax.swing.DefaultComboBoxModel(display_modes));
+        panel_display_options.add(combo_displays);
+        panel_display_options.add(lbl_refreshRate);
+        panel_display_options.add(combo_refreshRates);
+        panel_display_options.add(lbl_colorDepth);
+        panel_display_options.add(combo_colorDepths);
 
         txt_res_height.setText("600");
         txt_res_height.setEnabled(false);
@@ -467,7 +492,7 @@ public class MusicSelection extends javax.swing.JPanel
                     .addGroup(panel_settingLayout.createSequentialGroup()
                         .addComponent(lbl_display)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(combo_displays, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(panel_display_options, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                         .addComponent(jc_custom_size, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
@@ -505,7 +530,7 @@ public class MusicSelection extends javax.swing.JPanel
                     .addComponent(lbl_res_x)
                     .addComponent(txt_res_width, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jc_custom_size)
-                    .addComponent(combo_displays, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(panel_display_options, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(lbl_display))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.CENTER)
@@ -1024,6 +1049,8 @@ public class MusicSelection extends javax.swing.JPanel
     private void jc_custom_size_clicked(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_jc_custom_size_clicked
         if (evt.getStateChange() == ItemEvent.SELECTED){
             combo_displays.setEnabled(false);
+            combo_refreshRates.setEnabled(false);
+            combo_colorDepths.setEnabled(false);
             txt_res_width.setEnabled(true);
             lbl_res_x.setEnabled(true);
             txt_res_height.setEnabled(true);
@@ -1032,6 +1059,8 @@ public class MusicSelection extends javax.swing.JPanel
             lbl_res_x.setEnabled(false);
             txt_res_height.setEnabled(false);
             combo_displays.setEnabled(true);
+            combo_refreshRates.setEnabled(true);
+            combo_colorDepths.setEnabled(true);
         }
 }//GEN-LAST:event_jc_custom_size_clicked
 
@@ -1052,9 +1081,23 @@ public class MusicSelection extends javax.swing.JPanel
                     JOptionPane.showMessageDialog(this, "Invalid value on custom size", "Error", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
-                dm = new DisplayMode(w,h);
+                dm = new DisplayMode(w,h, 60, 32);
             }else{
-                dm = (DisplayMode) combo_displays.getSelectedItem();
+                String resS = (String) combo_displays.getSelectedItem();
+                String[] parts = resS.split("x");
+                int w = Integer.parseInt(parts[0]);
+                int h = Integer.parseInt(parts[1]);
+                int rr = (Integer) (combo_refreshRates.getSelectedItem() != null ? combo_refreshRates.getSelectedItem() : 60);
+                int bpp = (Integer) (combo_colorDepths.getSelectedItem() != null ? combo_colorDepths.getSelectedItem() : 32);
+                
+                DisplayMode selectedMode = new DisplayMode(w, h, rr, bpp);
+                for (DisplayMode rdm : ResourceFactory.get().getAvailableDisplayModes()) {
+                    if (rdm.getWidth() == w && rdm.getHeight() == h && rdm.refreshRate() == rr && rdm.bitsPerPixel() == bpp) {
+                        selectedMode = rdm;
+                        break;
+                    }
+                }
+                dm = selectedMode;
             }
             
             final boolean vsync = jc_vsync.isSelected();
@@ -1075,14 +1118,7 @@ public class MusicSelection extends javax.swing.JPanel
             final float bgmVol = slider_bgm_vol.getValue() / 100f;
 
 
-            if(!dm.isFullscreenCapable() && fs) {
-                String str = "This monitor can't support the selected resolution.\n"
-                        + "Do you want to play it in windowed mode?";
-                if(JOptionPane.showConfirmDialog(this, str, "Warning",
-                        JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE)
-                        == JOptionPane.YES_OPTION)
-                    fs = false;
-            }
+            // Removed isFullscreenCapable check for modernization
 
             final GameOptions go = Config.getGameOptions();
             go.setAutoplay(autoplay);
@@ -1097,9 +1133,7 @@ public class MusicSelection extends javax.swing.JPanel
             go.setDisplayFullscreen(fs);
             go.setDisplayVsync(vsync);
             go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
-            
-            System.out.println(go.isAutoplay());
-            
+
             try{
                 go.setDisplayLag(Double.parseDouble(txt_displayLag.getText()));
             }catch(Exception e){
@@ -1282,6 +1316,11 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JComboBox combo_channelModifier;
     private javax.swing.JComboBox combo_dirs;
     private javax.swing.JComboBox combo_displays;
+    private javax.swing.JPanel panel_display_options;
+    private javax.swing.JLabel lbl_refreshRate;
+    private javax.swing.JComboBox combo_refreshRates;
+    private javax.swing.JLabel lbl_colorDepth;
+    private javax.swing.JComboBox combo_colorDepths;
     private javax.swing.JComboBox combo_speedType;
     private javax.swing.JComboBox combo_visibilityModifier;
     private javax.swing.JLabel jLabel1;
@@ -1345,43 +1384,45 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JTextField txt_res_width;
     // End of variables declaration//GEN-END:variables
     private void initLogic() {
-
-        try {
-            List<DisplayMode> list = Arrays.asList(Display.getAvailableDisplayModes());
-
-            Collections.sort(list, new Comparator<DisplayMode>() {
-                @Override
-                public int compare(DisplayMode dm1, DisplayMode dm2) {
-
-                    if(dm1.getBitsPerPixel() == dm2.getBitsPerPixel())
-                    {
-                        if(dm1.getWidth() == dm2.getWidth())
-                        {
-                            if(dm1.getHeight() == dm2.getHeight())
-                            {
-                                if(dm1.getFrequency() > dm2.getFrequency())return -1;
-                                else if(dm1.getFrequency() < dm2.getFrequency())return 1;
-                                else return 0;
-                            }
-                            else if(dm1.getHeight() > dm2.getHeight())return -1;
-                            else return 1;
-                        }
-                        else if(dm1.getWidth() > dm2.getWidth())return -1;
-                        else return 1;
-                    }
-                    else if(dm1.getBitsPerPixel() > dm2.getBitsPerPixel()) return -1;
-                    return 1;
-                }
-            });
-            display_modes = list.toArray(new DisplayMode[list.size()]);
-
-        } catch (LWJGLException ex) {
-            Logger.global.log(Level.WARNING, "Could not get the display modes !! {0}", ex.getMessage());
-            display_modes = new DisplayMode[0];
-        }
-
         model_songlist = new ChartListTableModel();
         model_chartlist = new ChartTableModel();
+    }
+
+    private void populateDisplayUI() {
+        List<DisplayMode> list = ResourceFactory.get().getAvailableDisplayModes();
+        
+        java.util.Set<String> resSet = new java.util.HashSet<>();
+        java.util.Set<Integer> rrSet = new java.util.HashSet<>();
+        java.util.Set<Integer> bppSet = new java.util.HashSet<>();
+        
+        java.util.List<String> resList = new java.util.ArrayList<>();
+        java.util.List<Integer> rrList = new java.util.ArrayList<>();
+        java.util.List<Integer> bppList = new java.util.ArrayList<>();
+        
+        for (DisplayMode dm : list) {
+            String res = dm.getWidth() + "x" + dm.getHeight();
+            if (resSet.add(res)) resList.add(res);
+            if (rrSet.add(dm.refreshRate())) rrList.add(dm.refreshRate());
+            if (bppSet.add(dm.bitsPerPixel())) bppList.add(dm.bitsPerPixel());
+        }
+        
+        // Sort
+        resList.sort((a, b) -> {
+            String[] partsA = a.split("x");
+            String[] partsB = b.split("x");
+            int wA = Integer.parseInt(partsA[0]), hA = Integer.parseInt(partsA[1]);
+            int wB = Integer.parseInt(partsB[0]), hB = Integer.parseInt(partsB[1]);
+            if (wA == wB) return Integer.compare(hA, hB);
+            return Integer.compare(wA, wB);
+        });
+        rrList.sort(java.util.Collections.reverseOrder());
+        bppList.sort(java.util.Collections.reverseOrder());
+        
+        combo_displays.setModel(new javax.swing.DefaultComboBoxModel(resList.toArray()));
+        combo_refreshRates.setModel(new javax.swing.DefaultComboBoxModel(rrList.toArray()));
+        combo_colorDepths.setModel(new javax.swing.DefaultComboBoxModel(bppList.toArray()));
+
+        readGameOptions();
     }
 
     private void loadDir(File dir)

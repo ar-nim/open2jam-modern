@@ -28,7 +28,7 @@ public class AdvancedOptions extends javax.swing.JPanel {
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-        bindingGroup = new org.jdesktop.beansbinding.BindingGroup();
+        // bindingGroup = new org.jdesktop.beansbinding.BindingGroup();
 
         go = Config.getGameOptions()
         ;
@@ -39,21 +39,30 @@ public class AdvancedOptions extends javax.swing.JPanel {
 
         hasteModeCheckbox.setText("Haste Mode");
 
+        /*
         org.jdesktop.beansbinding.Binding binding = org.jdesktop.beansbinding.Bindings.createAutoBinding(org.jdesktop.beansbinding.AutoBinding.UpdateStrategy.READ_WRITE, go, org.jdesktop.beansbinding.ELProperty.create("${hasteMode}"), hasteModeCheckbox, org.jdesktop.beansbinding.BeanProperty.create("selected"));
         bindingGroup.addBinding(binding);
+        */
 
         hasteModeCheckbox.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 hasteModeCheckboxActionPerformed(evt);
+                go.setHasteMode(hasteModeCheckbox.isSelected());
             }
         });
 
+        /*
         binding = org.jdesktop.beansbinding.Bindings.createAutoBinding(org.jdesktop.beansbinding.AutoBinding.UpdateStrategy.READ_WRITE, go, org.jdesktop.beansbinding.ELProperty.create("${bufferSize}"), bufferSize, org.jdesktop.beansbinding.BeanProperty.create("text"));
         bindingGroup.addBinding(binding);
+        */
+        bufferSize.setText(String.valueOf(go.getBufferSize()));
 
         bufferSize.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 bufferSizeActionPerformed(evt);
+                try {
+                    go.setBufferSize(Integer.parseInt(bufferSize.getText()));
+                } catch (NumberFormatException e) {}
             }
         });
 
@@ -61,44 +70,54 @@ public class AdvancedOptions extends javax.swing.JPanel {
 
         jCheckBox1.setText("Normalize Speed");
 
+        /*
         binding = org.jdesktop.beansbinding.Bindings.createAutoBinding(org.jdesktop.beansbinding.AutoBinding.UpdateStrategy.READ_WRITE, go, org.jdesktop.beansbinding.ELProperty.create("${hasteModeNormalizeSpeed}"), jCheckBox1, org.jdesktop.beansbinding.BeanProperty.create("selected"));
         bindingGroup.addBinding(binding);
         binding = org.jdesktop.beansbinding.Bindings.createAutoBinding(org.jdesktop.beansbinding.AutoBinding.UpdateStrategy.READ_WRITE, go, org.jdesktop.beansbinding.ELProperty.create("${hasteMode}"), jCheckBox1, org.jdesktop.beansbinding.BeanProperty.create("enabled"));
         bindingGroup.addBinding(binding);
+        */
+        jCheckBox1.setSelected(go.isHasteModeNormalizeSpeed());
+        jCheckBox1.setEnabled(go.isHasteMode());
+        
+        jCheckBox1.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                go.setHasteModeNormalizeSpeed(jCheckBox1.isSelected());
+            }
+        });
 
-        org.jdesktop.layout.GroupLayout layout = new org.jdesktop.layout.GroupLayout(this);
+        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(this);
         this.setLayout(layout);
         layout.setHorizontalGroup(
-            layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-            .add(layout.createSequentialGroup()
-                .add(47, 47, 47)
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-                    .add(layout.createSequentialGroup()
-                        .add(hasteModeCheckbox)
-                        .addPreferredGap(org.jdesktop.layout.LayoutStyle.UNRELATED)
-                        .add(jCheckBox1))
-                    .add(layout.createSequentialGroup()
-                        .add(bufferSize, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 56, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED)
-                        .add(jLabel1)))
+            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(layout.createSequentialGroup()
+                .addGap(47, 47, 47)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(hasteModeCheckbox)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(jCheckBox1))
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(bufferSize, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jLabel1)))
                 .addContainerGap(330, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
-            layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-            .add(layout.createSequentialGroup()
-                .add(29, 29, 29)
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
-                    .add(hasteModeCheckbox)
-                    .add(jCheckBox1))
-                .add(26, 26, 26)
-                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
-                    .add(bufferSize, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-                    .add(jLabel1))
+            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(layout.createSequentialGroup()
+                .addGap(29, 29, 29)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(hasteModeCheckbox)
+                    .addComponent(jCheckBox1))
+                .addGap(26, 26, 26)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(bufferSize, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel1))
                 .addContainerGap(296, Short.MAX_VALUE))
         );
 
-        bindingGroup.bind();
-    }// </editor-fold>//GEN-END:initComponents
+        // bindingGroup.bind();
+    } // </editor-fold>//GEN-END:initComponents
 
     private void hasteModeCheckboxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_hasteModeCheckboxActionPerformed
         // TODO add your handling code here:
@@ -108,12 +127,11 @@ public class AdvancedOptions extends javax.swing.JPanel {
         // TODO add your handling code here:
     }//GEN-LAST:event_bufferSizeActionPerformed
 
-    // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextField bufferSize;
     private org.open2jam.GameOptions go;
     private javax.swing.JCheckBox hasteModeCheckbox;
     private javax.swing.JCheckBox jCheckBox1;
     private javax.swing.JLabel jLabel1;
-    private org.jdesktop.beansbinding.BindingGroup bindingGroup;
+    // private org.jdesktop.beansbinding.BindingGroup bindingGroup;
     // End of variables declaration//GEN-END:variables
 }

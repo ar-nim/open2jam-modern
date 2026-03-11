@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.logging.Level;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.util.glu.GLU;
+import org.lwjgl.opengl.GL30;
 import org.open2jam.util.Logger;
 
 
@@ -430,13 +430,8 @@ public class TrueTypeFont {
 
 
 
-			GLU.gluBuild2DMipmaps(GL11.GL_TEXTURE_2D,
-			      internalFormat,
-			      width,
-			      height,
-			      format,
-			      GL11.GL_UNSIGNED_BYTE,
-			      byteBuffer);
+			GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL11.GL_UNSIGNED_BYTE, byteBuffer);
+			GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D);
 			return textureId.get(0);
 
 		} catch (Exception e) {
