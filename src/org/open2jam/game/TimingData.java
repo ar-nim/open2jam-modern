@@ -77,5 +77,15 @@ public class TimingData {
         }
         return changes[0].calculateBeat(time);
     }
-    
+
+    /**
+     * Get the position in measures (1 measure = 4 beats).
+     * Faithful to CXO2's position-based judgment system.
+     * @param time Time in milliseconds
+     * @return Position in measures
+     */
+    public double getMeasure(double time) {
+        return getBeat(time) / 4.0;
+    }
+
 }

@@ -678,19 +678,17 @@ public class Render implements GameWindowCallback
     }
     
     /**
-     * Initializes the life bar based on rank
+     * Initializes the life bar based on difficulty (rank).
+     * Faithful to CXO2's LifeSystem with 1000 max life.
+     * 
+     * Difficulty mapping (rank):
+     * - rank < 1:  EX (Easy)   - Fewer notes, each judgment matters more
+     * - rank >= 1: NX (Normal) - Balanced
+     * - rank >= 2: HX (Hard)   - More notes, each judgment matters less
      */
     private void initLifeBar() {
-        int base = 12000; // base health bar size
-        int multiplier;
-        if (rank >= 2) {
-            multiplier = 4; // hard coefficient
-        } else if (rank >= 1) {
-            multiplier = 3; // normal coefficient
-        } else {
-            multiplier = 2; // easy coefficient
-        }
-        int maxLife = base * multiplier;
+        // CXO2-faithful: Fixed 1000 max life across all difficulties
+        int maxLife = 1000;
         lifebar_entity.setLimit(maxLife);
         lifebar_entity.setNumber(maxLife);
     }
@@ -1147,37 +1145,80 @@ public class Render implements GameWindowCallback
     public JudgmentResult handleJudgment(JudgmentResult result) {
 
         int score_value = 0;
-        
+
         switch(result)
         {
             case COOL:
                 jambar_entity.addNumber(2);
                 consecutive_cools++;
-                lifebar_entity.addNumber(rank >= 2 ? 48 : 96);
-                score_value = 200 + (jamcombo_entity.getNumber()*10);
+                
+                // CXO2-faithful life recovery (difficulty-based, 1000 max life)
+                // HX (rank>=2): +1 (0.1%), NX (rank>=1): +2 (0.2%), EX (rank<1): +3 (0.3%)
+                if (rank >= 2) {
+                    lifebar_entity.addNumber(1);   // HX: +0.10%
+                } else if (rank >= 1) {
+                    lifebar_entity.addNumber(2);   // NX: +0.20%
+                } else {
+                    lifebar_entity.addNumber(3);   // EX: +0.30%
+                }
+                
+                score_value = 200 + (jamcombo_entity.getNumber() * 10);
                 break;
 
             case GOOD:
                 jambar_entity.addNumber(1);
                 consecutive_cools = 0;
-                score_value = 100;
+                
+                // CXO2-faithful: GOOD gives life recovery (except HX)
+                // HX (rank>=2): +0, NX (rank>=1): +1 (0.1%), EX (rank<1): +2 (0.2%)
+                if (rank >= 2) {
+                    lifebar_entity.addNumber(0);   // HX: 0
+                } else if (rank >= 1) {
+                    lifebar_entity.addNumber(1);   // NX: +0.10%
+                } else {
+                    lifebar_entity.addNumber(2);   // EX: +0.20%
+                }
+                
+                // CXO2-faithful: GOOD scales with jamCombo
+                score_value = 100 + (jamcombo_entity.getNumber() * 5);
                 break;
 
             case BAD:
+                // CXO2-faithful: Pill/Buffer automatically converts BAD to COOL (not GOOD)
                 if(pills_draw.size() > 0)
                 {
-                    result = JudgmentResult.GOOD;
-                    jambar_entity.addNumber(1);
+                    result = JudgmentResult.COOL;  // Convert to COOL (not GOOD)
+                    jambar_entity.addNumber(2);
+                    consecutive_cools++;
                     pills_draw.removeLast().setDead(true);
-
-                    score_value = 100; // TODO: not sure
+                    
+                    // Full COOL life recovery
+                    if (rank >= 2) {
+                        lifebar_entity.addNumber(1);
+                    } else if (rank >= 1) {
+                        lifebar_entity.addNumber(2);
+                    } else {
+                        lifebar_entity.addNumber(3);
+                    }
+                    
+                    // Full COOL points
+                    score_value = 200 + (jamcombo_entity.getNumber() * 10);
                 }
                 else
                 {
                     jambar_entity.setNumber(0);
                     jamcombo_entity.resetNumber();
-                    lifebar_entity.subtractNumber(240);
-
+                    
+                    // CXO2-faithful life penalty (difficulty-based)
+                    // HX: -5 (0.5%), NX: -7 (0.7%), EX: -10 (1.0%)
+                    if (rank >= 2) {
+                        lifebar_entity.subtractNumber(5);   // HX: -0.50%
+                    } else if (rank >= 1) {
+                        lifebar_entity.subtractNumber(7);   // NX: -0.70%
+                    } else {
+                        lifebar_entity.subtractNumber(10);  // EX: -1.00%
+                    }
+                    
                     score_value = 4;
                 }
                 consecutive_cools = 0;
@@ -1188,13 +1229,21 @@ public class Render implements GameWindowCallback
                 jamcombo_entity.resetNumber();
                 consecutive_cools = 0;
 
-                lifebar_entity.subtractNumber(1440);
+                // CXO2-faithful life penalty (difficulty-based)
+                // HX: -30 (3.0%), NX: -40 (4.0%), EX: -50 (5.0%)
+                if (rank >= 2) {
+                    lifebar_entity.subtractNumber(30);  // HX: -3.0%
+                } else if (rank >= 1) {
+                    lifebar_entity.subtractNumber(40);  // NX: -4.0%
+                } else {
+                    lifebar_entity.subtractNumber(50);  // EX: -5.0%
+                }
 
                 if(score_entity.getNumber() >= 10)score_value = -10;
                 else score_value = -score_entity.getNumber();
             break;
         }
-        
+
         score_entity.addNumber(score_value);
 
         if(jambar_entity.getNumber() >= jambar_entity.getLimit())
@@ -1202,7 +1251,7 @@ public class Render implements GameWindowCallback
             jambar_entity.setNumber(0); //reset
             jamcombo_entity.incNumber();
         }
-        
+
         if(consecutive_cools >= 15 && pills_draw.size() < 5)
         {
             consecutive_cools -= 15;
@@ -1215,7 +1264,7 @@ public class Render implements GameWindowCallback
         {
             maxcombo_entity.incNumber();
         }
-        
+
         return result;
 
     }
