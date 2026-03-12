@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.open2jam.render.lwjgl.Keyboard;
+import org.lwjgl.input.Keyboard;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.parsers.Event;
 import org.open2jam.parsers.Event.Channel;
@@ -41,8 +41,8 @@ public abstract class Config
             if (result instanceof GameOptions) return (GameOptions)result;
         } catch(FileNotFoundException fnf) {
             return null; // thats ok a new file will be created
-        } catch (Exception ex) {
-            Logger.getLogger(Config.class.getName()).log(Level.SEVERE, "Error loading game options: {0}", ex.getMessage());
+        } catch (IOException ex) {
+            Logger.getLogger(Config.class.getName()).log(Level.SEVERE, "{0}", ex);
         }
         return null;
     }

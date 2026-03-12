@@ -1,6 +1,6 @@
 package org.open2jam.render;
 
-import java.util.List;
+import org.lwjgl.opengl.DisplayMode;
 
 /**
  * The window in which the game will be displayed. This interface exposes just
@@ -52,8 +52,6 @@ public interface GameWindow {
 	public boolean isKeyDown(int keyCode);
 
         public void destroy();
-
-        public List<DisplayMode> getAvailableDisplayModes();
 
         /** manually update the screen */
         public void update();
