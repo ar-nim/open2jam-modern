@@ -4,7 +4,7 @@ import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.util.ArrayList;
 import java.util.List;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.DisplayMode;
 import org.open2jam.parsers.Event;
 
 /**
@@ -239,14 +239,18 @@ public class GameOptions {
     public void setAutosound(boolean autosound) {
         this.autosound = autosound;
     }
-    
+
     public void setDisplay(DisplayMode dm) {
         this.displayWidth = dm.getWidth();
         this.displayHeight = dm.getHeight();
         this.displayBitsPerPixel = dm.getBitsPerPixel();
         this.displayFrequency = dm.getFrequency();
     }
-    
+
+    public DisplayMode getDisplay() {
+        return new DisplayMode(displayWidth, displayHeight, displayBitsPerPixel, displayFrequency);
+    }
+
     public boolean isDisplaySaved(DisplayMode dm)
     {
         return dm.getWidth() == displayWidth && dm.getHeight() == displayHeight &&

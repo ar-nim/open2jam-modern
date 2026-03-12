@@ -5,6 +5,7 @@
 package org.open2jam.sound;
 
 /**
+ * Exception thrown when a sound system error occurs.
  *
  * @author dttvb
  */
@@ -17,6 +18,8 @@ public class SoundSystemException extends Exception {
     public SoundSystemException(String string) {
         super(string);
     }
-    
-    
+
+    public SoundSystemException(String string, Throwable thrwbl) {
+        super(string, thrwbl);
+    }
 }

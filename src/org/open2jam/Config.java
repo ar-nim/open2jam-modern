@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.lwjgl.input.Keyboard;
+import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.parsers.Event;
 import org.open2jam.parsers.Event.Channel;
@@ -39,9 +39,9 @@ public abstract class Config
             Object result = decoder.readObject();
             decoder.close();
             if (result instanceof GameOptions) return (GameOptions)result;
-        } catch(FileNotFoundException fnf) {
+        } catch (FileNotFoundException fnf) {
             return null; // thats ok a new file will be created
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             Logger.getLogger(Config.class.getName()).log(Level.SEVERE, "{0}", ex);
         }
         return null;

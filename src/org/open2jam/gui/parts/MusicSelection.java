@@ -22,9 +22,8 @@ import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableRowSorter;
-import org.lwjgl.LWJGLException;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.lwjgl.LWJGLGameWindow;
+import org.open2jam.render.DisplayMode;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.GameOptions.ChannelMod;
@@ -42,26 +41,11 @@ import org.open2jam.game.judgment.TimeJudgment;
 import org.open2jam.sound.SoundSystemException;
 import org.open2jam.util.Logger;
 
+@SuppressWarnings({"unchecked", "rawtypes"})
 public class MusicSelection extends javax.swing.JPanel
     implements PropertyChangeListener, ListSelectionListener {
     private Server lastServer;
 
-    private class RenderThread extends Thread {
-
-        Container c;
-        Render r;
-        public RenderThread(Container c, Render r) {
-            this.c = c;
-            this.r = r;
-        }
-        @Override
-        public void run() {
-            c.setEnabled(false);
-            r.startRendering();
-            c.setEnabled(true);
-        }
-    }
-    
     private class PopupListener extends MouseAdapter {
 
 	private final JPopupMenu menu;
@@ -254,6 +238,8 @@ public class MusicSelection extends javax.swing.JPanel
      * now is a good time to save the game options
      */
     public void windowClosing() {
+        // Game runs on EDT now, so no need to stop a separate thread
+        // Just save game options
         GameOptions go = Config.getGameOptions();
 
         go.setAutoplay(jc_autoplay.isSelected());
@@ -1052,7 +1038,7 @@ public class MusicSelection extends javax.swing.JPanel
                     JOptionPane.showMessageDialog(this, "Invalid value on custom size", "Error", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
-                dm = new DisplayMode(w,h);
+                dm = new DisplayMode(w, h, 32, 60);
             }else{
                 dm = (DisplayMode) combo_displays.getSelectedItem();
             }
@@ -1168,8 +1154,26 @@ public class MusicSelection extends javax.swing.JPanel
             if (lastServer != null && !lastServer.isClosed()) {
                 r.setServer(lastServer);
             }
-            
-            new RenderThread(this.getTopLevelAncestor(), r).start();
+
+            // CRITICAL: Run game loop directly on EDT for Wayland compatibility
+            // GLFW operations (glfwSwapBuffers, glfwPollEvents) MUST run on main thread
+            Logger.global.info("Starting game on EDT for Wayland compatibility");
+            this.setEnabled(false);
+            r.startRendering();
+            // Game ended - re-enable and bring to front
+            this.setEnabled(true);
+            // Force GUI repaint and bring to front
+            SwingUtilities.invokeLater(() -> {
+                this.repaint();
+                this.revalidate();
+                // Bring parent frame to front
+                java.awt.Window window = SwingUtilities.getWindowAncestor(this);
+                if (window != null) {
+                    window.toFront();
+                    window.repaint();
+                }
+            });
+            Logger.global.info("Game ended, GUI re-enabled and brought to front");
         } catch (SoundSystemException ex) {
             java.util.logging.Logger.getLogger(MusicSelection.class.getName()).log(Level.SEVERE, "{0}", ex);
         }
@@ -1345,37 +1349,30 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JTextField txt_res_width;
     // End of variables declaration//GEN-END:variables
     private void initLogic() {
-
         try {
-            List<DisplayMode> list = Arrays.asList(Display.getAvailableDisplayModes());
+            // Use LWJGLGameWindow to get available display modes (LWJGL 3 compatible)
+            LWJGLGameWindow gameWindow = new LWJGLGameWindow();
+            List<DisplayMode> list = gameWindow.getAvailableDisplayModes();
 
             Collections.sort(list, new Comparator<DisplayMode>() {
                 @Override
                 public int compare(DisplayMode dm1, DisplayMode dm2) {
-
-                    if(dm1.getBitsPerPixel() == dm2.getBitsPerPixel())
-                    {
-                        if(dm1.getWidth() == dm2.getWidth())
-                        {
-                            if(dm1.getHeight() == dm2.getHeight())
-                            {
-                                if(dm1.getFrequency() > dm2.getFrequency())return -1;
-                                else if(dm1.getFrequency() < dm2.getFrequency())return 1;
+                    if (dm1.getBitsPerPixel() == dm2.getBitsPerPixel()) {
+                        if (dm1.getWidth() == dm2.getWidth()) {
+                            if (dm1.getHeight() == dm2.getHeight()) {
+                                if (dm1.getFrequency() > dm2.getFrequency()) return -1;
+                                else if (dm1.getFrequency() < dm2.getFrequency()) return 1;
                                 else return 0;
-                            }
-                            else if(dm1.getHeight() > dm2.getHeight())return -1;
+                            } else if (dm1.getHeight() > dm2.getHeight()) return -1;
                             else return 1;
-                        }
-                        else if(dm1.getWidth() > dm2.getWidth())return -1;
+                        } else if (dm1.getWidth() > dm2.getWidth()) return -1;
                         else return 1;
-                    }
-                    else if(dm1.getBitsPerPixel() > dm2.getBitsPerPixel()) return -1;
+                    } else if (dm1.getBitsPerPixel() > dm2.getBitsPerPixel()) return -1;
                     return 1;
                 }
             });
-            display_modes = list.toArray(new DisplayMode[list.size()]);
-
-        } catch (LWJGLException ex) {
+            display_modes = list.toArray(new DisplayMode[0]);
+        } catch (Exception ex) {
             Logger.global.log(Level.WARNING, "Could not get the display modes !! {0}", ex.getMessage());
             display_modes = new DisplayMode[0];
         }

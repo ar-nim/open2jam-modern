@@ -76,12 +76,17 @@ public class Interface extends javax.swing.JFrame implements WindowListener
 
     @Override
     public void windowClosing(WindowEvent we) {
-        musicSelection.windowClosing();
+        // Signal any running game to stop
+        if (musicSelection != null) {
+            musicSelection.windowClosing();
+        }
+        // Don't wait - shutdown hook handles cleanup
     }
 
     @Override
     public void windowClosed(WindowEvent we) {
-        
+        // Ensure JVM exits cleanly
+        System.exit(0);
     }
 
     @Override

@@ -5,6 +5,7 @@ import java.io.File;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import javax.swing.UIManager;
+import org.lwjgl.glfw.GLFW;
 import org.open2jam.gui.Interface;
 import org.open2jam.util.Logger;
 
@@ -15,25 +16,32 @@ public class Main implements Runnable
         "lib" + File.separator +
         "native" + File.separator +
         getOS();
-    private static final String FMODEX_PATH =
-        System.getProperty("user.dir") + File.separator +
-        "lib" + File.separator +
-        "fmodex";
 
     public static void main(String []args)
     {
-        System.setProperty("org.lwjgl.librarypath", LIB_PATH);
-        System.setProperty("java.library.path", FMODEX_PATH);
-        
+        // LWJGL 3 handles native libraries automatically via Gradle dependencies
+        // No need to set java.library.path manually
+
+        // Add shutdown hook to terminate GLFW at application exit
+        // (OpenAL context is kept alive between songs, only destroyed at JVM exit)
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                org.lwjgl.glfw.GLFW.glfwTerminate();
+            } catch (Exception e) {
+                // Ignore
+            }
+            // OpenAL will be cleaned up by JVM when native library unloads
+        }));
+
         Config.openDB();
-        
+
         setupLogging();
 
         trySetLAF();
-        
+
         EventQueue.invokeLater(new Main());
     }
-    
+
     @Override
     public void run() {
         new Interface().setVisible(true);

@@ -1,219 +1,501 @@
 package org.open2jam.render.lwjgl;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.IntBuffer;
-import java.util.logging.Level;
-import org.lwjgl.LWJGLException;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
-import org.lwjgl.opengl.EXTFramebufferObject;
+import org.lwjgl.glfw.*;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GLCapabilities;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
+import org.open2jam.render.DisplayMode;
 import org.open2jam.render.GameWindow;
 import org.open2jam.render.GameWindowCallback;
 import org.open2jam.util.Logger;
 
+import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
+
 /**
- * An implementation of GameWindow that will use OPENGL (JOGL) to 
- * render the scene. Its also responsible for monitoring the keyboard
- * using AWT.
- * 
- * @author Kevin Glass
- * @author Brian Matzon
+ * LWJGL 3 implementation of GameWindow using GLFW.
+ * Features proper Wayland detection and window lifecycle management.
  */
 public class LWJGLGameWindow implements GameWindow {
 
+    private long windowHandle = 0;
+    private int width;
+    private int height;
+    private boolean vsync;
+    private boolean fullscreen;
+    private String title = "open2jam";
+    private GameWindowCallback callback;
+    private boolean gameRunning = true;
+    private volatile boolean shouldStop = false;
+    private float scaleX = 1f, scaleY = 1f;
+    private GLCapabilities capabilities;
+    private boolean isWayland = false;
+    private TextureLoader textureLoader;
 
-	/** The callback which should be notified of window events */
-	private GameWindowCallback callback;
-  
-	/** True if the game is currently "running", i.e. the game loop is looping */
-	private boolean gameRunning = true;
-  
-	/** The width of the game display area */
-	private int width;
-  
-	/** The height of the game display area */
-	private int height;
+    // Available display modes
+    private List<DisplayMode> displayModes = new ArrayList<>();
 
-	/** The loader responsible for converting images into OpenGL textures */
-	private TextureLoader textureLoader;
-  
-	/** Title of window, we get it before our window is ready, so store it till needed */
-	private String title;
+    public LWJGLGameWindow() {
+        detectWayland();
+    }
 
-    private float scale_x = 1f, scale_y = 1f;
-        private float scale_x2 = 1f, scale_y2 = 1f;
-
-	/**
-	 * Create a new game window that will use OpenGL to 
-	 * render our game.
-	 */
-	public LWJGLGameWindow() {
-	}
-	
-	/**
-	 * Retrieve access to the texture loader that converts images
-	 * into OpenGL textures. Note, this has been made package level
-	 * since only other parts of the JOGL implementations need to access
-	 * it.
-	 * 
-	 * @return The texture loader that can be used to load images into
-	 * OpenGL textures.
-	 */
-	TextureLoader getTextureLoader() {
-		return textureLoader;
-	}
-	
-	/**
-	 * Set the title of this window.
-	 *
-	 * @param title The title to set on this window
-	 */
-	public void setTitle(String title) {
-	    this.title = title;
-	    if(Display.isCreated()) {
-	    	Display.setTitle(title);
-	    }
-	}
-
-	/**
-	 * Set the resolution of the game display area.
-	 *
+    /**
+     * Detect if running under Wayland session.
+     * Multiple methods are checked for robustness.
      */
-	public void setDisplay(DisplayMode dm, boolean vsync, boolean fs) {
-            try{
-                Display.setDisplayMode(dm);
-                Display.setVSyncEnabled(vsync);
-                Display.setFullscreen(fs);
-                width = dm.getWidth();
-                height = dm.getHeight();
-            }catch(LWJGLException e){
-                Logger.global.log(Level.WARNING, "LWJGL Error: {0}", e.getMessage());
-            }
+    private void detectWayland() {
+        // Check XDG_SESSION_TYPE
+        String sessionType = System.getenv("XDG_SESSION_TYPE");
+        if ("wayland".equalsIgnoreCase(sessionType)) {
+            isWayland = true;
+            return;
         }
 
-	public int getResolutionHeight(){ return height; }
-        public int getResolutionWidth(){ return width; }
-	
-	/**
-	 * Start the rendering process. This method will cause the display to redraw
-	 * as fast as possible.
-	 */
-	public void startRendering()
-        {
-            if(callback == null)throw new RuntimeException(" Need callback to start rendering !");
-
-            try {
-                Display.create();
-            } catch (LWJGLException ex) {
-                Logger.global.log(Level.SEVERE, "{0}", ex);
-                callback.windowClosed();
-                return;
-            }
-
-            Display.setTitle(title);
-            
-            // center the display on the screen
-            Display.setLocation(-1, -1);
-
-            // grab the mouse, dont want that hideous cursor when we're playing!
-            // only when in fullscreen mode
-            Mouse.setGrabbed(Display.isFullscreen());
-
-            // enable textures since we're going to use these for our sprites
-            GL11.glEnable(GL11.GL_TEXTURE_2D);
-
-            // disable the OpenGL depth test since we're rendering 2D graphics
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-            
-            //the color of the COLOR_BUFFER_BIT, to be changed by the skin... i guess
-            GL11.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-            
-
-            // enable apha blending
-            GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            GL11.glEnable(GL11.GL_BLEND);
-	    
-	    //Enable scissor test
-	    GL11.glEnable(GL11.GL_SCISSOR_TEST);
-	    GL11.glScissor(0, 0, width, height);
-
-            GL11.glMatrixMode(GL11.GL_PROJECTION);
-            GL11.glLoadIdentity();
-
-            GL11.glOrtho(0, width, height, 0, -1, 1);
-
-            textureLoader = new TextureLoader();
-            
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            GL11.glMatrixMode(GL11.GL_MODELVIEW);
-            GL11.glLoadIdentity();
-
-            callback.initialise();
-
-            gameLoop();
-	}
-
-        public void update(){
-            Display.update();
+        // Check WAYLAND_DISPLAY
+        String waylandDisplay = System.getenv("WAYLAND_DISPLAY");
+        if (waylandDisplay != null && !waylandDisplay.isEmpty()) {
+            isWayland = true;
+            return;
         }
 
-	/**
-	 * Register a callback that will be notified of game window
-	 * events.
-	 *
-	 * @param callback The callback that should be notified of game
-	 * window events. 
-	 */
-	public void setGameWindowCallback(GameWindowCallback callback) {
-            this.callback = callback;
-	}
-	
-	/**
-	 * Check if a particular key is current held.
-	 *
-	 * @param keyCode The code associated with the key to check 
-	 * @return True if the specified key is being held
-	 */
-	public boolean isKeyDown(int keyCode)
-        {
-            return Keyboard.isKeyDown(keyCode);
-	}
+        // Check GDK_BACKEND
+        String gdkBackend = System.getenv("GDK_BACKEND");
+        if ("wayland".equalsIgnoreCase(gdkBackend)) {
+            isWayland = true;
+            return;
+        }
+
+        // Check QT_QPA_PLATFORM
+        String qtPlatform = System.getenv("QT_QPA_PLATFORM");
+        if (qtPlatform != null && qtPlatform.contains("wayland")) {
+            isWayland = true;
+            return;
+        }
+
+        isWayland = false;
+    }
+
+    @Override
+    public void setTitle(String title) {
+        this.title = title;
+        if (windowHandle != 0) {
+            GLFW.glfwSetWindowTitle(windowHandle, title);
+        }
+    }
+
+    @Override
+    public void setDisplay(DisplayMode dm, boolean vsync, boolean fullscreen) {
+        this.width = dm.getWidth();
+        this.height = dm.getHeight();
+        this.vsync = vsync;
+        this.fullscreen = fullscreen;
+    }
+
+    @Override
+    public int getResolutionHeight() {
+        return height;
+    }
+
+    @Override
+    public int getResolutionWidth() {
+        return width;
+    }
+
+    @Override
+    public void startRendering() {
+        if (callback == null) {
+            throw new RuntimeException("Need callback to start rendering!");
+        }
+
+        // Initialize GLFW
+        if (!GLFW.glfwInit()) {
+            throw new IllegalStateException("Unable to initialize GLFW");
+        }
+
+        // Configure GLFW - use legacy OpenGL compatibility
+        GLFW.glfwDefaultWindowHints();
+        GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
+        GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GLFW.GLFW_FALSE);
+        // Request OpenGL 3.0 without any specific profile - gets compatibility context
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 0);
+        // Explicitly do NOT set CLIENT_API or OPENGL_PROFILE hints
+        // This allows the driver to provide a compatibility context
+
+        // Create window
+        long monitor = fullscreen ? GLFW.glfwGetPrimaryMonitor() : 0;
+        windowHandle = GLFW.glfwCreateWindow(width, height, title, monitor, 0);
+
+        if (windowHandle == 0) {
+            throw new RuntimeException("Failed to create GLFW window");
+        }
+
+        // Make context current FIRST before any OpenGL operations
+        GLFW.glfwMakeContextCurrent(windowHandle);
+        GLFW.glfwSwapInterval(vsync ? 1 : 0);
+
+        // Verify context is current
+        long currentContext = GLFW.glfwGetCurrentContext();
+        Logger.global.info("GLFW Context check: windowHandle=" + windowHandle + " currentContext=" + currentContext);
+        if (currentContext != windowHandle) {
+            throw new RuntimeException("Failed to make OpenGL context current. Current: " + currentContext + " Expected: " + windowHandle);
+        }
+
+        // Initialize OpenGL capabilities
+        Logger.global.info("Creating GL capabilities...");
+        capabilities = GL.createCapabilities();
+        Logger.global.info("GL capabilities created: " + (capabilities != null));
+        if (capabilities == null) {
+            throw new RuntimeException("Failed to create OpenGL capabilities");
+        }
         
-        public void initScales(double w, double h){
-            scale_x = (float) (width/w);
-            scale_y = (float) (height/h);
+        // Log OpenGL info
+        Logger.global.info("OpenGL Version: " + GL11.glGetString(GL11.GL_VERSION));
+        Logger.global.info("GLSL Version: " + GL11.glGetString(GL32.GL_SHADING_LANGUAGE_VERSION));
+        Logger.global.info("Renderer: " + GL11.glGetString(GL11.GL_RENDERER));
+        Logger.global.info("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
+
+        // Get framebuffer size (may differ from window size on HiDPI)
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer w = stack.mallocInt(1);
+            IntBuffer h = stack.mallocInt(1);
+            GLFW.glfwGetFramebufferSize(windowHandle, w, h);
+            width = w.get(0);
+            height = h.get(0);
         }
 
-	/**
-	 * Run the main game loop. This method keeps rendering the scene
-	 * and requesting that the callback update its screen.
-	 */
-	private void gameLoop()
-        {
-            gameRunning = true;
-            while (gameRunning) {
-                    // clear screen
-                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-                    GL11.glLoadIdentity();
-                    
-                    GL11.glScalef(scale_x, scale_y, 1);
-                    callback.frameRendering();
+        // Center window (skip on Wayland - not supported)
+        if (!isWayland && !fullscreen) {
+            centerWindow();
+        }
 
-                    Display.update();
-                    
-                    if(Display.isCloseRequested() || Keyboard.isKeyDown(Keyboard.KEY_ESCAPE)) {
-                            destroy();
-                    }
+        // Setup callbacks AFTER context is current
+        setupCallbacks();
+
+        // Show window
+        GLFW.glfwShowWindow(windowHandle);
+
+        // Enable textures
+        Logger.global.info("Calling glEnable(GL_TEXTURE_2D)...");
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        Logger.global.info("Done glEnable");
+
+        // Disable depth test for 2D rendering
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+
+        // Set clear color
+        GL11.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+        // Enable alpha blending
+        GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glEnable(GL11.GL_BLEND);
+
+        // Enable scissor test
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(0, 0, width, height);
+
+        // Setup projection matrix
+        Logger.global.info("Calling glMatrixMode(GL_PROJECTION)...");
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        Logger.global.info("Done glMatrixMode");
+        GL11.glLoadIdentity();
+        GL11.glOrtho(0, width, height, 0, -1, 1);
+        Logger.global.info("Calling glMatrixMode(GL_MODELVIEW)...");
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        Logger.global.info("Done glMatrixMode");
+        GL11.glLoadIdentity();
+
+        // Initialize texture loader
+        textureLoader = new TextureLoader();
+
+        // Initialize callback
+        callback.initialise();
+
+        // Start game loop
+        gameLoop();
+    }
+
+    private void setupCallbacks() {
+        GLFW.glfwSetKeyCallback(windowHandle, (window, key, scancode, action, mods) -> {
+            int keyCode = Keyboard.translateKeyCode(key);
+            boolean pressed = action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT;
+            Keyboard.setKeyState(keyCode, pressed);
+
+            // Handle ESC key - signal to stop (don't destroy directly!)
+            if (key == GLFW.GLFW_KEY_ESCAPE && action == GLFW.GLFW_PRESS) {
+                stopRendering();  // ← Signal game loop to exit
             }
-            Display.destroy();
-	}
+        });
 
+        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, w, h) -> {
+            width = w;
+            height = h;
+            // Only call glViewport if we have a current context
+            if (capabilities != null) {
+                GL11.glViewport(0, 0, w, h);
+            }
+        });
+
+        GLFW.glfwSetWindowCloseCallback(windowHandle, (window) -> {
+            stopRendering();  // ← Signal game loop to exit
+        });
+    }
+
+    private void centerWindow() {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer w = stack.mallocInt(1);
+            IntBuffer h = stack.mallocInt(1);
+            IntBuffer winW = stack.mallocInt(1);
+            IntBuffer winH = stack.mallocInt(1);
+
+            GLFWVidMode vidmode = GLFW.glfwGetVideoMode(GLFW.glfwGetPrimaryMonitor());
+            if (vidmode != null) {
+                GLFW.glfwGetWindowSize(windowHandle, winW, winH);
+                GLFW.glfwSetWindowPos(
+                        windowHandle,
+                        (vidmode.width() - winW.get(0)) / 2,
+                        (vidmode.height() - winH.get(0)) / 2
+                );
+            }
+        }
+    }
+
+    /**
+     * Enumerate available display modes.
+     * Returns a list sorted by resolution and refresh rate.
+     * Note: May initialize GLFW temporarily if not already initialized.
+     */
+    public List<DisplayMode> getAvailableDisplayModes() {
+        List<DisplayMode> modes = new ArrayList<>();
+        
+        // Check if GLFW is already initialized by trying to get primary monitor
+        long monitor = GLFW.glfwGetPrimaryMonitor();
+        boolean needsCleanup = false;
+        
+        if (monitor == 0) {
+            // GLFW not initialized, initialize it temporarily
+            if (!GLFW.glfwInit()) {
+                Logger.global.log(Level.WARNING, "Failed to initialize GLFW for display mode enumeration");
+                return getFallbackDisplayModes();
+            }
+            needsCleanup = true;
+            monitor = GLFW.glfwGetPrimaryMonitor();
+        }
+        
+        try {
+            if (monitor != 0) {
+                GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
+                if (vidMode != null) {
+                    // Add native resolution
+                    modes.add(new DisplayMode(
+                            vidMode.width(),
+                            vidMode.height(),
+                            vidMode.redBits() + vidMode.greenBits() + vidMode.blueBits(),
+                            vidMode.refreshRate()
+                    ));
+                }
+            }
+        } catch (Exception e) {
+            Logger.global.log(Level.WARNING, "Failed to get display modes: {0}", e.getMessage());
+        } finally {
+            // Only terminate if we initialized it
+            if (needsCleanup) {
+                GLFW.glfwTerminate();
+            }
+        }
+        
+        // Add standard resolutions with estimated refresh rates
+        int[][] standardResolutions = {
+                {640, 480}, {800, 600}, {1024, 768}, {1280, 720},
+                {1280, 960}, {1280, 1024}, {1366, 768}, {1440, 900},
+                {1600, 900}, {1600, 1200}, {1680, 1050}, {1920, 1080},
+                {1920, 1200}, {2560, 1440}, {3840, 2160}
+        };
+        
+        int defaultRefreshRate = 60;
+        int defaultBpp = 32;
+        
+        // Add current mode's refresh rate if available
+        if (!modes.isEmpty()) {
+            defaultRefreshRate = modes.get(0).getFrequency();
+            defaultBpp = modes.get(0).getBitsPerPixel();
+        }
+        
+        for (int[] res : standardResolutions) {
+            modes.add(new DisplayMode(res[0], res[1], defaultBpp, defaultRefreshRate));
+        }
+        
+        // Sort by width, then height, then refresh rate
+        modes.sort((a, b) -> {
+            int cmp = Integer.compare(a.getWidth(), b.getWidth());
+            if (cmp != 0) return cmp;
+            cmp = Integer.compare(a.getHeight(), b.getHeight());
+            if (cmp != 0) return cmp;
+            return Integer.compare(a.getFrequency(), b.getFrequency());
+        });
+        
+        return modes;
+    }
+    
+    /**
+     * Fallback display modes when GLFW fails.
+     */
+    private List<DisplayMode> getFallbackDisplayModes() {
+        List<DisplayMode> modes = new ArrayList<>();
+        int[][] standardResolutions = {
+                {800, 600}, {1024, 768}, {1280, 720}, {1366, 768},
+                {1600, 900}, {1920, 1080}, {1920, 1200}
+        };
+        for (int[] res : standardResolutions) {
+            modes.add(new DisplayMode(res[0], res[1], 32, 60));
+        }
+        return modes;
+    }
+
+    @Override
+    public void update() {
+        if (windowHandle != 0 && capabilities != null) {
+            GLFW.glfwSwapBuffers(windowHandle);
+            GLFW.glfwPollEvents();
+        }
+    }
+
+    @Override
+    public void setGameWindowCallback(GameWindowCallback callback) {
+        this.callback = callback;
+    }
+
+    /**
+     * Signal the render thread to stop gracefully.
+     * The gameLoop will exit and call destroy() automatically.
+     */
+    public void stopRendering() {
+        shouldStop = true;
+        // Also mark window for closing in case loop is blocked
+        if (windowHandle != 0) {
+            GLFW.glfwSetWindowShouldClose(windowHandle, true);
+        }
+    }
+
+    @Override
+    public boolean isKeyDown(int keyCode) {
+        return Keyboard.isKeyDown(keyCode);
+    }
+
+    @Override
+    public void initScales(double w, double h) {
+        scaleX = (float) (width / w);
+        scaleY = (float) (height / h);
+    }
+
+    private void gameLoop() {
+        gameRunning = true;
+        shouldStop = false;
+
+        Logger.global.info("Game loop started");
+        int frameCount = 0;
+        while (gameRunning && !shouldStop && !GLFW.glfwWindowShouldClose(windowHandle)) {
+            frameCount++;
+            if (frameCount % 100 == 0) {
+                Logger.global.info("Game loop running... frame=" + frameCount + " shouldStop=" + shouldStop);
+            }
+            
+            // Clear screen
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GL11.glLoadIdentity();
+
+            // Apply scale
+            GL11.glScalef(scaleX, scaleY, 1);
+
+            // Render frame
+            callback.frameRendering();
+
+            // Update window
+            update();
+        }
+
+        // Loop exited - unbind context FIRST before cleanup
+        // This is critical to prevent EGL/Mesa crashes
+        Logger.global.info("Game loop exiting (shouldStop=" + shouldStop + ", glfwWindowShouldClose=" + GLFW.glfwWindowShouldClose(windowHandle) + ", frameCount=" + frameCount + ")");
+        GLFW.glfwMakeContextCurrent(0);  // ← Unbind context from this thread
+        
+        Logger.global.info("Game loop exited, context unbound, calling destroy()...");
+        destroy();
+        Logger.global.info("Window destroyed, gameLoop() returning");
+    }
+
+    @Override
     public void destroy() {
+        Logger.global.info("destroy() called, gameRunning=" + gameRunning);
+        
+        // Prevent recursive destroy calls
+        if (!gameRunning) {
+            Logger.global.info("destroy() already called, skipping");
+            return;
+        }
         gameRunning = false;
-        callback.windowClosed();
+        shouldStop = true;
+
+        // Cleanup OpenGL resources before destroying window
+        if (callback != null) {
+            Logger.global.info("Calling callback.windowClosed()");
+            callback.windowClosed();
+            callback = null;
+        }
+
+        // Free callbacks and hide window BEFORE destroying
+        if (windowHandle != 0) {
+            Logger.global.info("Freeing GLFW callbacks for window " + windowHandle);
+            GLFW.glfwSetKeyCallback(windowHandle, null);
+            GLFW.glfwSetFramebufferSizeCallback(windowHandle, null);
+            GLFW.glfwSetWindowCloseCallback(windowHandle, null);
+            
+            // Hide window first (helps with Wayland compositors)
+            Logger.global.info("Hiding GLFW window " + windowHandle);
+            GLFW.glfwHideWindow(windowHandle);
+            
+            // Small delay to let compositor process hide
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+
+            // Destroy window (context already unbound by gameLoop)
+            Logger.global.info("Destroying GLFW window " + windowHandle);
+            GLFW.glfwDestroyWindow(windowHandle);
+            windowHandle = 0;
+            Logger.global.info("GLFW window destroyed");
+        } else {
+            Logger.global.info("Window already destroyed (windowHandle=0)");
+        }
+
+        // DO NOT call glfwTerminate() here - only at application shutdown
+        Logger.global.info("destroy() complete");
+    }
+
+    public boolean isWayland() {
+        return isWayland;
+    }
+
+    public long getWindowHandle() {
+        return windowHandle;
+    }
+
+    public GLCapabilities getCapabilities() {
+        return capabilities;
+    }
+
+    /**
+     * Get the texture loader for this window.
+     * Package-private, only accessible within the render package.
+     */
+    TextureLoader getTextureLoader() {
+        return textureLoader;
     }
 }

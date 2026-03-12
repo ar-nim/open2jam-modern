@@ -1,0 +1,132 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'org.open2jam'
+version = '1.0-SNAPSHOT'
+
+java {
+    // Use Java 21 for compilation (available on this system)
+    // Code is compatible with Java 21-25+ (no version-specific features used)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    lwjglVersion = '3.4.1'
+    jnaVersion = '5.14.0'
+    vlcjVersion = '4.8.2'
+}
+
+// LWJGL natives for each platform
+def lwjglNatives = [
+    'natives-windows': 'windows',
+    'natives-windows-arm64': 'windows-arm64',
+    'natives-macos': 'macos',
+    'natives-macos-arm64': 'macos-arm64',
+    'natives-linux': 'linux',
+    'natives-linux-arm64': 'linux-arm64',
+    'natives-linux-arm32': 'linux-arm32'
+]
+
+dependencies {
+    // LWJGL 3 BOM
+    implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
+
+    // LWJGL 3 core modules
+    implementation "org.lwjgl:lwjgl"
+    implementation "org.lwjgl:lwjgl-glfw"
+    implementation "org.lwjgl:lwjgl-opengl"
+    implementation "org.lwjgl:lwjgl-stb"
+    implementation "org.lwjgl:lwjgl-openal"
+
+    // LWJGL 3 natives
+    lwjglNatives.each { name, os ->
+        implementation "org.lwjgl:lwjgl::${name}"
+        implementation "org.lwjgl:lwjgl-glfw::${name}"
+        implementation "org.lwjgl:lwjgl-opengl::${name}"
+        implementation "org.lwjgl:lwjgl-stb::${name}"
+        implementation "org.lwjgl:lwjgl-openal::${name}"
+    }
+
+    // JNA for vlcj
+    implementation "net.java.dev.jna:jna:${jnaVersion}"
+    implementation "net.java.dev.jna:jna-platform:${jnaVersion}"
+
+    // VLCJ for video playback
+    implementation "uk.co.caprica:vlcj:${vlcjVersion}"
+
+    // Partytime for local multiplayer
+    implementation files('lib/partytime.jar')
+
+    // Voile for serialization
+    implementation files('lib/voile.jar')
+
+    // Parsers module
+    implementation project(':parsers')
+}
+
+application {
+    mainClass = 'org.open2jam.Main'
+    applicationDefaultJvmArgs = [
+        '-Djava.library.path=${applicationDefaultJvmArgs}',
+        '-Xmx2G'
+    ]
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+        resources {
+            srcDirs = ['src/resources', 'src']
+            include '**/*.png', '**/*.jpg', '**/*.xml', '**/*.xsd'
+        }
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'org.open2jam.Main',
+            'Implementation-Title': 'open2jam-modern',
+            'Implementation-Version': version
+        )
+    }
+}
+
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    dependsOn configurations.runtimeClasspath
+    manifest {
+        attributes(
+            'Main-Class': 'org.open2jam.Main',
+            'Implementation-Title': 'open2jam-modern',
+            'Implementation-Version': version
+        )
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:unchecked', '-Xlint:deprecation']
+    // Use forked compiler to work around Java 25 compiler bug
+    options.fork = true
+    options.forkOptions.jvmArgs += ['-Xmx2g']
+}
+
+test {
+    useJUnitPlatform()
+}

@@ -7,7 +7,8 @@ import org.open2jam.game.Latency;
 import com.github.dtinth.partytime.Client;
 import com.github.dtinth.partytime.server.Connection;
 import com.github.dtinth.partytime.server.Server;
-import org.open2jam.sound.FmodExSoundSystem;
+import org.open2jam.sound.ALSoundSystem;
+import org.open2jam.sound.ALSound;
 import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -21,8 +22,7 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.DisplayMode;
+import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.game.speed.SpeedMultiplier;
@@ -239,9 +239,6 @@ public class Render implements GameWindowCallback
     
     /** local matching */
     private Client localMatching;
-    
-    /** song finish time [leave 10 seconds] */
-    long finish_time = -1;
 
     protected CompositeEntity visibility_entity;
 
@@ -258,9 +255,9 @@ public class Render implements GameWindowCallback
     private double gameSpeed = 1;
     private double effectiveSpeed; /* set by updatePitch */
     private double effectiveJudgmentFactor; /* set by updatePitch */
-    
+
     private boolean haste = false;
-    
+
     /** adjust the final speed */
     private double speedFactor = 1.0;
 
@@ -294,14 +291,14 @@ public class Render implements GameWindowCallback
     
     protected final boolean AUTOSOUND;
     boolean disableAutoSound = false;
-    
-    public Render(Chart chart, GameOptions opt, DisplayMode dm) throws SoundSystemException
+
+    public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm) throws SoundSystemException
     {
         keyboard_map = Config.getKeyboardMap(Config.KeyboardType.K7);
         keyboard_misc = Config.getKeyboardMisc();
         window = ResourceFactory.get().getGameWindow();
-        
-        soundSystem = new FmodExSoundSystem(opt.getBufferSize());
+
+        soundSystem = new ALSoundSystem();
         soundSystem.setMasterVolume(opt.getMasterVolume());
         soundSystem.setBGMVolume(opt.getBGMVolume());
         soundSystem.setKeyVolume(opt.getKeyVolume());
@@ -432,6 +429,16 @@ public class Render implements GameWindowCallback
     public void initialise()
     {
         lastLoopTime = SystemTimer.getTime();
+
+        // Initialize OpenAL sound system with current OpenGL context
+        // This MUST be done on the rendering thread with a current context
+        try {
+            if (soundSystem instanceof ALSoundSystem) {
+                ((ALSoundSystem) soundSystem).initializeWithCurrentContext();
+            }
+        } catch (SoundSystemException e) {
+            Logger.global.log(Level.SEVERE, "Failed to initialize OpenAL: {0}", e.getMessage());
+        }
 
         // skin load
         try {
@@ -815,12 +822,21 @@ public class Render implements GameWindowCallback
         }
         
         if(!buffer_iterator.hasNext() && entities_matrix.isEmpty(note_layer)){
-            if (finish_time == -1) {
-                finish_time = System.currentTimeMillis() + 10000;
-            } else if (System.currentTimeMillis() > finish_time) {
-                soundSystem.release();
-                window.destroy();
+            Logger.global.info("Song ended - no more events and note layer empty, closing window...");
+            // Song ended - stop audio FIRST, then close window
+            // This prevents PipeWire crash from concurrent audio access
+            soundSystem.release();
+
+            // Small delay to ensure audio threads stop
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                // Ignore
             }
+
+            // Signal window to close - gameLoop will call destroy() automatically
+            window.stopRendering();
+            Logger.global.info("Window stop signal sent");
         }
     }
 
@@ -1563,9 +1579,21 @@ public class Render implements GameWindowCallback
      */
     @Override
     public void windowClosed() {
-	bgaEntity.release();
+        // First signal the render thread to stop
+        window.stopRendering();
+        
+        // Small delay to let render thread exit gracefully
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            // Ignore
+        }
+        
+        // Now safe to release audio
+        bgaEntity.release();
         soundSystem.release();
-	System.gc();        
+        System.gc();
+        
         if (syncingLatency != null && autosyncCallback != null) {
             SwingUtilities.invokeLater(new Runnable() {
                 @Override

@@ -1,7 +1,5 @@
 package org.open2jam.render;
 
-import org.lwjgl.opengl.DisplayMode;
-
 /**
  * The window in which the game will be displayed. This interface exposes just
  * enough to allow the game logic to interact with, while still maintaining an
@@ -55,4 +53,7 @@ public interface GameWindow {
 
         /** manually update the screen */
         public void update();
+
+        /** Signal the render thread to stop gracefully */
+        public void stopRendering();
 }

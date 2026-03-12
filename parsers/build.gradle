@@ -1,0 +1,35 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'org.open2jam'
+version = '1.0-SNAPSHOT'
+
+java {
+    // Use Java 21 for compilation (available on this system)
+    // Code is compatible with Java 21-25+ (no version-specific features used)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JChardet for character encoding detection
+    implementation files('../lib/chardet.jar')
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+    }
+}
+
+jar {
+    archiveBaseName = 'open2jam-parsers'
+}
