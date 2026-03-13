@@ -1222,7 +1222,8 @@ public class Render implements GameWindowCallback
                 {
                     result = JudgmentResult.COOL;  // BAD → COOL conversion
                     jambar_entity.addNumber(2);    // COOL gives 2 jamBar points
-                    consecutive_cools++;           // Continue cool streak
+                    // consecutive_cools NOT incremented - pill save doesn't extend streak
+                    // Streak is maintained but not extended (reset to 0 would break it)
                     pills_draw.removeLast().setDead(true);  // Consume 1 pill
 
                     // Full COOL score
@@ -1236,7 +1237,7 @@ public class Render implements GameWindowCallback
 
                     score_value = 4;
                 }
-                consecutive_cools = 0;
+                consecutive_cools = 0;  // Reset streak (pill save doesn't count as real COOL)
             break;
 
             case MISS:
