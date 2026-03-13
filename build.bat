@@ -9,10 +9,11 @@ REM Usage:
 REM   build.bat [command]
 REM
 REM Commands:
-REM   build       - Build the project (default)
-REM   dist        - Create distribution for current platform
-REM   dist-all    - Create distributions for all platforms
-REM   clean       - Clean build artifacts
+REM   build           - Build the project (default)
+REM   dist            - Create distribution for current platform
+REM   dist-all        - Create distributions for all platforms (cross-compile)
+REM   dist-platform   - Create distribution for specific platform
+REM   clean           - Clean build artifacts
 REM   test        - Run tests
 REM   all         - Clean, build, test, and create distribution
 REM   help        - Show this help message
@@ -53,21 +54,32 @@ goto :eof
 :show_help
 echo Build script for open2jam-modern
 echo.
-echo Usage: build.bat [command]
+echo Usage: build.bat [command] [platform]
 echo.
 echo Commands:
-echo   build       - Build the project ^(default^)
-echo   dist        - Create distribution for current platform
-echo   dist-all    - Create distributions for all platforms
-echo   clean       - Clean build artifacts
-echo   test        - Run tests
-echo   all         - Clean, build, test, and create distribution
-echo   help        - Show this help message
+echo   build           - Build the project ^(default^)
+echo   dist            - Create distribution for current platform
+echo   dist-all        - Create distributions for all platforms ^(cross-compile^)
+echo   dist-platform   - Create distribution for specific platform
+echo   clean           - Clean build artifacts
+echo   test            - Run tests
+echo   all             - Clean, build, test, and create distribution
+echo   help            - Show this help message
+echo.
+echo Platforms ^(for dist-platform^):
+echo   windows-x86_64  - Windows 64-bit ^(Intel/AMD^)
+echo   windows-arm64   - Windows ARM64 ^(Snapdragon, Surface Pro X^)
+echo   linux-x86_64    - Linux 64-bit ^(Intel/AMD^)
+echo   linux-arm64     - Linux ARM64 ^(Raspberry Pi, AWS Graviton^)
+echo   macos-x86_64    - macOS Intel ^(64-bit^)
+echo   macos-arm64     - macOS Apple Silicon ^(M1/M2/M3^)
 echo.
 echo Examples:
-echo   build.bat              REM Build the project
-echo   build.bat dist         REM Create distribution ZIP
-echo   build.bat all          REM Full build pipeline
+echo   build.bat                          REM Build the project
+echo   build.bat dist                     REM Create distribution for current platform
+echo   build.bat dist-all                 REM Create all platform distributions
+echo   build.bat dist-platform macos-arm64 REM Create macOS Apple Silicon dist
+echo   build.bat all                      REM Full build pipeline
 goto :eof
 
 :check_java
@@ -118,11 +130,43 @@ if defined ZIP_FILE (
 goto :eof
 
 :cmd_dist_all
-call :log_info "Creating distributions for all platforms..."
+call :log_info "Creating distributions for all platforms (cross-compilation)..."
+call :log_info "Note: The fat JAR is platform-independent (pure Java bytecode)"
+call :log_info "Launch scripts are shell/batch scripts that work on all platforms"
 call gradlew.bat distZipAll
 if %ERRORLEVEL% neq 0 exit /b 1
 call :log_success "Distributions created in build\libs\"
-dir /b build\libs\*-x86_64.zip 2>nul
+dir /b build\libs\*-x86_64.zip build\libs\*-arm64.zip 2>nul
+goto :eof
+
+:cmd_dist_platform
+set "PLATFORM=%~2"
+if "%PLATFORM%"=="" (
+    call :log_error "Platform not specified!"
+    echo Available platforms: windows-x86_64, windows-arm64, linux-x86_64, linux-arm64, macos-x86_64, macos-arm64
+    exit /b 1
+)
+
+call :log_info "Creating distribution for platform: %PLATFORM%"
+
+REM Create platform directory
+set "platformDir=build\dist\%PLATFORM%"
+set "libsDir=build\libs"
+if not exist "%platformDir%" mkdir "%platformDir%"
+
+REM Copy fatJar
+copy /Y "%libsDir%\*-all.jar" "%platformDir%\" >nul
+
+REM Copy launch scripts
+xcopy /Y /I "scripts\%PLATFORM%\*" "%platformDir%\" >nul 2>&1
+
+REM Copy README and LICENSE
+copy /Y README.md LICENSE "%platformDir%\" >nul 2>&1
+
+REM Create ZIP using PowerShell (more reliable than built-in zip)
+powershell -Command "Compress-Archive -Path '%platformDir%\*' -DestinationPath '%libsDir%\open2jam-modern-%VERSION%-%PLATFORM%.zip' -Force"
+
+call :log_success "Distribution created: %libsDir%\open2jam-modern-%VERSION%-%PLATFORM%.zip"
 goto :eof
 
 :cmd_clean
@@ -164,6 +208,10 @@ if "%COMMAND%"=="build" (
     call :check_java
     call :check_gradle
     call :cmd_dist_all
+) else if "%COMMAND%"=="dist-platform" (
+    call :check_java
+    call :check_gradle
+    call :cmd_dist_platform %COMMAND% %~2
 ) else if "%COMMAND%"=="clean" (
     call :check_gradle
     call :cmd_clean

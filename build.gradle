@@ -151,40 +151,53 @@ distributions {
 }
 
 // Custom task to create platform-specific distribution
+// Supports cross-compilation: build from any OS for all platforms
+// Note: The fat JAR is platform-independent (pure Java)
+// Launch scripts are shell/batch scripts that work cross-platform
 tasks.register('distZipAll') {
     group = 'distribution'
-    description = 'Creates distribution ZIPs for all platforms'
+    description = 'Creates distribution ZIPs for all platforms (cross-compilation ready)'
     dependsOn 'fatJar'
-    
+
     doLast {
         def libsDir = file("${buildDir}/libs")
-        
+
+        // All supported platforms including Apple Silicon (ARM64)
+        def platforms = [
+            'windows-x86_64',
+            'windows-arm64',
+            'linux-x86_64',
+            'linux-arm64',
+            'macos-x86_64',
+            'macos-arm64'
+        ]
+
         // Create platform-specific directories
-        ['windows-x86_64', 'linux-x86_64', 'macos-x86_64'].each { platform ->
+        platforms.each { platform ->
             def platformDir = file("${buildDir}/dist/${platform}")
             platformDir.mkdirs()
-            
-            // Copy fatJar
+
+            // Copy fatJar (platform-independent)
             copy {
                 from libsDir
                 include '*-all.jar'
                 into platformDir
             }
-            
-            // Copy launch scripts
+
+            // Copy launch scripts for this platform
             copy {
                 from file('scripts')
                 include "${platform}/**"
                 into platformDir
             }
-            
+
             // Copy README and LICENSE
             copy {
                 from project.rootDir
                 include 'README.md', 'LICENSE'
                 into platformDir
             }
-            
+
             // Create ZIP for this platform
             ant.zip(destfile: "${libsDir}/open2jam-modern-${version}-${platform}.zip") {
                 fileset(dir: platformDir)
@@ -199,40 +212,51 @@ tasks.register('distZipCurrent') {
     group = 'distribution'
     description = 'Creates distribution ZIP for current platform only'
     dependsOn 'fatJar'
-    
+
     doLast {
         def os = org.gradle.internal.os.OperatingSystem.current()
-        def platform = os.windows ? 'windows-x86_64' : os.macOsX ? 'macos-x86_64' : 'linux-x86_64'
+        def arch = System.getProperty('os.arch')
+        
+        // Determine platform (supports Apple Silicon detection)
+        def platform
+        if (os.windows) {
+            platform = arch.contains('arm') || arch.contains('aarch64') ? 'windows-arm64' : 'windows-x86_64'
+        } else if (os.macOsX) {
+            platform = arch.contains('arm') || arch.contains('aarch64') ? 'macos-arm64' : 'macos-x86_64'
+        } else {
+            platform = arch.contains('arm') || arch.contains('aarch64') ? 'linux-arm64' : 'linux-x86_64'
+        }
+        
         def distDir = file("${buildDir}/dist/${platform}")
         def libsDir = file("${buildDir}/libs")
-        
+
         distDir.mkdirs()
-        
+
         // Copy fatJar
         copy {
             from libsDir
             include '*-all.jar'
             into distDir
         }
-        
+
         // Copy launch scripts for current platform
         copy {
             from file('scripts')
             include "${platform}/**"
             into distDir
         }
-        
+
         // Copy README and LICENSE
         copy {
             from project.rootDir
             include 'README.md', 'LICENSE'
             into distDir
         }
-        
+
         // Create ZIP
         ant.zip(destfile: "${libsDir}/open2jam-modern-${version}-${platform}.zip") {
             fileset(dir: distDir)
         }
-        logger.lifecycle("Created: ${libsDir}/open2jam-modern-${version}-${platform}.zip")
+        logger.lifecycle("Created: ${libsDir}/open2jam-modern-${version}-${platform}.zip (detected: ${os.name} ${arch})")
     }
 }

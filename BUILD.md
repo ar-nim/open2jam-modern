@@ -27,7 +27,37 @@ REM Create distribution
 build.bat dist
 ```
 
-## Build Commands
+## Cross-Compilation
+
+The build system supports **cross-compilation** - you can build distributions for all platforms from a single machine:
+
+```bash
+# Build for all platforms (Windows, Linux, macOS - x86_64 and ARM64)
+./build.sh dist-all
+
+# Build for specific platform
+./build.sh dist-platform macos-arm64
+./build.sh dist-platform windows-x86_64
+./build.sh dist-platform linux-arm64
+```
+
+**How it works:**
+- The fat JAR is **platform-independent** (pure Java bytecode)
+- Launch scripts are shell/batch scripts that work on all platforms
+- Users need to install Java 21+ for their specific platform
+
+This means you can build all distributions from Linux, Windows, or macOS!
+
+## Supported Platforms
+
+| Platform | Architecture | Devices |
+|----------|--------------|---------|
+| `windows-x86_64` | 64-bit Intel/AMD | Windows 10/11 PCs |
+| `windows-arm64` | ARM64 | Surface Pro X, Snapdragon PCs |
+| `linux-x86_64` | 64-bit Intel/AMD | Ubuntu, Fedora, Debian, etc. |
+| `linux-arm64` | ARM64 | Raspberry Pi 4, AWS Graviton |
+| `macos-x86_64` | 64-bit Intel | Intel Macs |
+| `macos-arm64` | ARM64 | Apple Silicon (M1/M2/M3) |
 
 | Command | Description |
 |---------|-------------|
@@ -78,8 +108,11 @@ build/libs/open2jam-modern-<version>-<platform>.zip
 | Platform | Identifier | Launcher |
 |----------|------------|----------|
 | Windows 64-bit | `windows-x86_64` | `open2jam-modern.bat` |
+| Windows ARM64 | `windows-arm64` | `open2jam-modern.bat` |
 | Linux 64-bit | `linux-x86_64` | `open2jam-modern` (shell script) |
-| macOS 64-bit | `macos-x86_64` | `open2jam-modern` (shell script) |
+| Linux ARM64 | `linux-arm64` | `open2jam-modern` (shell script) |
+| macOS Intel | `macos-x86_64` | `open2jam-modern` (shell script) |
+| macOS Apple Silicon | `macos-arm64` | `open2jam-modern` (shell script) |
 
 ### Package Contents
 
@@ -100,14 +133,25 @@ After extracting the ZIP:
 
 **Linux/macOS:**
 ```bash
+unzip open2jam-modern-*-linux-x86_64.zip
 cd linux-x86_64/
+chmod +x open2jam-modern
 ./open2jam-modern
 ```
 
 **Windows:**
 ```cmd
+Expand-Archive open2jam-modern-*-windows-x86_64.zip
 cd windows-x86_64
 open2jam-modern.bat
+```
+
+**Apple Silicon Macs:**
+```bash
+unzip open2jam-modern-*-macos-arm64.zip
+cd macos-arm64/
+chmod +x open2jam-modern
+./open2jam-modern
 ```
 
 ## CI/CD Integration
@@ -125,11 +169,37 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest  # Cross-compile from Linux
     
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: 21
+        distribution: 'temurin'
+        cache: gradle
+    
+    - name: Build with Gradle
+      run: ./gradlew clean build fatJar
+    
+    - name: Create all platform distributions
+      run: ./gradlew distZipAll
+    
+    - name: Upload all artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: open2jam-modern-all-platforms
+        path: build/libs/*-x86_64.zip
+        retention-days: 7
+
+  # Optional: Build native packages per platform
+  native-build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-14]  # macos-14 is Apple Silicon
         java-version: [21]
     
     steps:
@@ -142,17 +212,50 @@ jobs:
         distribution: 'temurin'
         cache: gradle
     
-    - name: Build with Gradle
-      run: ./gradlew clean build fatJar
-    
-    - name: Create Distribution
+    - name: Build distribution for current platform
       run: ./gradlew distZipCurrent
     
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: open2jam-modern-${{ runner.os }}-x86_64
-        path: build/libs/open2jam-modern-*-x86_64.zip
+        name: open2jam-modern-${{ runner.os }}-${{ runner.arch }}
+        path: build/libs/*-${{ runner.os }}*.zip
+```
+
+### GitHub Actions Matrix for All Platforms
+
+```yaml
+# Build for all 6 platforms using matrix
+build-matrix:
+  runs-on: ubuntu-latest  # Cross-compile everything
+  
+  strategy:
+    matrix:
+      platform:
+        - windows-x86_64
+        - windows-arm64
+        - linux-x86_64
+        - linux-arm64
+        - macos-x86_64
+        - macos-arm64
+  
+  steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: 21
+        distribution: 'temurin'
+    
+    - name: Build for ${{ matrix.platform }}
+      run: ./build.sh dist-platform ${{ matrix.platform }}
+    
+    - name: Upload ${{ matrix.platform }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: open2jam-${{ matrix.platform }}
+        path: build/libs/*-${{ matrix.platform }}.zip
 ```
 
 ### GitLab CI Example
@@ -206,8 +309,40 @@ For CI/CD pipelines, you can use the build scripts directly:
 ### Runtime Requirements
 
 - **Java 21+** (JRE sufficient for running)
+  - **Apple Silicon Macs**: Use ARM64 Java (e.g., `arch -arm64 brew install openjdk@21`)
+  - **Windows ARM64**: Use ARM64 Java from Adoptium
+  - **Linux ARM64**: Use ARM64 OpenJDK (`apt install openjdk-21-jdk`)
 - **VLC** (for BMS video background support)
 - **OpenGL 3.2+** compatible graphics drivers
+
+### Apple Silicon (M1/M2/M3) Notes
+
+For macOS on Apple Silicon:
+
+1. **Install ARM64 Java:**
+   ```bash
+   # Using Homebrew (recommended)
+   arch -arm64 brew install openjdk@21
+   
+   # Or download from Adoptium
+   # https://adoptium.net/temurin/releases/?os=mac&arch=aarch64
+   ```
+
+2. **Verify Java architecture:**
+   ```bash
+   java -XshowSettings:properties -version 2>&1 | grep os.arch
+   # Should show: os.arch = aarch64
+   ```
+
+3. **Run the game:**
+   ```bash
+   unzip open2jam-modern-*-macos-arm64.zip
+   cd macos-arm64/
+   chmod +x open2jam-modern
+   ./open2jam-modern
+   ```
+
+The game runs natively on Apple Silicon with full performance!
 
 ## Customization
 

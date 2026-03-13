@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# open2jam-modern - Launch script for Linux ARM64
+#
+# This script launches open2jam-modern with appropriate JVM settings.
+# Optimized for ARM64 processors (Raspberry Pi, AWS Graviton, etc.)
+#
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="open2jam-modern"
+
+# Find the JAR file
+JAR_FILE="$(find "$SCRIPT_DIR/.." -maxdepth 1 -name '*-all.jar' | head -n 1)"
+
+if [ -z "$JAR_FILE" ]; then
+    echo "Error: Could not find application JAR file in $SCRIPT_DIR/.."
+    echo "Expected file: *-all.jar"
+    exit 1
+fi
+
+# Check for Java
+if ! command -v java &> /dev/null; then
+    echo "Error: Java is not installed or not in PATH"
+    echo "Please install Java 21+ for ARM64."
+    echo ""
+    echo "On Ubuntu/Debian:"
+    echo "  sudo apt install openjdk-21-jdk"
+    echo ""
+    echo "On Raspberry Pi OS:"
+    echo "  sudo apt install openjdk-17-jdk"
+    exit 1
+fi
+
+# Check Java version and architecture
+JAVA_VERSION=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
+JAVA_ARCH=$(java -d64 2>&1 | grep -q "64-Bit" && echo "64-bit" || echo "32-bit")
+
+echo "Starting $APP_NAME..."
+echo "Java: $JAVA_VERSION ($JAVA_ARCH)"
+
+# Set JVM options optimized for ARM64
+JVM_OPTS=(
+    "-Xmx2G"
+    "-XX:+UseG1GC"
+    "-Djava.awt.headless=false"
+    "-Dfile.encoding=UTF-8"
+)
+
+# Launch the application
+exec java "${JVM_OPTS[@]}" -jar "$JAR_FILE" "$@"
