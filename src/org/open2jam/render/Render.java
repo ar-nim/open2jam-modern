@@ -45,6 +45,7 @@ import org.open2jam.sound.SoundChannel;
 import org.open2jam.sound.SoundSystem;
 import org.open2jam.sound.SoundSystemException;
 import org.open2jam.util.*;
+import org.lwjgl.opengl.GL11;
 
 
 /**
@@ -203,6 +204,7 @@ public class Render implements GameWindowCallback
     LinkedList<Entity> pills_draw;
     
     Map<Integer, Sprite> bga_sprites;
+    Sprite coverSprite;  // Store cover sprite for loading screen
     BgaEntity bgaEntity;
 
     int consecutive_cools = 0;
@@ -239,6 +241,9 @@ public class Render implements GameWindowCallback
     
     /** local matching */
     private Client localMatching;
+
+    /** song finish time - wait for music to end after notes finish */
+    long finish_time = -1;
 
     protected CompositeEntity visibility_entity;
 
@@ -458,9 +463,9 @@ public class Render implements GameWindowCallback
         // cover image load
         try{
             BufferedImage img = chart.getCover();
-            Sprite s = ResourceFactory.get().getSprite(img);
-            s.setScale(skin.getScreenScaleX(), skin.getScreenScaleY());
-            s.draw(0, 0);
+            coverSprite = ResourceFactory.get().getSprite(img);  // Store for loading screen
+            coverSprite.setScale(skin.getScreenScaleX(), skin.getScreenScaleY());
+            coverSprite.draw(0, 0);
             window.update();
         } catch (NullPointerException e){
             Logger.global.log(Level.INFO, "No cover image on file: {0}", chart.getSource().getName());
@@ -619,12 +624,34 @@ public class Render implements GameWindowCallback
 	}
 	
         trueTypeFont = new TrueTypeFont(new Font("Tahoma", Font.BOLD, 14), false);
-        
+
         //clean up
         System.gc();
 
-        // wait a bit.. 5 seconds at min
-        SystemTimer.sleep((int) (5000 - (SystemTimer.getTime() - lastLoopTime)));
+        // Non-blocking loading pause (5 seconds minimum)
+        // Keep window visible with cover image, poll events to keep compositor happy
+        double loadStartTime = SystemTimer.getTime();
+        double loadDuration = 5000; // 5 seconds
+        while (SystemTimer.getTime() - loadStartTime < loadDuration) {
+            // Clear screen and render cover image
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GL11.glLoadIdentity();
+
+            // Render cover image (centered)
+            if (coverSprite != null) {
+                coverSprite.draw(0, 0);
+            }
+
+            // Poll events to keep compositor happy
+            window.update();
+
+            // Small sleep to prevent CPU spinning
+            try {
+                Thread.sleep(16); // ~60 FPS
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
 
         lastLoopTime = SystemTimer.getTime();
         start_time = lastLoopTime + DELAY_TIME;
@@ -821,22 +848,43 @@ public class Render implements GameWindowCallback
             }
         }
         
-        if(!buffer_iterator.hasNext() && entities_matrix.isEmpty(note_layer)){
-            Logger.global.info("Song ended - no more events and note layer empty, closing window...");
-            // Song ended - stop audio FIRST, then close window
-            // This prevents PipeWire crash from concurrent audio access
-            soundSystem.release();
+        // Check if notes have ended (buffer empty and note layer empty)
+        // Wait for music to finish playing before closing window
+        if(!buffer_iterator.hasNext() && entities_matrix.isEmpty(note_layer)) {
+            if (finish_time == -1) {
+                // Notes ended - wait for audio tail to finish
+                // Add a buffer time for audio to complete (original used 10 seconds)
+                // Calculate remaining time based on chart duration vs current game time
+                double remainingMusicTime = (chart.getDuration() * 1000.0) - gameTime;
+                // Wait at least 3 seconds, or remaining music time if longer
+                long waitTime = Math.max(5000, (long)remainingMusicTime + 5000);
+                finish_time = System.currentTimeMillis() + waitTime;
+                Logger.global.info("=== Notes ended === gameTime=" + gameTime + "ms, musicDuration=" + (chart.getDuration()*1000) + "ms, remaining=" + remainingMusicTime + "ms, waiting " + waitTime + "ms for audio tail");
+            } else if (System.currentTimeMillis() > finish_time) {
+                // Wait time has elapsed - music should have finished
+                Logger.global.info("=== Music finished === currentTime=" + System.currentTimeMillis() + "ms, finish_time=" + finish_time + "ms - closing window...");
+                // Song ended - stop audio FIRST, then close window
+                // This prevents PipeWire crash from concurrent audio access
+                soundSystem.release();
 
-            // Small delay to ensure audio threads stop
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                // Ignore
+                // Small delay to ensure audio threads stop
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    // Ignore
+                }
+
+                // Signal window to close - gameLoop will call destroy() automatically
+                // destroy() will apply 2-second delay (or instant if ESC was pressed)
+                window.stopRendering();
+                Logger.global.info("Window stop signal sent (music ended naturally)");
+            } else {
+                // Still waiting for music to finish
+                long timeUntilFinish = finish_time - System.currentTimeMillis();
+                if (timeUntilFinish % 1000 < 50) {  // Log every second
+                    Logger.global.info("Waiting for music... " + timeUntilFinish + "ms remaining");
+                }
             }
-
-            // Signal window to close - gameLoop will call destroy() automatically
-            window.stopRendering();
-            Logger.global.info("Window stop signal sent");
         }
     }
 

@@ -31,23 +31,29 @@ public interface GameWindow {
 	public void startRendering();
 
         public void initScales(double width, double height);
-	
+
 	/**
 	 * Set the callback that should be notified of the window
 	 * events.
-	 * 
+	 *
 	 * @param callback The callback that should be notified of game
 	 * window events.
 	 */
 	public void setGameWindowCallback(GameWindowCallback callback);
-	
+
 	/**
 	 * Check if a particular key is held
-	 * 
+	 *
 	 * @param keyCode The code associate with the key to check
 	 * @return True if the particular key is being held
 	 */
 	public boolean isKeyDown(int keyCode);
+
+        /** Hide the game window */
+        public void hideWindow();
+
+        /** Show the game window */
+        public void showWindow();
 
         public void destroy();
 

@@ -32,6 +32,7 @@ public class LWJGLGameWindow implements GameWindow {
     private GameWindowCallback callback;
     private boolean gameRunning = true;
     private volatile boolean shouldStop = false;
+    private boolean exitViaESC = false;  // Track if exit was via ESC key (instant close)
     private float scaleX = 1f, scaleY = 1f;
     private GLCapabilities capabilities;
     private boolean isWayland = false;
@@ -111,6 +112,10 @@ public class LWJGLGameWindow implements GameWindow {
         if (callback == null) {
             throw new RuntimeException("Need callback to start rendering!");
         }
+
+        // Reset exit flag for new game session
+        exitViaESC = false;
+        Logger.global.info("startRendering() called, exitViaESC reset to false");
 
         // Initialize GLFW
         if (!GLFW.glfwInit()) {
@@ -226,8 +231,10 @@ public class LWJGLGameWindow implements GameWindow {
             boolean pressed = action == GLFW.GLFW_PRESS || action == GLFW.GLFW_REPEAT;
             Keyboard.setKeyState(keyCode, pressed);
 
-            // Handle ESC key - signal to stop (don't destroy directly!)
+            // Handle ESC key - signal to stop (instant exit, no delay)
             if (key == GLFW.GLFW_KEY_ESCAPE && action == GLFW.GLFW_PRESS) {
+                exitViaESC = true;  // Mark as ESC exit (instant close)
+                Logger.global.info("ESC pressed - exitViaESC set to true, calling stopRendering()");
                 stopRendering();  // ← Signal game loop to exit
             }
         });
@@ -396,15 +403,16 @@ public class LWJGLGameWindow implements GameWindow {
     private void gameLoop() {
         gameRunning = true;
         shouldStop = false;
+        exitViaESC = false;  // Reset for each game session
 
         Logger.global.info("Game loop started");
         int frameCount = 0;
         while (gameRunning && !shouldStop && !GLFW.glfwWindowShouldClose(windowHandle)) {
             frameCount++;
             if (frameCount % 100 == 0) {
-                Logger.global.info("Game loop running... frame=" + frameCount + " shouldStop=" + shouldStop);
+                Logger.global.info("Game loop running... frame=" + frameCount + " shouldStop=" + shouldStop + " exitViaESC=" + exitViaESC);
             }
-            
+
             // Clear screen
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glLoadIdentity();
@@ -421,12 +429,26 @@ public class LWJGLGameWindow implements GameWindow {
 
         // Loop exited - unbind context FIRST before cleanup
         // This is critical to prevent EGL/Mesa crashes
-        Logger.global.info("Game loop exiting (shouldStop=" + shouldStop + ", glfwWindowShouldClose=" + GLFW.glfwWindowShouldClose(windowHandle) + ", frameCount=" + frameCount + ")");
+        Logger.global.info("=== Game loop exiting === shouldStop=" + shouldStop + " exitViaESC=" + exitViaESC + " glfwWindowShouldClose=" + GLFW.glfwWindowShouldClose(windowHandle) + " frameCount=" + frameCount);
         GLFW.glfwMakeContextCurrent(0);  // ← Unbind context from this thread
-        
+
         Logger.global.info("Game loop exited, context unbound, calling destroy()...");
         destroy();
         Logger.global.info("Window destroyed, gameLoop() returning");
+    }
+
+    @Override
+    public void hideWindow() {
+        if (windowHandle != 0) {
+            GLFW.glfwHideWindow(windowHandle);
+        }
+    }
+
+    @Override
+    public void showWindow() {
+        if (windowHandle != 0) {
+            GLFW.glfwShowWindow(windowHandle);
+        }
     }
 
     @Override
@@ -454,7 +476,20 @@ public class LWJGLGameWindow implements GameWindow {
             GLFW.glfwSetKeyCallback(windowHandle, null);
             GLFW.glfwSetFramebufferSizeCallback(windowHandle, null);
             GLFW.glfwSetWindowCloseCallback(windowHandle, null);
-            
+
+            // Pause for 5 seconds before hiding/closing window (only if song ended naturally)
+            // ESC exit is instant - no delay
+            if (!exitViaESC) {
+                Logger.global.info("Pausing 5 seconds before closing window (song ended)...");
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    // Ignore
+                }
+            } else {
+                Logger.global.info("ESC exit - closing window instantly (no delay)");
+            }
+
             // Hide window first (helps with Wayland compositors)
             Logger.global.info("Hiding GLFW window " + windowHandle);
             GLFW.glfwHideWindow(windowHandle);
