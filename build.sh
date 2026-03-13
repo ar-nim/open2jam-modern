@@ -24,6 +24,12 @@ set -e  # Exit on error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Get version from build.gradle
+VERSION=$(grep "^version = " build.gradle | cut -d"'" -f2)
+if [ -z "$VERSION" ]; then
+    VERSION="1.0-SNAPSHOT"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -164,41 +170,41 @@ cmd_dist_platform() {
     
     log_info "Creating distribution for platform: $platform"
     
-    # Use Gradle task for consistency
-    ./gradlew distZipAll --rerun-tasks 2>/dev/null || {
-        # Fallback: manual packaging
-        log_warning "Gradle task failed, using manual packaging..."
-        
-        local platformDir="build/dist/${platform}"
-        local libsDir="build/libs"
-        mkdir -p "$platformDir"
-        
-        # Build fatJar if needed
-        if [ ! -f "$libsDir/open2jam-modern-${VERSION}-all.jar" ]; then
-            log_info "Building fatJar..."
-            ./gradlew fatJar
-        fi
-        
-        # Copy fatJar
-        cp "$libsDir"/*-all.jar "$platformDir/"
-        
-        # Copy launch scripts
-        cp -r "scripts/${platform}/"* "$platformDir/" 2>/dev/null || {
-            log_warning "No launch scripts found for $platform, using generic"
-        }
-        
-        # Copy README and LICENSE
-        cp README.md LICENSE "$platformDir/" 2>/dev/null || true
-        
-        # Create ZIP using Java (more portable than zip command)
-        (cd "$platformDir" && jar cf "../libs/open2jam-modern-${VERSION}-${platform}.zip" .)
-        
-        log_success "Distribution created: $libsDir/open2jam-modern-${VERSION}-${platform}.zip"
-        return
+    local platformDir="build/dist/${platform}"
+    local libsDir="build/libs"
+    mkdir -p "$platformDir"
+    
+    # Build fatJar if needed
+    if [ ! -f "$libsDir/open2jam-modern-${VERSION}-all.jar" ]; then
+        log_info "Building fatJar..."
+        ./gradlew fatJar
+    fi
+    
+    # Copy fatJar
+    cp "$libsDir"/*-all.jar "$platformDir/"
+    
+    # Copy launch scripts
+    cp -r "scripts/${platform}/"* "$platformDir/" 2>/dev/null || {
+        log_warning "No launch scripts found for $platform"
     }
     
-    log_success "Distributions created in build/libs/"
-    ls -lh "$libsDir"/open2jam-modern-*-${platform}.zip 2>/dev/null || log_warning "ZIP not found"
+    # Copy README and LICENSE
+    cp README.md LICENSE "$platformDir/" 2>/dev/null || true
+    
+    # Create ZIP using Python (available on most systems) or fallback to jar
+    if command -v python3 &> /dev/null; then
+        python3 -c "import shutil; shutil.make_archive('$libsDir/open2jam-modern-${VERSION}-${platform}', 'zip', '$platformDir')"
+    elif command -v python &> /dev/null; then
+        python -c "import shutil; shutil.make_archive('$libsDir/open2jam-modern-${VERSION}-${platform}', 'zip', '$platformDir')"
+    elif command -v zip &> /dev/null; then
+        (cd "$platformDir" && zip -r "../libs/open2jam-modern-${VERSION}-${platform}.zip" .)
+    else
+        # Fallback: use jar and rename
+        (cd "$platformDir" && jar cf "../libs/open2jam-modern-${VERSION}-${platform}.jar" .)
+        mv "$libsDir/open2jam-modern-${VERSION}-${platform}.jar" "$libsDir/open2jam-modern-${VERSION}-${platform}.zip"
+    fi
+    
+    log_success "Distribution created: $libsDir/open2jam-modern-${VERSION}-${platform}.zip"
 }
 
 cmd_clean() {
