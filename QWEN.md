@@ -11,6 +11,48 @@
 # BUILD SUCCESSFUL
 ```
 
+## Build & Distribution
+
+### Quick Build
+
+```bash
+# Build the project
+./build.sh
+
+# Create distribution for your platform
+./build.sh dist
+
+# Full build pipeline
+./build.sh all
+```
+
+### Cross-Platform Distribution
+
+Build for all platforms from any OS:
+
+```bash
+# Build for all 6 platforms (cross-compile)
+./build.sh dist-all
+
+# Build for specific platform
+./build.sh dist-platform windows-x86_64
+./build.sh dist-platform macos-arm64
+./build.sh dist-platform linux-arm64
+```
+
+### Supported Platforms
+
+| Platform | Architecture | Devices |
+|----------|--------------|---------|
+| `windows-x86_64` | 64-bit Intel/AMD | Windows 10/11 PCs |
+| `windows-arm64` | ARM64 | Surface Pro X, Snapdragon |
+| `linux-x86_64` | 64-bit Intel/AMD | Ubuntu, Fedora, Debian |
+| `linux-arm64` | ARM64 | Raspberry Pi 4, AWS Graviton |
+| `macos-x86_64` | 64-bit Intel | Intel Macs |
+| `macos-arm64` | ARM64 | Apple Silicon (M1/M2/M3) |
+
+See [BUILD.md](BUILD.md) for complete documentation.
+
 ## Java Version Compatibility
 
 | Java Version | Status | Notes |
@@ -35,6 +77,9 @@ java {
 - **LWJGL 3.4.1 BOM** with automatic platform-specific natives download
 - **Multi-project build** (main + parsers modules)
 - **fatJar task** for single runnable JAR with all dependencies
+- **Cross-platform distribution** - Build for 6 platforms from any OS
+- **Native launchers** - Shell scripts (Linux/macOS) and batch files (Windows)
+- **CI/CD ready** - GitHub Actions, GitLab CI examples in BUILD.md
 - Removed: Ant, NetBeans project files, all legacy build configs
 
 ### ✅ Core Library Migration (100%)
@@ -120,7 +165,8 @@ java {
 - **Java 21+** (LTS recommended)
 - **Git** (for version control)
 
-### Building
+### Building with Gradle Wrapper
+
 ```bash
 # Clean build
 ./gradlew clean build
@@ -130,16 +176,47 @@ java {
 
 # Run application
 ./gradlew run
+```
 
-# Or run the JAR directly
-java -jar build/libs/open2jam-modern-1.0-SNAPSHOT-all.jar
+### Building Distributions
+
+```bash
+# Use build script (recommended)
+./build.sh
+./build.sh dist
+./build.sh all
+
+# Or use Gradle directly
+./gradlew distZipCurrent   # Current platform
+./gradlew distZipAll       # All 6 platforms
 ```
 
 ### Build Outputs
+
 ```
 build/libs/
-├── open2jam-modern-1.0-SNAPSHOT.jar       (1.4MB)
-└── open2jam-modern-1.0-SNAPSHOT-all.jar   (17MB) ← Runnable JAR
+├── open2jam-modern-1.0-SNAPSHOT.jar              (1.4MB) - Core JAR
+├── open2jam-modern-1.0-SNAPSHOT-all.jar          (18MB)  - Runnable JAR
+├── open2jam-modern-1.0-SNAPSHOT-windows-x86_64.zip
+├── open2jam-modern-1.0-SNAPSHOT-windows-arm64.zip
+├── open2jam-modern-1.0-SNAPSHOT-linux-x86_64.zip
+├── open2jam-modern-1.0-SNAPSHOT-linux-arm64.zip
+├── open2jam-modern-1.0-SNAPSHOT-macos-x86_64.zip
+└── open2jam-modern-1.0-SNAPSHOT-macos-arm64.zip
+```
+
+### Running
+
+```bash
+# Using Gradle
+./gradlew run
+
+# Using JAR directly
+java -jar build/libs/open2jam-modern-1.0-SNAPSHOT-all.jar
+
+# Using distribution (after extracting ZIP)
+cd linux-x86_64/
+./open2jam-modern
 ```
 
 ## Dependencies
@@ -410,4 +487,6 @@ No code changes required - the codebase is already compatible.
 - ✅ 5-second result screen after natural song end
 - ✅ Instant ESC exit (no delay)
 - ✅ Loading screen with cover art (no "frozen" detection)
+- ✅ Cross-platform distribution build system (6 platforms)
+- ✅ Apple Silicon (M1/M2/M3) native support
 - ⚠️ Window auto-close: Logic fixed, manual close still needed on Linux/Wayland
