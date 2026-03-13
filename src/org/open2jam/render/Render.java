@@ -1217,13 +1217,16 @@ public class Render implements GameWindowCallback
                 break;
 
             case BAD:
+                // Pill auto-activates on BAD - converts to COOL
                 if(pills_draw.size() > 0)
                 {
-                    result = JudgmentResult.GOOD;
-                    jambar_entity.addNumber(1);
-                    pills_draw.removeLast().setDead(true);
+                    result = JudgmentResult.COOL;  // BAD → COOL conversion
+                    jambar_entity.addNumber(2);    // COOL gives 2 jamBar points
+                    consecutive_cools++;           // Continue cool streak
+                    pills_draw.removeLast().setDead(true);  // Consume 1 pill
 
-                    score_value = 100; // TODO: not sure
+                    // Full COOL score
+                    score_value = 200 + (jamcombo_entity.getNumber() * 10);
                 }
                 else
                 {
