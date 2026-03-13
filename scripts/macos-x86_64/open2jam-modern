@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+# open2jam-modern - Launch script for macOS
+#
+# This script launches open2jam-modern with appropriate JVM settings.
+#
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_NAME="open2jam-modern"
+
+# Find the JAR file
+JAR_FILE="$(find "$SCRIPT_DIR" -maxdepth 1 -name '*-all.jar' | head -n 1)"
+
+if [ -z "$JAR_FILE" ]; then
+    echo "Error: Could not find application JAR file in $SCRIPT_DIR"
+    echo "Expected file: *-all.jar"
+    exit 1
+fi
+
+# Check for Java
+if ! command -v java &> /dev/null; then
+    echo "Error: Java is not installed or not in PATH"
+    echo "Please install Java 21 or higher."
+    echo ""
+    echo "You can install Java using Homebrew:"
+    echo "  brew install openjdk@21"
+    exit 1
+fi
+
+# Check Java version
+JAVA_VERSION=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
+JAVA_MAJOR_VERSION=$(echo "$JAVA_VERSION" | cut -d'.' -f1)
+
+if [ "$JAVA_MAJOR_VERSION" -lt 21 ]; then
+    echo "Warning: Java version $JAVA_VERSION detected. Java 21+ is recommended."
+fi
+
+# Set JVM options
+JVM_OPTS=(
+    "-Xmx2G"
+    "-XX:+UseG1GC"
+    "-Djava.awt.headless=false"
+    "-Dfile.encoding=UTF-8"
+    "-Xdock:name=$APP_NAME"
+)
+
+# Launch the application
+echo "Starting $APP_NAME..."
+exec java "${JVM_OPTS[@]}" -jar "$JAR_FILE" "$@"
