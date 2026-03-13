@@ -329,17 +329,27 @@ while (SystemTimer.getTime() - loadStartTime < loadDuration) {
 
 ## Known Issues
 
-### ⚠️ Game Window Close Behavior (Resolved)
+### ⚠️ Game Window Doesn't Auto-Close After Song Ends (Linux/Wayland)
 
-**Previous Issue:** Game window didn't auto-close after song ended, requiring manual close.
+**Symptom:** After a song ends (or ESC is pressed), the GLFW game window remains visible even though the game logic has ended and the GUI is functional.
 
-**Resolution (March 2026):** Implemented intelligent window lifecycle management:
-- Natural song end → 5-second pause (view results) → auto-close
-- ESC key press → instant close (no delay)
-- Proper GLFW context unbinding prevents compositor caching issues
-- Works reliably on X11, Wayland, and Windows
+**Current Status:** Logic is fixed (proper delays, ESC detection, duration-based ending), but the window may remain visible due to:
+- Wayland compositor caching
+- Window not being properly hidden before destruction on KDE Plasma
+- GLFW/Wayland compositor interaction issues
 
-**Status:** ✅ Resolved in commit `a2e9f73a`
+**Current Workaround:** 
+- Game logic ends correctly (5-second delay or instant ESC exit)
+- GUI window is brought to front after game ends
+- Game is fully playable - just requires manual window close after each song
+- Program functions properly even if window is ignored
+
+**Investigation Needed:**
+- May require explicit `glfwTerminate()` call after window destruction
+- May need to force Wayland compositor to refresh
+- Could be specific to KDE Plasma's KWin compositor
+
+**Status:** ⚠️ Under investigation. Game is fully playable with minor inconvenience.
 
 ## Configuration Files
 
@@ -400,4 +410,4 @@ No code changes required - the codebase is already compatible.
 - ✅ 5-second result screen after natural song end
 - ✅ Instant ESC exit (no delay)
 - ✅ Loading screen with cover art (no "frozen" detection)
-- ✅ Window auto-close works reliably on all platforms
+- ⚠️ Window auto-close: Logic fixed, manual close still needed on Linux/Wayland
