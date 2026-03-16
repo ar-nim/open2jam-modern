@@ -90,30 +90,10 @@ check_java() {
         log_error "Java is not installed or not in PATH"
         exit 1
     fi
-
-    # Try to find Java 21 installation (preferred for this project)
-    # Check common Linux JVM paths
-    if [ -d "/usr/lib64/jvm/java-21-openjdk-21" ]; then
-        export JAVA_HOME="/usr/lib64/jvm/java-21-openjdk-21"
-        log_info "Using Java 21 at: $JAVA_HOME"
-    elif [ -d "/usr/lib/jvm/java-21-openjdk" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk"
-        log_info "Using Java 21 at: $JAVA_HOME"
-    elif [ -d "/usr/lib64/jvm/java-21" ]; then
-        export JAVA_HOME="/usr/lib64/jvm/java-21"
-        log_info "Using Java 21 at: $JAVA_HOME"
-    fi
-
-    # Refresh java command after setting JAVA_HOME
-    if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
-        JAVA_CMD="$JAVA_HOME/bin/java"
-    else
-        JAVA_CMD="java"
-    fi
-
-    JAVA_VERSION=$("$JAVA_CMD" -version 2>&1 | awk -F '"' '/version/ {print $2}')
+    
+    JAVA_VERSION=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
     JAVA_MAJOR_VERSION=$(echo "$JAVA_VERSION" | cut -d'.' -f1)
-
+    
     if [ "$JAVA_MAJOR_VERSION" -lt 21 ]; then
         log_warning "Java version $JAVA_VERSION detected. Java 21+ is recommended."
     else
