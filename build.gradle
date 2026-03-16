@@ -120,6 +120,15 @@ tasks.register('fatJar', Jar) {
     with jar
 }
 
+// Fix: Make distTar and distZip depend on fatJar to avoid implicit dependency warnings
+tasks.named('distTar') {
+    dependsOn 'fatJar'
+}
+
+tasks.named('distZip') {
+    dependsOn 'fatJar'
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.compilerArgs += ['-Xlint:unchecked', '-Xlint:deprecation']
