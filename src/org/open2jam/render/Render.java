@@ -783,55 +783,57 @@ public class Render implements GameWindowCallback
 	do_autoplay(now);
         Keyboard.poll();
         check_keyboard(now);
-        
-        for(LinkedList<Entity> layer : entities_matrix) // loop over layers
-        {
-            // get entity iterator from layer
-            // need to use iterator here because we remove() below
-            Iterator<Entity> j = layer.iterator();
-            while(j.hasNext()) // loop over entities
-            {
-                Entity e = j.next();
-                e.move(delta); // move the entity
 
-                if(e instanceof TimeEntity)
-                {
-                    TimeEntity te = (TimeEntity) e;
-                    //autoplays sounds play
-                    
-                    double timeToJudge = now;
-                    
-                    if (e instanceof SoundEntity && AUTOSOUND) {
-                        timeToJudge += audioLatency.getLatency();
-                    }
-                    
-                    if(te.getTime() - timeToJudge <= 0 && gameStarted) te.judgment();
+        // Create final copies for lambda capture
+        final double finalNow = now;
+        final double finalNowDisplay = now_display;
 
-                    NoteEntity ne = e instanceof NoteEntity ? (NoteEntity)e : null;
-                    
-                    double y = getViewport() - distance.calculate(now_display, te.getTime(), speed, ne);
+        // Process all layers and entities using optimized flat array iteration
+        // Zero allocation, O(1) removals via swap-remove
+        // Matches original: if(e.isDead()) remove() else draw()
+        entities_matrix.processAll(e -> {
+            e.move(delta); // move the entity
 
-                    //TODO Fix this, maybe an option in the skin
-                    //o2jam overlaps 1 px of the note with the measure and, because of this
-                    //our skin should do it too xD
-                    if(e instanceof MeasureEntity) y -= 1;
-                    
-		    if(!(e instanceof BgaEntity))
-			e.setPos(e.getX(), y);
-                    
-                    if(e instanceof LongNoteEntity) {
-                        LongNoteEntity lne = (LongNoteEntity)e;
-                        double ey = getViewport() - distance.calculate(now_display, lne.getEndTime(), speed, ne);
-                        lne.setEndDistance(Math.abs(ey - y));
-                    }
+            if (e instanceof TimeEntity) {
+                TimeEntity te = (TimeEntity) e;
+                // autoplays sounds play
 
-                    if(e instanceof NoteEntity) check_judgment((NoteEntity)e, now);
+                double timeToJudge = finalNow;
+
+                if (e instanceof SoundEntity && AUTOSOUND) {
+                    timeToJudge += audioLatency.getLatency();
                 }
 
-                if(e.isDead())j.remove();
-                else e.draw();
+                if (te.getTime() - timeToJudge <= 0 && gameStarted) te.judgment();
+
+                NoteEntity ne = e instanceof NoteEntity ? (NoteEntity) e : null;
+
+                double y = getViewport() - distance.calculate(finalNowDisplay, te.getTime(), speed, ne);
+
+                // TODO Fix this, maybe an option in the skin
+                // o2jam overlaps 1 px of the note with the measure and, because of this
+                // our skin should do it too xD
+                if (e instanceof MeasureEntity) y -= 1;
+
+                if (!(e instanceof BgaEntity))
+                    e.setPos(e.getX(), y);
+
+                if (e instanceof LongNoteEntity) {
+                    LongNoteEntity lne = (LongNoteEntity) e;
+                    double ey = getViewport() - distance.calculate(finalNowDisplay, lne.getEndTime(), speed, ne);
+                    lne.setEndDistance(Math.abs(ey - y));
+                }
+
+                if (e instanceof NoteEntity) check_judgment((NoteEntity) e, finalNow);
             }
-        }
+
+            // CRITICAL: Match original behavior exactly
+            // Original: if(e.isDead()) j.remove(); else e.draw();
+            // Entity marked dead during processing (e.g., in check_judgment) should NOT be drawn
+            if (!e.isDead()) {
+                e.draw();
+            }
+        });
 
         int y = 300;
         
