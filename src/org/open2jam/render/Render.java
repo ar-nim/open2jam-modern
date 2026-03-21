@@ -170,6 +170,9 @@ public class Render implements GameWindowCallback
      * but divided in channels for ease to pull */
     private EnumMap<Event.Channel,LinkedList<NoteEntity>> note_channels;
 
+    /** Object pool for note entities to eliminate per-note allocations */
+    private org.open2jam.render.pool.NoteEntityPool noteEntityPool;
+
     /** entities for the key pressed events
      * need to keep track of then to kill
      * when the key is released */
@@ -471,11 +474,37 @@ public class Render implements GameWindowCallback
             Logger.global.log(Level.INFO, "No cover image on file: {0}", chart.getSource().getName());
         }
 
-	changeSpeed(0);
+        changeSpeed(0);
 
         bpm = chart.getBPM();
 
         note_layer = skin.getEntityMap().get("NOTE_1").getLayer();
+
+        // Initialize note entity pool
+        // Pool size: chart note count + 20% buffer for safety
+        int chartNotes = chart.getNoteCount();
+        int poolSize = (int)(chartNotes * 1.2) + 50;
+        noteEntityPool = new org.open2jam.render.pool.NoteEntityPool(poolSize);
+
+        // Initialize pool with prototypes from skin
+        NoteEntity[] notePrototypes = new NoteEntity[7];
+        LongNoteEntity[] longNotePrototypes = new LongNoteEntity[7];
+        for (int i = 1; i <= 7; i++) {
+            String channelId = "NOTE_" + i;
+            try {
+                Entity e = skin.getEntityMap().get(channelId);
+                if (e instanceof NoteEntity) {
+                    notePrototypes[i-1] = (NoteEntity) e;
+                }
+                Entity ln = skin.getEntityMap().get("LONG_" + channelId);
+                if (ln instanceof LongNoteEntity) {
+                    longNotePrototypes[i-1] = (LongNoteEntity) ln;
+                }
+            } catch (Exception ex) {
+                // Channel may not exist for this key mode
+            }
+        }
+        noteEntityPool.initializePrototypes(notePrototypes, longNotePrototypes);
 
         // build long note buffer
         ln_buffer = new EnumMap<Event.Channel,LongNoteEntity>(Event.Channel.class);
@@ -758,24 +787,24 @@ public class Render implements GameWindowCallback
         update_fps_counter();
 
         check_misc_keyboard();
-        
+
         changeSpeed(delta); // TODO: is everything here really needed every frame ?
         updateGameSpeed(delta);
 
         if (!gameStarted && localMatching != null) {
             if (localMatching.isReady()) gameStarted = true;
         }
-        
+
         if (gameStarted) {
             gameTime += delta * effectiveSpeed;
         }
-        
+
         now = gameTime;
 
         if (AUTOSOUND) now -= audioLatency.getLatency();
-        
+
         double now_display = now + displayLatency.getLatency();
-        
+
         update_note_buffer(now, now_display);
         distance.update(now_display, delta);
 
@@ -789,8 +818,8 @@ public class Render implements GameWindowCallback
         final double finalNowDisplay = now_display;
 
         // Process all layers and entities using optimized flat array iteration
-        // Zero allocation, O(1) removals via swap-remove
-        // Matches original: if(e.isDead()) remove() else draw()
+        // Zero allocation, O(1) removals via shift-remove
+        // Dead entities are released back to the pool for reuse
         entities_matrix.processAll(e -> {
             e.move(delta); // move the entity
 
@@ -832,6 +861,25 @@ public class Render implements GameWindowCallback
             // Entity marked dead during processing (e.g., in check_judgment) should NOT be drawn
             if (!e.isDead()) {
                 e.draw();
+            }
+        }, e -> {
+            // Release dead notes back to the pool for reuse
+            if (e instanceof NoteEntity) {
+                NoteEntity ne = (NoteEntity) e;
+                // Remove from note_channels tracking list before releasing to pool
+                LinkedList<NoteEntity> channelList = note_channels.get(ne.getChannel());
+                if (channelList != null) {
+                    channelList.remove(ne);
+                }
+                noteEntityPool.release(ne);
+            } else if (e instanceof LongNoteEntity) {
+                LongNoteEntity lne = (LongNoteEntity) e;
+                // Remove from note_channels tracking list before releasing to pool
+                LinkedList<NoteEntity> channelList = note_channels.get(lne.getChannel());
+                if (channelList != null) {
+                    channelList.remove(lne);
+                }
+                noteEntityPool.release(lne);
             }
         });
 
@@ -1374,25 +1422,29 @@ public class Render implements GameWindowCallback
                 if(e.getFlag() == Event.Flag.NONE){
 		    if(ln_buffer.containsKey(e.getChannel()))
 			Logger.global.log(Level.WARNING, "There is a none in the current long {0} @ "+e.getTotalPosition(), e.getChannel());
-                    NoteEntity n = (NoteEntity) skin.getEntityMap().get(e.getChannel().toString()).copy();
-                    n.setTime(e.getTime());
-		    
-                    assignSample(n, e);
-		    
-		    entities_matrix.add(n);
-                    note_channels.get(n.getChannel()).add(n);
+                    // Use pooled note entity instead of copy()
+                    NoteEntity n = noteEntityPool.acquireNote(e.getChannel(), e.getTime());
+                    if (n != null) {
+                        assignSample(n, e);
+                        entities_matrix.add(n);
+                        note_channels.get(n.getChannel()).add(n);
+                    } else {
+                        Logger.global.log(Level.SEVERE, "Note pool exhausted! Channel: " + e.getChannel());
+                    }
                 }
                 else if(e.getFlag() == Event.Flag.HOLD){
 		    if(ln_buffer.containsKey(e.getChannel()))
 			Logger.global.log(Level.WARNING, "There is a hold in the current long {0} @ "+e.getTotalPosition(), e.getChannel());
-                    LongNoteEntity ln = (LongNoteEntity) skin.getEntityMap().get("LONG_"+e.getChannel()).copy();
-                    ln.setTime(e.getTime());
-		    
-                    assignSample(ln, e);
-		    
-		    entities_matrix.add(ln);
-		    ln_buffer.put(e.getChannel(),ln);
-                    note_channels.get(ln.getChannel()).add(ln);
+                    // Use pooled long note entity instead of copy()
+                    LongNoteEntity ln = noteEntityPool.acquireLongNote(e.getChannel(), e.getTime());
+                    if (ln != null) {
+                        assignSample(ln, e);
+                        entities_matrix.add(ln);
+                        ln_buffer.put(e.getChannel(),ln);
+                        note_channels.get(ln.getChannel()).add(ln);
+                    } else {
+                        Logger.global.log(Level.SEVERE, "Long note pool exhausted! Channel: " + e.getChannel());
+                    }
                 }
                 else if(e.getFlag() == Event.Flag.RELEASE){
                     LongNoteEntity lne = ln_buffer.remove(e.getChannel());

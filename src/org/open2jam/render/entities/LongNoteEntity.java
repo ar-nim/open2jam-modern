@@ -108,4 +108,28 @@ public class LongNoteEntity extends NoteEntity
     public LongNoteEntity copy(){
         return new LongNoteEntity(this);
     }
+
+    /**
+     * Reset this long note to initial state for pool reuse.
+     * Called by NoteEntityPool when acquiring from pool.
+     */
+    @Override
+    public void reset()
+    {
+        super.reset();
+        this.end_dist = null;
+        this.end_time = null;
+    }
+
+    /**
+     * Initialize this long note with channel and time.
+     * Called by NoteEntityPool after reset().
+     */
+    @Override
+    public void initialize(Event.Channel channel, double time)
+    {
+        super.initialize(channel, time);
+        this.end_dist = null;
+        this.end_time = null;
+    }
 }

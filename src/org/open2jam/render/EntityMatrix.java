@@ -70,29 +70,50 @@ class EntityMatrix
      * Dead entities are automatically removed using shift-remove (preserves order).
      *
      * @param processor The processor to apply to each entity
+     * @param onRemove Callback for removed entities (for pool release)
      */
-    public void processAll(EntityProcessor processor)
+    public void processAll(EntityProcessor processor, EntityRemovalCallback onRemove)
     {
         for (int i = 0; i < maxLayer; i++) {
             if (layers[i] == null) continue;
-            
+
             EntityArray layer = layers[i];
             int size = layer.size();
-            
+
             for (int j = 0; j < size; j++) {
                 Entity e = layer.get(j);
-                
+
                 // Process the entity (move, update logic, mark as dead if needed)
                 processor.process(e);
-                
+
                 // Remove dead entities using shift-remove (preserves order, matching LinkedList)
                 if (e.isDead()) {
                     layer.shiftRemoveAt(j);
                     j--;  // Re-check same index (elements shifted left)
                     size--;  // Adjust size for this iteration
+                    // Notify callback for pool release
+                    if (onRemove != null) {
+                        onRemove.onEntityRemoved(e);
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Process all layers and entities without removal callback.
+     */
+    public void processAll(EntityProcessor processor)
+    {
+        processAll(processor, null);
+    }
+
+    /**
+     * Callback for when an entity is removed.
+     */
+    @FunctionalInterface
+    interface EntityRemovalCallback {
+        void onEntityRemoved(Entity e);
     }
 
     /**

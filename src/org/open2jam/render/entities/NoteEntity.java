@@ -112,4 +112,28 @@ public class NoteEntity extends AnimatedEntity implements TimeEntity
     public Event.Channel getChannel() {
         return channel;
     }
+
+    /**
+     * Reset this note to initial state for pool reuse.
+     * Called by NoteEntityPool when acquiring from pool.
+     */
+    public void reset()
+    {
+        this.state = State.NOT_JUDGED;
+        this.hitTime = 0;
+        this.time_to_hit = 0;
+        this.setDead(false);
+        this.sampleEntity = null;
+        // Note: x, y, channel are set by acquireNote() after reset()
+    }
+
+    /**
+     * Initialize this note with channel and time.
+     * Called by NoteEntityPool after reset().
+     */
+    public void initialize(Event.Channel channel, double time)
+    {
+        this.channel = channel;
+        this.time_to_hit = time;
+    }
 }
