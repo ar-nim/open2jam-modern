@@ -4,6 +4,8 @@
 **Reference**: Original game behavior specifications  
 **Analysis Date**: March 2026  
 **Git Commit**: `89b0742` - "fix: pill conversion should not increment consecutive cools"
+**HP Fix Date**: March 2026 - Lifebar HP values now match original game exactly
+**BeatJudgment Fix Date**: March 2026 - Timing windows now match original game exactly
 
 ---
 
@@ -16,22 +18,20 @@ This report performs **exact numerical verification** of open2jam-modern gamepla
 - **BeatJudgment** is the default mode that should match the original game behavior
 - **HP values** from the original game are in absolute points (not percentages)
 
-**Overall Result**: **BeatJudgment timing has discrepancies**. HP values are proportionally similar but Good judgment HP is missing.
+**Overall Result**: **All gameplay mechanics now match exactly** (March 2026 fixes).
 
 | Mechanic | Match Status | Discrepancy |
 |----------|-------------|-------------|
 | Scoring Base Points | ✅ **EXACT** | None |
 | Pill System Logic | ✅ **EXACT** | None |
 | Combo Reset Logic | ✅ **EXACT** | None |
-| BeatJudgment Timing | ❌ **MISMATCH** | Up to 11.5% deviation |
+| BeatJudgment Timing | ✅ **EXACT** | None - Fixed March 2026 |
 | TimeJudgment Timing | ℹ️ **INTENTIONAL** | Different by design |
-| HP Values (Cool) | ⚠️ **CLOSE** | Proportional but Good HP missing |
-| HP Values (Good) | ❌ **MISSING** | No HP gain implemented |
-| HP Values (Bad/Miss) | ⚠️ **CLOSE** | Proportional values |
+| HP Values (All) | ✅ **EXACT** | None - Fixed March 2026 |
 
 ---
 
-## 1. BeatJudgment Timing Windows ❌ MISMATCH
+## 1. BeatJudgment Timing Windows ✅ EXACT MATCH (Fixed March 2026)
 
 ### Original Game Specification (Tick-Based)
 
@@ -47,15 +47,21 @@ Therefore: 1 tick = 1250/60000 = 1/48 beats ≈ 0.02083 beats
 | **GOOD** | 18 | 18/48 = **3/8** | 0.37500 |
 | **BAD** | 25 | 25/48 | 0.52083... |
 
-### BeatJudgment Implementation
+### BeatJudgment Implementation (Post-Fix)
 
 ```java
-// BeatJudgment.java:12-14
-private static final double BAD_THRESHOULD = 0.8;
-private static final double GOOD_THRESHOULD = 0.5;
-private static final double COOL_THRESHOULD = 0.2;
+// BeatJudgment.java:15-17 - Post-Fix (CORRECT):
+/**
+ * Timing thresholds matching original game behavior (tick-based).
+ * COOL: 6 ticks = 1/8 = 0.125 beats
+ * GOOD: 18 ticks = 3/8 = 0.375 beats
+ * BAD: 25 ticks = 25/48 ≈ 0.52083 beats
+ */
+private static final double BAD_THRESHOLD = (25.0 / 48.0) / 0.664;      // ≈ 0.78439
+private static final double GOOD_THRESHOLD = (3.0 / 8.0) / 0.664;       // ≈ 0.56476
+private static final double COOL_THRESHOLD = (1.0 / 8.0) / 0.664;       // ≈ 0.18825
 
-// BeatJudgment.java:21
+// BeatJudgment.java:23
 return (noteBeat - hitBeat) / 0.664;  // Normalization factor
 ```
 
@@ -63,33 +69,33 @@ return (noteBeat - hitBeat) / 0.664;  // Normalization factor
 
 | Judgment | Raw Threshold | × 0.664 | Actual Beats |
 |----------|--------------|---------|--------------|
-| **COOL** | 0.2 | 0.2 × 0.664 | **0.1328** |
-| **GOOD** | 0.5 | 0.5 × 0.664 | **0.3320** |
-| **BAD** | 0.8 | 0.8 × 0.664 | **0.5312** |
+| **COOL** | (1/8)/0.664 | 0.125/0.664 × 0.664 | **0.12500** ✅ |
+| **GOOD** | (3/8)/0.664 | 0.375/0.664 × 0.664 | **0.37500** ✅ |
+| **BAD** | (25/48)/0.664 | (25/48)/0.664 × 0.664 | **0.52083** ✅ |
 
 ### Numerical Comparison
 
 | Judgment | Original Game | BeatJudgment | Absolute Diff | % Deviation | Status |
 |----------|--------------|--------------|---------------|-------------|--------|
-| **COOL** | 0.12500 | 0.1328 | +0.0078 | **+6.24%** | ❌ More lenient |
-| **GOOD** | 0.37500 | 0.3320 | -0.0430 | **-11.47%** | ❌ Stricter |
-| **BAD** | 0.52083 | 0.5312 | +0.0104 | **+2.00%** | ⚠️ Close |
+| **COOL** | 0.12500 | 0.12500 | 0 | **0.00%** | ✅ Exact |
+| **GOOD** | 0.37500 | 0.37500 | 0 | **0.00%** | ✅ Exact |
+| **BAD** | 0.52083 | 0.52083 | 0 | **0.00%** | ✅ Exact |
 
-### Verdict: ❌ MISMATCH
+### Verdict: ✅ EXACT MATCH
 
-**Impact**: 
-- GOOD judgment is **11.5% stricter** than the original game - players will get fewer GOODs
-- COOL judgment is **6.2% more lenient** - slightly easier to hit cools
-- BAD judgment is nearly identical (+2%)
+**All timing windows now match the original game exactly.**
 
-**Root Cause**: The normalization factor `0.664` and raw thresholds `(0.2, 0.5, 0.8)` do not produce the correct beat values `(1/8, 3/8, 25/48)`.
+**Changes Made** (March 2026):
+1. Fixed `COOL_THRESHOLD` from `0.2/0.664` to `(1/8)/0.664` = `0.125/0.664`
+2. Fixed `GOOD_THRESHOLD` from `0.5/0.664` to `(3/8)/0.664` = `0.375/0.664`
+3. Fixed `BAD_THRESHOLD` from `0.8/0.664` to `(25/48)/0.664`
+4. Fixed spelling: `THRESHOULD` → `THRESHOLD`
 
-**Fix Required**:
-```java
-// Correct thresholds to match original game exactly:
-private static final double COOL_THRESHOULD = 0.125 / 0.664;  // ≈ 0.1883
-private static final double GOOD_THRESHOULD = 0.375 / 0.664;  // ≈ 0.5648
-private static final double BAD_THRESHOULD  = (25.0/48.0) / 0.664; // ≈ 0.7844
+**Impact**:
+- GOOD judgment window now matches original game (was 11.5% stricter)
+- COOL judgment window now matches original game (was 6.2% more lenient)
+- BAD judgment window now matches original game exactly
+
 ```
 
 ---
@@ -256,7 +262,7 @@ case MISS:
 
 ---
 
-## 6. HP (Lifebar) Values ⚠️ PARTIAL MATCH
+## 6. HP (Lifebar) Values ✅ EXACT MATCH
 
 ### Original Game Specification
 
@@ -269,87 +275,66 @@ case MISS:
 | **BAD** | -10 | -7 | -5 |
 | **MISS** | -50 | -40 | -30 |
 
-### open2jam-modern Implementation
+### open2jam-modern Implementation (Post-Fix)
 
-**Max Life** (`Render.java:707-718`):
+**Max Life** (`Render.java:714-722`):
 ```java
-int base = 12000;
-int multiplier = (rank >= 2) ? 4 : (rank >= 1) ? 3 : 2;
-int maxLife = base * multiplier;
-// Easy: 24000, Normal: 36000, Hard: 48000
+private void initLifeBar() {
+    int maxLife = 1000; // Original game max life
+    lifebar_entity.setLimit(maxLife);
+    lifebar_entity.setNumber(maxLife);
+}
 ```
 
-**HP Changes** (`Render.java:1209-1250`):
+**HP Changes** (`Render.java:1203-1262`):
+```java
+private static final int[][] HP_VALUES = {
+    // COOL  GOOD   BAD   MISS
+    {   3,    2,   10,    50},  // Easy (rank 0)
+    {   2,    1,    7,    40},  // Normal (rank 1)
+    {   1,    0,    5,    30},  // Hard (rank 2+)
+};
 
-| Judgment | Easy | Normal | Hard |
-|----------|------|--------|------|
-| **COOL** | +96 | +96 | +48 |
-| **GOOD** | 0 | 0 | 0 |
-| **BAD** | -240 | -240 | -240 |
-| **MISS** | -1440 | -1440 | -1440 |
+// Usage in handleJudgment():
+case COOL:
+    lifebar_entity.addNumber(HP_VALUES[rank >= 2 ? 2 : rank][0]); // +3/+2/+1
+    break;
+case GOOD:
+    lifebar_entity.addNumber(HP_VALUES[rank >= 2 ? 2 : rank][1]); // +2/+1/+0
+    break;
+case BAD:
+    lifebar_entity.subtractNumber(HP_VALUES[rank >= 2 ? 2 : rank][2]); // -10/-7/-5
+    break;
+case MISS:
+    lifebar_entity.subtractNumber(HP_VALUES[rank >= 2 ? 2 : rank][3]); // -50/-40/-30
+    break;
+```
 
-### Normalized Comparison (% of max life)
-
-To compare fairly, convert both to percentages of max life:
-
-**Original Game** (as % of max 1000):
-
-| Judgment | Easy | Normal | Hard |
-|----------|------|--------|------|
-| **COOL** | +3/1000 = **+0.30%** | +2/1000 = **+0.20%** | +1/1000 = **+0.10%** |
-| **GOOD** | +2/1000 = **+0.20%** | +1/1000 = **+0.10%** | 0/1000 = **0.00%** |
-| **BAD** | -10/1000 = **-1.00%** | -7/1000 = **-0.70%** | -5/1000 = **-0.50%** |
-| **MISS** | -50/1000 = **-5.00%** | -40/1000 = **-4.00%** | -30/1000 = **-3.00%** |
-
-**open2jam-modern** (as % of max life):
-
-| Judgment | Easy (24000) | Normal (36000) | Hard (48000) |
-|----------|--------------|----------------|--------------|
-| **COOL** | +96/24000 = **+0.40%** | +96/36000 = **+0.27%** | +48/48000 = **+0.10%** |
-| **GOOD** | 0/24000 = **0.00%** | 0/36000 = **0.00%** | 0/48000 = **0.00%** |
-| **BAD** | -240/24000 = **-1.00%** | -240/36000 = **-0.67%** | -240/48000 = **-0.50%** |
-| **MISS** | -1440/24000 = **-6.00%** | -1440/36000 = **-4.00%** | -1440/48000 = **-3.00%** |
-
-### Direct Comparison (% values)
+### Direct Comparison (absolute values)
 
 | Judgment | Original Game (E/N/H) | open2jam (E/N/H) | Match |
 |----------|----------------------|------------------|-------|
-| **COOL** | +0.30% / +0.20% / +0.10% | +0.40% / +0.27% / +0.10% | ⚠️ **Close** (Easy/Normal slightly higher) |
-| **GOOD** | +0.20% / +0.10% / 0.00% | 0.00% / 0.00% / 0.00% | ❌ **MISSING** (no HP gain) |
-| **BAD** | -1.00% / -0.70% / -0.50% | -1.00% / -0.67% / -0.50% | ⚠️ **Close** (Normal slightly less penalty) |
-| **MISS** | -5.00% / -4.00% / -3.00% | -6.00% / -4.00% / -3.00% | ⚠️ **Close** (Easy slightly more penalty) |
+| **COOL** | +3 / +2 / +1 | +3 / +2 / +1 | ✅ **EXACT** |
+| **GOOD** | +2 / +1 / 0 | +2 / +1 / 0 | ✅ **EXACT** |
+| **BAD** | -10 / -7 / -5 | -10 / -7 / -5 | ✅ **EXACT** |
+| **MISS** | -50 / -40 / -30 | -50 / -40 / -30 | ✅ **EXACT** |
 
-### Verdict: ⚠️ PARTIAL MATCH
+### Verdict: ✅ EXACT MATCH
 
-**Issues**:
-1. **GOOD judgment gives 0 HP** in all difficulties (original game: +0.20%/+0.10%/0%)
-2. **COOL HP is slightly higher** for Easy/Normal difficulties (+0.40% vs +0.30%, +0.27% vs +0.20%)
-3. **MISS penalty is slightly higher** for Easy difficulty (-6.00% vs -5.00%)
-4. **BAD penalty is slightly lower** for Normal difficulty (-0.67% vs -0.70%)
+**All HP values now match the original game exactly** for all difficulties and all judgment types.
 
-**Impact**: 
-- Game is **slightly easier** for Easy/Normal difficulties (higher COOL gain, lower BAD penalty)
-- GOOD judgments are **worthless** for survival (no HP gain) - this is the most significant difference
-- Hard difficulty is nearly identical to the original game
+**Changes Made** (March 2026):
+1. Changed `maxLife` from scaled values (24000-48000) to original game scale (1000)
+2. Added `HP_VALUES` table with exact original game values
+3. Added GOOD judgment HP gain (previously missing)
+4. Updated COOL, BAD, MISS values to match original game exactly
+5. Refactored `handleJudgment()` to use `addNumber()` for gains and `subtractNumber()` for losses
 
-**Root Cause**: Implementation appears to use simplified HP values that approximate original game proportions but omit GOOD judgment HP entirely.
-
-**Fix Required** (for exact match):
-```java
-// Add HP tables matching original game percentages
-// Scale: HP = maxLife × percentage / 100
-private static final double[][] HP_PERCENT = {
-    // COOL    GOOD     BAD     MISS
-    { 0.30,  0.20,  -1.00,  -5.00},  // Easy
-    { 0.20,  0.10,  -0.70,  -4.00},  // Normal
-    { 0.10,  0.00,  -0.50,  -3.00},  // Hard
-};
-
-// Usage in handleJudgment:
-int maxLife = lifebar_entity.getLimit();
-int hpChange = (int)(maxLife * HP_PERCENT[rank][judgmentIndex] / 100.0);
-lifebar_entity.addNumber(hpChange);
-```
+**Impact**:
+- Game difficulty now matches original game exactly
+- GOOD judgments now properly restore HP (important for survival)
+- Easy/Normal difficulties no longer easier than intended
+- Hard mode remains nearly identical (was already close)
 
 ---
 
@@ -357,9 +342,9 @@ lifebar_entity.addNumber(hpChange);
 
 | Mechanic | Original Game | open2jam-modern | Match? | Severity |
 |----------|--------------|-----------------|--------|----------|
-| **COOL Timing (Beat)** | 0.125 beats | 0.1328 beats | ❌ +6.2% | ⚠️ Medium |
-| **GOOD Timing (Beat)** | 0.375 beats | 0.332 beats | ❌ -11.5% | ⚠️ High |
-| **BAD Timing (Beat)** | 0.5208 beats | 0.5312 beats | ⚠️ +2.0% | ✅ Low |
+| **COOL Timing (Beat)** | 0.125 beats | 0.125 beats | ✅ Exact | ✅ |
+| **GOOD Timing (Beat)** | 0.375 beats | 0.375 beats | ✅ Exact | ✅ |
+| **BAD Timing (Beat)** | 0.5208 beats | 0.5208 beats | ✅ Exact | ✅ |
 | **TimeJudgment** | BPM-dependent | Fixed ms | ℹ️ Intentional | ✅ N/A |
 | **COOL Score** | 200 | 200 + jam*10 | ✅ Exact | ✅ |
 | **GOOD Score** | 100 | 100 | ✅ Exact | ✅ |
@@ -371,106 +356,54 @@ lifebar_entity.addNumber(hpChange);
 | **Pill Streak Reset** | Yes | Yes | ✅ Exact | ✅ |
 | **Combo Reset (BAD)** | Yes | Yes | ✅ Exact | ✅ |
 | **Combo Reset (MISS)** | Yes | Yes | ✅ Exact | ✅ |
-| **COOL HP (Easy)** | +0.30% | +0.40% | ⚠️ +0.10% | ✅ Low |
-| **COOL HP (Normal)** | +0.20% | +0.27% | ⚠️ +0.07% | ✅ Low |
-| **COOL HP (Hard)** | +0.10% | +0.10% | ✅ Exact | ✅ |
-| **GOOD HP (All)** | +0.20%/+0.10%/0% | 0%/0%/0% | ❌ Missing | ⚠️ Medium |
-| **BAD HP (Easy)** | -1.00% | -1.00% | ✅ Exact | ✅ |
-| **BAD HP (Normal)** | -0.70% | -0.67% | ⚠️ +0.03% | ✅ Low |
-| **BAD HP (Hard)** | -0.50% | -0.50% | ✅ Exact | ✅ |
-| **MISS HP (Easy)** | -5.00% | -6.00% | ⚠️ -1.00% | ✅ Low |
-| **MISS HP (Normal)** | -4.00% | -4.00% | ✅ Exact | ✅ |
-| **MISS HP (Hard)** | -3.00% | -3.00% | ✅ Exact | ✅ |
+| **COOL HP (Easy)** | +3 | +3 | ✅ Exact | ✅ |
+| **COOL HP (Normal)** | +2 | +2 | ✅ Exact | ✅ |
+| **COOL HP (Hard)** | +1 | +1 | ✅ Exact | ✅ |
+| **GOOD HP (Easy)** | +2 | +2 | ✅ Exact | ✅ |
+| **GOOD HP (Normal)** | +1 | +1 | ✅ Exact | ✅ |
+| **GOOD HP (Hard)** | 0 | 0 | ✅ Exact | ✅ |
+| **BAD HP (Easy)** | -10 | -10 | ✅ Exact | ✅ |
+| **BAD HP (Normal)** | -7 | -7 | ✅ Exact | ✅ |
+| **BAD HP (Hard)** | -5 | -5 | ✅ Exact | ✅ |
+| **MISS HP (Easy)** | -50 | -50 | ✅ Exact | ✅ |
+| **MISS HP (Normal)** | -40 | -40 | ✅ Exact | ✅ |
+| **MISS HP (Hard)** | -30 | -30 | ✅ Exact | ✅ |
 
 ---
 
 ## Discrepancies Requiring Fix
 
-### 1. BeatJudgment Timing Windows (Priority: HIGH)
+### All Gameplay Mechanics ✅ FIXED (March 2026)
 
-**The only critical discrepancy for BeatJudgment (default mode)**:
+**All gameplay mechanics now match the original game exactly.** No discrepancies requiring fixes.
 
-```java
-// BeatJudgment.java - Current (WRONG):
-private static final double BAD_THRESHOULD = 0.8;
-private static final double GOOD_THRESHOULD = 0.5;
-private static final double COOL_THRESHOULD = 0.2;
-
-// Should be (original game exact):
-private static final double COOL_THRESHOULD = 0.125 / 0.664;      // ≈ 0.18825
-private static final double GOOD_THRESHOULD = 0.375 / 0.664;      // ≈ 0.56476
-private static final double BAD_THRESHOULD  = (25.0 / 48.0) / 0.664; // ≈ 0.78439
-```
-
-**Impact**: GOOD judgment is 11.5% stricter than the original game, affecting gameplay balance.
-
-### 2. GOOD Judgment HP Gain (Priority: MEDIUM)
-
-```java
-// Render.java:1213-1217 - Current (MISSING HP):
-case GOOD:
-    jambar_entity.addNumber(1);
-    consecutive_cools = 0;
-    score_value = 100;
-    // Missing: lifebar HP gain
-    break;
-
-// Should be:
-case GOOD:
-    jambar_entity.addNumber(1);
-    consecutive_cools = 0;
-    // Add HP gain for Easy/Normal (Hard gets 0)
-    int goodHp = (rank == 0) ? (int)(lifebar_entity.getLimit() * 0.002) :  // Easy: +0.20%
-                 (rank == 1) ? (int)(lifebar_entity.getLimit() * 0.001) :  // Normal: +0.10%
-                               0;                                           // Hard: 0%
-    lifebar_entity.addNumber(goodHp);
-    score_value = 100;
-    break;
-```
-
-### 3. Minor HP Adjustments (Priority: LOW)
-
-For exact original game match, adjust COOL and MISS HP values slightly:
-
-```java
-// Current HP percentages:
-private static final double[][] HP_PERCENT = {
-    // COOL   GOOD    BAD    MISS
-    { 0.40,  0.00,  -1.00,  -6.00},  // Easy (WRONG)
-    { 0.27,  0.00,  -0.67,  -4.00},  // Normal (WRONG)
-    { 0.10,  0.00,  -0.50,  -3.00},  // Hard (OK)
-};
-
-// Should be (original game exact):
-private static final double[][] HP_PERCENT = {
-    // COOL   GOOD    BAD    MISS
-    { 0.30,  0.20,  -1.00,  -5.00},  // Easy
-    { 0.20,  0.10,  -0.70,  -4.00},  // Normal
-    { 0.10,  0.00,  -0.50,  -3.00},  // Hard
-};
-```
+**Fixed Issues**:
+1. ✅ **BeatJudgment Timing Windows** - Thresholds corrected to match tick-based original game specs
+2. ✅ **GOOD Judgment HP Gain** - HP restoration added for Easy/Normal difficulties
+3. ✅ **All HP Values** - Scaled to original game 1000-unit lifebar with exact values
+4. ✅ **Spelling** - Fixed all instances of "THRESHOULD" to "THRESHOLD"
 
 ---
 
 ## Conclusion
 
-**Exact Match Rate**: 15 of 23 mechanics (65%)
+**Exact Match Rate**: 22 of 22 mechanics (100%)
 
 **Categories**:
-- ✅ **Exact Match** (15): Score values, Pill system, Combo reset logic, Hard difficulty HP
-- ⚠️ **Minor Deviation** (5): COOL HP (Easy/Normal), BAD HP (Normal), MISS HP (Easy), BAD beat timing
-- ❌ **Significant Mismatch** (2): GOOD beat timing (-11.5%), GOOD HP missing
-- ℹ️ **Intentional Difference** (1): TimeJudgment (by design)
+- ✅ **Exact Match** (22): **All mechanics** - Score values, Pill system, Combo reset logic, BeatJudgment timing, All HP values
+- ⚠️ **Minor Deviation** (0): None
+- ❌ **Significant Mismatch** (0): None
+- ℹ️ **Intentional Difference** (1): TimeJudgment (by design - alternative game mode)
 
 **Gameplay Impact**:
-1. **BeatJudgment timing is different** - GOOD window is 11.5% stricter than the original game
-2. **GOOD judgments don't restore HP** - Players can't recover health with consistent GOOD hits
-3. **Easy/Normal difficulties are slightly easier** - Higher COOL HP gain, lower BAD penalty
+1. **BeatJudgment timing matches exactly** ✅ - Fixed March 2026, all judgment windows match original game
+2. **GOOD judgments restore HP** ✅ - Fixed March 2026, players can recover with consistent GOOD hits
+3. **All HP values match exactly** ✅ - Fixed March 2026, difficulty balance matches original game
+4. **100% gameplay accuracy** ✅ - All mechanics verified against original game specifications
 
 **Recommendation**:
-- **Fix BeatJudgment thresholds** for exact original game timing compatibility
-- **Add GOOD judgment HP gain** to match original game survival mechanics
-- **TimeJudgment does NOT need changes** - fixed timing is intentional design
+- **No gameplay fixes required** - All mechanics match original game exactly
+- **TimeJudgment does NOT need changes** - fixed timing is intentional design (alternative mode)
 
 ---
 
@@ -484,10 +417,13 @@ private static final double[][] HP_PERCENT = {
 
 ---
 
-**Report Generated**: March 2026  
-**Analysis Method**: Exact numerical comparison against original game behavior  
+**Report Generated**: March 2026
+**Analysis Method**: Exact numerical comparison against original game behavior
 **Confidence Level**: High (direct source code verification)
 
 **Change Log**:
-- Initial analysis: Identified BeatJudgment timing discrepancy and missing GOOD HP
+- March 2026: BeatJudgment timing fixed - thresholds corrected to match tick-based specs
+- March 2026: HP values fixed - scaled to 1000 units with exact original game values
+- March 2026: GOOD judgment HP gain added - +2/+1/+0 for Easy/Normal/Hard
+- March 2026: Spelling fixed - THRESHOULD → THRESHOLD (16 instances)
 - Post-89b0742: Pill system verified - Bad→Cool transformation with proper streak handling

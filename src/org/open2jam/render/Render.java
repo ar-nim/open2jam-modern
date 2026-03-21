@@ -700,19 +700,23 @@ public class Render implements GameWindowCallback
     }
     
     /**
-     * Initializes the life bar based on rank
+     * HP values for each judgment and difficulty (original game specs).
+     * Index: [difficulty][judgment] where difficulty: 0=Easy, 1=Normal, 2=Hard
+     * Judgments: COOL=0, GOOD=1 (positive = gain), BAD=2, MISS=3 (positive = loss amount)
+     */
+    private static final int[][] HP_VALUES = {
+        // COOL  GOOD   BAD   MISS  (BAD/MISS are loss amounts, subtracted)
+        {   3,    2,   10,    50},  // Easy (rank 0)
+        {   2,    1,    7,    40},  // Normal (rank 1)
+        {   1,    0,    5,    30},  // Hard (rank 2+)
+    };
+
+    /**
+     * Initializes the life bar based on rank.
+     * Uses original game scale: max life = 1000 units.
      */
     private void initLifeBar() {
-        int base = 12000; // base health bar size
-        int multiplier;
-        if (rank >= 2) {
-            multiplier = 4; // hard coefficient
-        } else if (rank >= 1) {
-            multiplier = 3; // normal coefficient
-        } else {
-            multiplier = 2; // easy coefficient
-        }
-        int maxLife = base * multiplier;
+        int maxLife = 1000; // Original game max life
         lifebar_entity.setLimit(maxLife);
         lifebar_entity.setNumber(maxLife);
     }
@@ -1200,19 +1204,22 @@ public class Render implements GameWindowCallback
     public JudgmentResult handleJudgment(JudgmentResult result) {
 
         int score_value = 0;
-        
+
         switch(result)
         {
             case COOL:
                 jambar_entity.addNumber(2);
                 consecutive_cools++;
-                lifebar_entity.addNumber(rank >= 2 ? 48 : 96);
+                // HP gain: +3 (Easy), +2 (Normal), +1 (Hard)
+                lifebar_entity.addNumber(HP_VALUES[rank >= 2 ? 2 : rank][0]);
                 score_value = 200 + (jamcombo_entity.getNumber()*10);
                 break;
 
             case GOOD:
                 jambar_entity.addNumber(1);
                 consecutive_cools = 0;
+                // HP gain: +2 (Easy), +1 (Normal), +0 (Hard)
+                lifebar_entity.addNumber(HP_VALUES[rank >= 2 ? 2 : rank][1]);
                 score_value = 100;
                 break;
 
@@ -1226,14 +1233,16 @@ public class Render implements GameWindowCallback
                     // Streak is maintained but not extended (reset to 0 would break it)
                     pills_draw.removeLast().setDead(true);  // Consume 1 pill
 
-                    // Full COOL score
+                    // Full COOL score and HP gain
+                    lifebar_entity.addNumber(HP_VALUES[rank >= 2 ? 2 : rank][0]);
                     score_value = 200 + (jamcombo_entity.getNumber() * 10);
                 }
                 else
                 {
                     jambar_entity.setNumber(0);
                     jamcombo_entity.resetNumber();
-                    lifebar_entity.subtractNumber(240);
+                    // HP loss: -10 (Easy), -7 (Normal), -5 (Hard)
+                    lifebar_entity.subtractNumber(HP_VALUES[rank >= 2 ? 2 : rank][2]);
 
                     score_value = 4;
                 }
@@ -1245,7 +1254,8 @@ public class Render implements GameWindowCallback
                 jamcombo_entity.resetNumber();
                 consecutive_cools = 0;
 
-                lifebar_entity.subtractNumber(1440);
+                // HP loss: -50 (Easy), -40 (Normal), -30 (Hard)
+                lifebar_entity.subtractNumber(HP_VALUES[rank >= 2 ? 2 : rank][3]);
 
                 if(score_entity.getNumber() >= 10)score_value = -10;
                 else score_value = -score_entity.getNumber();
