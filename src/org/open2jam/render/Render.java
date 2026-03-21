@@ -1208,7 +1208,7 @@ public class Render implements GameWindowCallback
         switch(result)
         {
             case COOL:
-                jambar_entity.addNumber(2);
+                jambar_entity.changeNumber(2);
                 consecutive_cools++;
                 // HP gain: +3 (Easy), +2 (Normal), +1 (Hard)
                 lifebar_entity.changeNumber(HP_VALUES[rank >= 2 ? 2 : rank][0]);
@@ -1216,7 +1216,7 @@ public class Render implements GameWindowCallback
                 break;
 
             case GOOD:
-                jambar_entity.addNumber(1);
+                jambar_entity.changeNumber(1);
                 consecutive_cools = 0;
                 // HP gain: +2 (Easy), +1 (Normal), +0 (Hard)
                 lifebar_entity.changeNumber(HP_VALUES[rank >= 2 ? 2 : rank][1]);
@@ -1228,7 +1228,7 @@ public class Render implements GameWindowCallback
                 if(pills_draw.size() > 0)
                 {
                     result = JudgmentResult.COOL;  // BAD → COOL conversion
-                    jambar_entity.addNumber(2);    // COOL gives 2 jamBar points
+                    jambar_entity.changeNumber(2);    // COOL gives 2 jamBar points
                     // consecutive_cools NOT incremented - pill save doesn't extend streak
                     // Streak is maintained but not extended (reset to 0 would break it)
                     pills_draw.removeLast().setDead(true);  // Consume 1 pill
