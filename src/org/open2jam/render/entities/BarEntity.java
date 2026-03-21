@@ -43,15 +43,13 @@ public class BarEntity extends AnimatedEntity
         return number;
     }
 
-    public void addNumber(int add)
-    {
-        if(number + add <= limit) number += add;
-        else number = limit;
-    }
-    
-    public void subtractNumber(int sub) {
-        if(number - sub >= 0) number -= sub;
-        else number = 0;
+    /**
+     * Unified method to change the number by any amount (positive or negative).
+     * Automatically clamps the result between 0 and limit.
+     * @param amount positive to add, negative to subtract
+     */
+    public void changeNumber(int amount) {
+        number = Math.max(0, Math.min(limit, number + amount));
     }
 
     public void setLimit(int limit){ this.limit = limit; }
