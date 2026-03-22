@@ -84,11 +84,14 @@ public class Render implements GameWindowCallback
     /** skin info and entities */
     Skin skin;
 
-    /** the mapping of note channels to KeyEvent keys  */
-    final EnumMap<Event.Channel, Integer> keyboard_map;
+    /** the mapping of note channels to KeyEvent keys (array indexed by Channel.ordinal()) */
+    private final int[] keyboardKeyCodes;
 
-    /** the mapping of note channels to KeyEvent keys  */
-    final EnumMap<Config.MiscEvent, Integer> keyboard_misc;
+    /** the mapping of misc events to KeyEvent keys (array indexed by MiscEvent.ordinal()) */
+    private final int[] keyboardMiscKeyCodes;
+
+    /** Sentinel value indicating no key is bound */
+    private static final int NO_KEY = -1;
 
     /** The window that is being used to render the game */
     final GameWindow window;
@@ -302,8 +305,21 @@ public class Render implements GameWindowCallback
 
     public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm) throws SoundSystemException
     {
-        keyboard_map = Config.getKeyboardMap(Config.KeyboardType.K7);
-        keyboard_misc = Config.getKeyboardMisc();
+        // Initialize keyboard mapping arrays from Config
+        EnumMap<Event.Channel, Integer> keyboardMap = Config.getKeyboardMap(Config.KeyboardType.K7);
+        keyboardKeyCodes = new int[Event.Channel.values().length];
+        Arrays.fill(keyboardKeyCodes, NO_KEY);
+        for (Map.Entry<Event.Channel, Integer> entry : keyboardMap.entrySet()) {
+            keyboardKeyCodes[entry.getKey().ordinal()] = entry.getValue();
+        }
+
+        EnumMap<Config.MiscEvent, Integer> keyboardMisc = Config.getKeyboardMisc();
+        keyboardMiscKeyCodes = new int[Config.MiscEvent.values().length];
+        Arrays.fill(keyboardMiscKeyCodes, NO_KEY);
+        for (Map.Entry<Config.MiscEvent, Integer> entry : keyboardMisc.entrySet()) {
+            keyboardMiscKeyCodes[entry.getKey().ordinal()] = entry.getValue();
+        }
+
         window = ResourceFactory.get().getGameWindow();
 
         soundSystem = new ALSoundSystem();
@@ -1003,7 +1019,10 @@ public class Render implements GameWindowCallback
 
     void do_autoplay(double now)
     {
-        for (Event.Channel c : keyboard_map.keySet()) {
+        // Iterate over keyboard key codes using array indexing
+        for (int ch = 0; ch < keyboardKeyCodes.length; ch++) {
+            if (keyboardKeyCodes[ch] == NO_KEY) continue;  // No key bound
+            Event.Channel c = Event.Channel.values()[ch];
             if (!c.isAutoplay()) continue;
             NoteEntity ne = nextNoteKey(c);
 
@@ -1051,34 +1070,34 @@ public class Render implements GameWindowCallback
             server = null;
         }
 
-        // Iterate over keyboard_map using array indexing for primitive arrays
-        for (Map.Entry<Event.Channel, Integer> entry : keyboard_map.entrySet()) {
-            Event.Channel c = entry.getKey();
+        // Iterate over keyboard key codes using array indexing
+        for (int ch = 0; ch < keyboardKeyCodes.length; ch++) {
+            if (keyboardKeyCodes[ch] == NO_KEY) continue;  // No key bound
+            Event.Channel c = Event.Channel.values()[ch];
             if (c.isAutoplay()) continue;
 
-            int chIndex = c.ordinal();
-            boolean keyDown = window.isKeyDown(entry.getValue());
-            boolean keyWasDown = keyboard_key_pressed[chIndex];
+            boolean keyDown = window.isKeyDown(keyboardKeyCodes[ch]);
+            boolean keyWasDown = keyboard_key_pressed[ch];
 
             if (keyDown && !keyWasDown) { // started holding now
                 if (!gameStarted && localMatching == null) gameStarted = true;
 
-                keyboard_key_pressed[chIndex] = true;
+                keyboard_key_pressed[ch] = true;
                 Entity baseEntity = skin.getEntityMap().get("PRESSED_" + c);
                 Entity to_kill = null;
 
                 if (baseEntity != null) {
                     Entity ee = baseEntity.copy();
                     entities_matrix.add(ee);
-                    to_kill = key_pressed_entity[chIndex];
-                    key_pressed_entity[chIndex] = ee;
+                    to_kill = key_pressed_entity[ch];
+                    key_pressed_entity[ch] = ee;
                 }
 
                 if (to_kill != null) to_kill.setDead(true);
 
                 NoteEntity e = nextNoteKey(c);
                 if (e == null) {
-                    SampleEntity i = last_sound[chIndex];
+                    SampleEntity i = last_sound[ch];
                     if (i != null) i.extrasound();
                     continue;
                 }
@@ -1090,7 +1109,7 @@ public class Render implements GameWindowCallback
                     disableAutoSound = false;
                     e.keysound();
                     if (e instanceof LongNoteEntity) {
-                        longnote_holded[chIndex] = (LongNoteEntity) e;
+                        longnote_holded[ch] = (LongNoteEntity) e;
                         if (e.getState() == NoteEntity.State.NOT_JUDGED)
                             e.setState(NoteEntity.State.LN_HEAD_JUDGE);
                     } else {
@@ -1101,17 +1120,17 @@ public class Render implements GameWindowCallback
                 }
 
             } else if (!keyDown && keyWasDown) { // key released now
-                keyboard_key_pressed[chIndex] = false;
-                Entity to_kill = key_pressed_entity[chIndex];
+                keyboard_key_pressed[ch] = false;
+                Entity to_kill = key_pressed_entity[ch];
 
                 if (to_kill != null) to_kill.setDead(true);
 
-                Entity lf = longflare[chIndex];
-                longflare[chIndex] = null;
+                Entity lf = longflare[ch];
+                longflare[ch] = null;
                 if (lf != null) lf.setDead(true);
 
-                LongNoteEntity e = longnote_holded[chIndex];
-                longnote_holded[chIndex] = null;
+                LongNoteEntity e = longnote_holded[ch];
+                longnote_holded[ch] = null;
                 if (e == null || e.getState() != NoteEntity.State.LN_HOLD) continue;
 
                 e.updateHit(now, effectiveJudgmentFactor);
@@ -1506,15 +1525,15 @@ public class Render implements GameWindowCallback
 
     void check_misc_keyboard()
     {
-	    for(Map.Entry<Config.MiscEvent,Integer> entry : keyboard_misc.entrySet())
-        {
-            Config.MiscEvent event  = entry.getKey();
+        // Iterate over misc key codes using array indexing
+        for (int i = 0; i < keyboardMiscKeyCodes.length; i++) {
+            if (keyboardMiscKeyCodes[i] == NO_KEY) continue;  // No key bound
+            Config.MiscEvent event = Config.MiscEvent.values()[i];
+            int keyCode = keyboardMiscKeyCodes[i];
 
-            if(window.isKeyDown(entry.getValue()) && !misc_keys.contains(entry.getValue())) // this key is being pressed
-            {
-                misc_keys.add(entry.getValue());
-                switch(event)
-                {
+            if (window.isKeyDown(keyCode) && !misc_keys.contains(keyCode)) {
+                misc_keys.add(keyCode);
+                switch (event) {
                     case SPEED_UP:
                         speedObj.increase();
                     break;
@@ -1542,10 +1561,8 @@ public class Render implements GameWindowCallback
                         change_bgm_volume(-VOLUME_FACTOR);
                     break;
                 }
-            }
-            else if(!window.isKeyDown(entry.getValue()) && misc_keys.contains(entry.getValue()))
-            {
-                misc_keys.remove(entry.getValue());
+            } else if (!window.isKeyDown(keyCode) && misc_keys.contains(keyCode)) {
+                misc_keys.remove(Integer.valueOf(keyCode));
             }
         }
     }
