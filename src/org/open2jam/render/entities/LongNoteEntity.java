@@ -116,7 +116,7 @@ public class LongNoteEntity extends NoteEntity
     @Override
     public void reset()
     {
-        super.reset();
+        super.reset();  // Reset NoteEntity state
         this.end_dist = null;
         this.end_time = null;
     }

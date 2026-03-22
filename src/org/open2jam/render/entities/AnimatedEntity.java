@@ -54,4 +54,16 @@ public class AnimatedEntity extends Entity
     public AnimatedEntity copy(){
         return new AnimatedEntity(this);
     }
+
+    /**
+     * Reset this animated entity to initial state for pool reuse.
+     * Called by NoteEntityPool when acquiring from pool.
+     */
+    public void reset()
+    {
+        super.reset();  // Reset Entity state
+        this.sub_frame = 0;
+        this.last_frame = 0;
+        this.loop = true;
+    }
 }

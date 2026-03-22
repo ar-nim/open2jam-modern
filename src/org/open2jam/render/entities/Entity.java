@@ -135,7 +135,7 @@ public class Entity implements Copyable<Entity>
         this.dead = false;
         this.dx = 0;
         this.dy = 0;
-        // Note: x, y are set by subclasses
+        // Note: x, y are NOT reset here - they are set by subclasses or render loop
     }
 
     /**
