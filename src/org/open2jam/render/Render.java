@@ -84,11 +84,14 @@ public class Render implements GameWindowCallback
     /** skin info and entities */
     Skin skin;
 
-    /** the mapping of note channels to KeyEvent keys  */
-    final EnumMap<Event.Channel, Integer> keyboard_map;
+    /** the mapping of note channels to KeyEvent keys (array indexed by Channel.ordinal()) */
+    private final int[] keyboardKeyCodes;
 
-    /** the mapping of note channels to KeyEvent keys  */
-    final EnumMap<Config.MiscEvent, Integer> keyboard_misc;
+    /** the mapping of misc events to KeyEvent keys (array indexed by MiscEvent.ordinal()) */
+    private final int[] keyboardMiscKeyCodes;
+
+    /** Sentinel value indicating no key is bound */
+    private static final int NO_KEY = -1;
 
     /** The window that is being used to render the game */
     final GameWindow window;
@@ -156,32 +159,35 @@ public class Render implements GameWindowCallback
 
     /** this is used by the update_note_buffer
      * to remember the "opened" long-notes */
-    private EnumMap<Event.Channel, LongNoteEntity> ln_buffer;
+    private LongNoteEntity[] ln_buffer;
 
     /** this holds the actual state of the keyboard,
      * whether each is being pressed or not */
-    EnumMap<Event.Channel,Boolean> keyboard_key_pressed;
+    private boolean[] keyboard_key_pressed;
 
-    EnumMap<Event.Channel,Entity> longflare;
+    private Entity[] longflare;
 
-    EnumMap<JudgmentResult,NumberEntity> note_counter;
-    
+    private NumberEntity[] note_counter;
+
     /** these are the same notes from the entity_matrix
      * but divided in channels for ease to pull */
-    private EnumMap<Event.Channel,LinkedList<NoteEntity>> note_channels;
+    private LinkedList<NoteEntity>[] note_channels;
+
+    /** Object pool for note entities to eliminate per-note allocations */
+    private org.open2jam.render.pool.NoteEntityPool noteEntityPool;
 
     /** entities for the key pressed events
      * need to keep track of then to kill
      * when the key is released */
-    EnumMap<Event.Channel,Entity> key_pressed_entity;
+    private Entity[] key_pressed_entity;
 
     /** keep track of the long note the player may be
      * holding with the key */
-    EnumMap<Event.Channel,LongNoteEntity> longnote_holded;
+    private LongNoteEntity[] longnote_holded;
 
     /** keep trap of the last sound of each channel
      * so that the player can re-play the sound when the key is pressed */
-    EnumMap<Event.Channel,SampleEntity> last_sound;
+    private SampleEntity[] last_sound;
 
     /** number to display the fps, and note counters on the screen */
     NumberEntity fps_entity;
@@ -299,8 +305,10 @@ public class Render implements GameWindowCallback
 
     public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm) throws SoundSystemException
     {
-        keyboard_map = Config.getKeyboardMap(Config.KeyboardType.K7);
-        keyboard_misc = Config.getKeyboardMisc();
+        // Initialize keyboard mapping arrays from Config (Component 4b - direct array return)
+        keyboardKeyCodes = Config.getKeyboardKeyCodes(Config.KeyboardType.K7);
+        keyboardMiscKeyCodes = Config.getMiscKeyCodes();
+
         window = ResourceFactory.get().getGameWindow();
 
         soundSystem = new ALSoundSystem();
@@ -471,30 +479,52 @@ public class Render implements GameWindowCallback
             Logger.global.log(Level.INFO, "No cover image on file: {0}", chart.getSource().getName());
         }
 
-	changeSpeed(0);
+        changeSpeed(0);
 
         bpm = chart.getBPM();
 
         note_layer = skin.getEntityMap().get("NOTE_1").getLayer();
 
-        // build long note buffer
-        ln_buffer = new EnumMap<Event.Channel,LongNoteEntity>(Event.Channel.class);
+        // Initialize note entity pool
+        // Pool size: chart note count + 20% buffer for safety
+        int chartNotes = chart.getNoteCount();
+        int poolSize = (int)(chartNotes * 1.2) + 50;
+        noteEntityPool = new org.open2jam.render.pool.NoteEntityPool(poolSize);
 
-        // the notes pressed buffer
-        keyboard_key_pressed = new EnumMap<Event.Channel,Boolean>(Event.Channel.class);
+        // Initialize pool with prototypes from skin
+        NoteEntity[] notePrototypes = new NoteEntity[7];
+        LongNoteEntity[] longNotePrototypes = new LongNoteEntity[7];
+        for (int i = 1; i <= 7; i++) {
+            String channelId = "NOTE_" + i;
+            try {
+                Entity e = skin.getEntityMap().get(channelId);
+                if (e instanceof NoteEntity) {
+                    notePrototypes[i-1] = (NoteEntity) e;
+                }
+                Entity ln = skin.getEntityMap().get("LONG_" + channelId);
+                if (ln instanceof LongNoteEntity) {
+                    longNotePrototypes[i-1] = (LongNoteEntity) ln;
+                }
+            } catch (Exception ex) {
+                // Channel may not exist for this key mode
+            }
+        }
+        noteEntityPool.initializePrototypes(notePrototypes, longNotePrototypes);
 
-        // reference to the notes in the buffer, separated by the channel
-        note_channels = new EnumMap<Event.Channel,LinkedList<NoteEntity>>(Event.Channel.class);
+        // Initialize channel arrays (primitive arrays replace EnumMap)
+        int numChannels = Event.Channel.values().length;
+        ln_buffer = new LongNoteEntity[numChannels];
+        keyboard_key_pressed = new boolean[numChannels];
+        note_channels = new LinkedList[numChannels];
+        key_pressed_entity = new Entity[numChannels];
+        longnote_holded = new LongNoteEntity[numChannels];
+        longflare = new Entity[numChannels];
+        last_sound = new SampleEntity[numChannels];
 
-        // entity for key pressed events
-        key_pressed_entity = new EnumMap<Event.Channel,Entity>(Event.Channel.class);
-
-        // reference to long notes being holded
-        longnote_holded = new EnumMap<Event.Channel,LongNoteEntity>(Event.Channel.class);
-
-	longflare = new EnumMap<Event.Channel, Entity> (Event.Channel.class);
-
-        last_sound = new EnumMap<Event.Channel,SampleEntity>(Event.Channel.class);
+        // Initialize note_channels lists for each channel
+        for (int i = 0; i < numChannels; i++) {
+            note_channels[i] = new LinkedList<NoteEntity>();
+        }
 
         fps_entity = (NumberEntity) skin.getEntityMap().get("FPS_COUNTER");
         entities_matrix.add(fps_entity);
@@ -537,18 +567,14 @@ public class Render implements GameWindowCallback
         entities_matrix.add(judgment_line);
 
         initLifeBar();
-        
-        for(Event.Channel c : keyboard_map.keySet())
-        {
-            keyboard_key_pressed.put(c, Boolean.FALSE);
-            note_channels.put(c, new LinkedList<NoteEntity>());
-        }
-        
-        note_counter = new EnumMap<JudgmentResult,NumberEntity>(JudgmentResult.class);
-        for(JudgmentResult s : JudgmentResult.values()){
-            NumberEntity e = (NumberEntity)skin.getEntityMap().get("COUNTER_"+s).copy();
-            note_counter.put(s, e);
-	    entities_matrix.add(note_counter.get(s));
+
+        // Initialize note_counter array (primitive array replaces EnumMap)
+        int numJudgmentResults = JudgmentResult.values().length;
+        note_counter = new NumberEntity[numJudgmentResults];
+        for (JudgmentResult s : JudgmentResult.values()) {
+            NumberEntity e = (NumberEntity) skin.getEntityMap().get("COUNTER_" + s).copy();
+            note_counter[s.ordinal()] = e;
+            entities_matrix.add(note_counter[s.ordinal()]);
         }
         start_time = lastLoopTime = SystemTimer.getTime();
 
@@ -758,24 +784,24 @@ public class Render implements GameWindowCallback
         update_fps_counter();
 
         check_misc_keyboard();
-        
+
         changeSpeed(delta); // TODO: is everything here really needed every frame ?
         updateGameSpeed(delta);
 
         if (!gameStarted && localMatching != null) {
             if (localMatching.isReady()) gameStarted = true;
         }
-        
+
         if (gameStarted) {
             gameTime += delta * effectiveSpeed;
         }
-        
+
         now = gameTime;
 
         if (AUTOSOUND) now -= audioLatency.getLatency();
-        
+
         double now_display = now + displayLatency.getLatency();
-        
+
         update_note_buffer(now, now_display);
         distance.update(now_display, delta);
 
@@ -783,55 +809,78 @@ public class Render implements GameWindowCallback
 	do_autoplay(now);
         Keyboard.poll();
         check_keyboard(now);
-        
-        for(LinkedList<Entity> layer : entities_matrix) // loop over layers
-        {
-            // get entity iterator from layer
-            // need to use iterator here because we remove() below
-            Iterator<Entity> j = layer.iterator();
-            while(j.hasNext()) // loop over entities
-            {
-                Entity e = j.next();
-                e.move(delta); // move the entity
 
-                if(e instanceof TimeEntity)
-                {
-                    TimeEntity te = (TimeEntity) e;
-                    //autoplays sounds play
-                    
-                    double timeToJudge = now;
-                    
-                    if (e instanceof SoundEntity && AUTOSOUND) {
-                        timeToJudge += audioLatency.getLatency();
-                    }
-                    
-                    if(te.getTime() - timeToJudge <= 0 && gameStarted) te.judgment();
+        // Create final copies for lambda capture
+        final double finalNow = now;
+        final double finalNowDisplay = now_display;
 
-                    NoteEntity ne = e instanceof NoteEntity ? (NoteEntity)e : null;
-                    
-                    double y = getViewport() - distance.calculate(now_display, te.getTime(), speed, ne);
+        // Process all layers and entities using optimized flat array iteration
+        // Zero allocation, O(1) removals via shift-remove
+        // Dead entities are released back to the pool for reuse
+        entities_matrix.processAll(e -> {
+            e.move(delta); // move the entity
 
-                    //TODO Fix this, maybe an option in the skin
-                    //o2jam overlaps 1 px of the note with the measure and, because of this
-                    //our skin should do it too xD
-                    if(e instanceof MeasureEntity) y -= 1;
-                    
-		    if(!(e instanceof BgaEntity))
-			e.setPos(e.getX(), y);
-                    
-                    if(e instanceof LongNoteEntity) {
-                        LongNoteEntity lne = (LongNoteEntity)e;
-                        double ey = getViewport() - distance.calculate(now_display, lne.getEndTime(), speed, ne);
-                        lne.setEndDistance(Math.abs(ey - y));
-                    }
+            if (e instanceof TimeEntity) {
+                TimeEntity te = (TimeEntity) e;
+                // autoplays sounds play
 
-                    if(e instanceof NoteEntity) check_judgment((NoteEntity)e, now);
+                double timeToJudge = finalNow;
+
+                if (e instanceof SoundEntity && AUTOSOUND) {
+                    timeToJudge += audioLatency.getLatency();
                 }
 
-                if(e.isDead())j.remove();
-                else e.draw();
+                if (te.getTime() - timeToJudge <= 0 && gameStarted) te.judgment();
+
+                NoteEntity ne = e instanceof NoteEntity ? (NoteEntity) e : null;
+
+                double y = getViewport() - distance.calculate(finalNowDisplay, te.getTime(), speed, ne);
+
+                // TODO Fix this, maybe an option in the skin
+                // o2jam overlaps 1 px of the note with the measure and, because of this
+                // our skin should do it too xD
+                if (e instanceof MeasureEntity) y -= 1;
+
+                if (!(e instanceof BgaEntity))
+                    e.setPos(e.getX(), y);
+
+                if (e instanceof LongNoteEntity) {
+                    LongNoteEntity lne = (LongNoteEntity) e;
+                    double ey = getViewport() - distance.calculate(finalNowDisplay, lne.getEndTime(), speed, ne);
+                    lne.setEndDistance(Math.abs(ey - y));
+                }
+
+                if (e instanceof NoteEntity) check_judgment((NoteEntity) e, finalNow);
             }
-        }
+
+            // CRITICAL: Match original behavior exactly
+            // Original: if(e.isDead()) j.remove(); else e.draw();
+            // Entity marked dead during processing (e.g., in check_judgment) should NOT be drawn
+            if (!e.isDead()) {
+                e.draw();
+            }
+        }, e -> {
+            // Release dead notes back to the pool for reuse
+            if (e instanceof NoteEntity) {
+                NoteEntity ne = (NoteEntity) e;
+                // Remove from note_channels tracking list before releasing to pool
+                int chIndex = ne.getChannel().ordinal();
+                LinkedList<NoteEntity> channelList = note_channels[chIndex];
+                if (channelList != null) {
+                    channelList.remove(ne);
+                }
+                noteEntityPool.release(ne);
+            } else if (e instanceof LongNoteEntity) {
+                LongNoteEntity lne = (LongNoteEntity) e;
+                // Remove from note_channels tracking list before releasing to pool
+                int chIndex = lne.getChannel().ordinal();
+                LinkedList<NoteEntity> channelList = note_channels[chIndex];
+                if (channelList != null) {
+                    channelList.remove(lne);
+                }
+                noteEntityPool.release(lne);
+            }
+        });
 
         int y = 300;
         
@@ -959,38 +1008,39 @@ public class Render implements GameWindowCallback
 
     void do_autoplay(double now)
     {
-        for(Event.Channel c : keyboard_map.keySet())
-        {
-            if(!c.isAutoplay()) continue;
-	    NoteEntity ne = nextNoteKey(c);
+        // Iterate over keyboard key codes using array indexing
+        for (int ch = 0; ch < keyboardKeyCodes.length; ch++) {
+            if (keyboardKeyCodes[ch] == NO_KEY) continue;  // No key bound
+            Event.Channel c = Event.Channel.values()[ch];
+            if (!c.isAutoplay()) continue;
+            NoteEntity ne = nextNoteKey(c);
 
-            if(ne == null)continue;
+            if (ne == null) continue;
 
             double hit = ne.testTimeHit(now);
-            if(hit > AUTOPLAY_THRESHOLD)continue;
+            if (hit > AUTOPLAY_THRESHOLD) continue;
             ne.updateHit(now, effectiveJudgmentFactor);
-            
-            if(ne instanceof LongNoteEntity)
-            {
-                if(ne.getState() == NoteEntity.State.NOT_JUDGED)
-                {
+
+            int chIndex = c.ordinal();
+            if (ne instanceof LongNoteEntity) {
+                if (ne.getState() == NoteEntity.State.NOT_JUDGED) {
                     disableAutoSound = false;
                     ne.keysound();
                     ne.setState(NoteEntity.State.LN_HEAD_JUDGE);
-                    Entity ee = skin.getEntityMap().get("PRESSED_"+ne.getChannel()).copy();
+                    Entity ee = skin.getEntityMap().get("PRESSED_" + ne.getChannel()).copy();
                     entities_matrix.add(ee);
-                    Entity to_kill = key_pressed_entity.put(ne.getChannel(), ee);
-                    if(to_kill != null)to_kill.setDead(true);
-                }
-                else if(ne.getState() == NoteEntity.State.LN_HOLD)
-                {
+                    Entity to_kill = key_pressed_entity[chIndex];
+                    key_pressed_entity[chIndex] = ee;
+                    if (to_kill != null) to_kill.setDead(true);
+                } else if (ne.getState() == NoteEntity.State.LN_HOLD) {
                     ne.setState(NoteEntity.State.JUDGE);
-                    longflare.get(ne.getChannel()).setDead(true); //let's kill the longflare effect
-                    key_pressed_entity.get(ne.getChannel()).setDead(true);
+                    Entity lf = longflare[chIndex];
+                    if (lf != null) lf.setDead(true);
+                    longflare[chIndex] = null;
+                    Entity kp = key_pressed_entity[chIndex];
+                    if (kp != null) kp.setDead(true);
                 }
-            }
-            else
-            {
+            } else {
                 disableAutoSound = false;
                 ne.keysound();
                 ne.setState(NoteEntity.State.JUDGE);
@@ -1004,52 +1054,52 @@ public class Render implements GameWindowCallback
 
     public void check_keyboard(double now)
     {
-        
         if (window.isKeyDown(Keyboard.KEY_RETURN) && server != null) {
             server.startGame();
             server = null;
         }
-        
-	for(Map.Entry<Event.Channel,Integer> entry : keyboard_map.entrySet())
-        {
-            Event.Channel c = entry.getKey();
-	    if(c.isAutoplay()) continue;
-            
-            boolean keyDown = window.isKeyDown(entry.getValue());
-            boolean keyWasDown = keyboard_key_pressed.get(c);
-            
-            if(keyDown && !keyWasDown){ // started holding now
-                
-                if (!gameStarted && localMatching == null) gameStarted = true;  
-                
-                keyboard_key_pressed.put(c, true);
-                Entity baseEntity = skin.getEntityMap().get("PRESSED_"+c);
+
+        // Iterate over keyboard key codes using array indexing
+        for (int ch = 0; ch < keyboardKeyCodes.length; ch++) {
+            if (keyboardKeyCodes[ch] == NO_KEY) continue;  // No key bound
+            Event.Channel c = Event.Channel.values()[ch];
+            if (c.isAutoplay()) continue;
+
+            boolean keyDown = window.isKeyDown(keyboardKeyCodes[ch]);
+            boolean keyWasDown = keyboard_key_pressed[ch];
+
+            if (keyDown && !keyWasDown) { // started holding now
+                if (!gameStarted && localMatching == null) gameStarted = true;
+
+                keyboard_key_pressed[ch] = true;
+                Entity baseEntity = skin.getEntityMap().get("PRESSED_" + c);
                 Entity to_kill = null;
-                
+
                 if (baseEntity != null) {
                     Entity ee = baseEntity.copy();
                     entities_matrix.add(ee);
-                    to_kill = key_pressed_entity.put(c, ee);
+                    to_kill = key_pressed_entity[ch];
+                    key_pressed_entity[ch] = ee;
                 }
-                
-                if(to_kill != null)to_kill.setDead(true);
+
+                if (to_kill != null) to_kill.setDead(true);
 
                 NoteEntity e = nextNoteKey(c);
-                if(e == null){
-                    SampleEntity i = last_sound.get(c);
-                    if(i != null) i.extrasound();
+                if (e == null) {
+                    SampleEntity i = last_sound[ch];
+                    if (i != null) i.extrasound();
                     continue;
                 }
 
                 e.updateHit(now, effectiveJudgmentFactor);
 
                 // don't continue if the note is too far
-                if(judge.accept(e)) {
+                if (judge.accept(e)) {
                     disableAutoSound = false;
                     e.keysound();
-                    if(e instanceof LongNoteEntity) {
-                        longnote_holded.put(c, (LongNoteEntity) e);
-                        if(e.getState() == NoteEntity.State.NOT_JUDGED)
+                    if (e instanceof LongNoteEntity) {
+                        longnote_holded[ch] = (LongNoteEntity) e;
+                        if (e.getState() == NoteEntity.State.NOT_JUDGED)
                             e.setState(NoteEntity.State.LN_HEAD_JUDGE);
                     } else {
                         e.setState(NoteEntity.State.JUDGE);
@@ -1057,26 +1107,25 @@ public class Render implements GameWindowCallback
                 } else {
                     e.getSampleEntity().extrasound();
                 }
-                
-            }else if(!keyDown && keyWasDown) { // key released now
 
-                keyboard_key_pressed.put(c, false);
-                Entity to_kill = key_pressed_entity.get(c);
-                
-                if(to_kill != null)to_kill.setDead(true);
+            } else if (!keyDown && keyWasDown) { // key released now
+                keyboard_key_pressed[ch] = false;
+                Entity to_kill = key_pressed_entity[ch];
 
-                Entity lf = longflare.remove(c);
-                if(lf !=null)lf.setDead(true);
-                
-                LongNoteEntity e = longnote_holded.remove(c);
-                if(e == null || e.getState() != NoteEntity.State.LN_HOLD)continue;
+                if (to_kill != null) to_kill.setDead(true);
+
+                Entity lf = longflare[ch];
+                longflare[ch] = null;
+                if (lf != null) lf.setDead(true);
+
+                LongNoteEntity e = longnote_holded[ch];
+                longnote_holded[ch] = null;
+                if (e == null || e.getState() != NoteEntity.State.LN_HOLD) continue;
 
                 e.updateHit(now, effectiveJudgmentFactor);
                 e.setState(NoteEntity.State.JUDGE);
-                
             }
         }
-        
     }
     
     private void autosync(double hit) {
@@ -1111,25 +1160,29 @@ public class Render implements GameWindowCallback
                 ne.updateHit(now, effectiveJudgmentFactor);
                 if (judge.missed(ne)) {
                     setNoteJudgment(ne, JudgmentResult.MISS);
-                    
+
                     // kill the long flare
-                    Entity lf = longflare.remove(ne.getChannel());
-                    if(lf !=null)lf.setDead(true);
+                    int chIndex = ne.getChannel().ordinal();
+                    Entity lf = longflare[chIndex];
+                    longflare[chIndex] = null;
+                    if (lf != null) lf.setDead(true);
                 }
                 break;
 
             case LN_HEAD_JUDGE: //LN: Head has been played
-  
+
                 result = judge.judge(ne);
                 setNoteJudgment(ne, result);
-                    
+
                 // display the long flare and kill the old one
                 if (result != JudgmentResult.MISS) {
                     Entity ee = skin.getEntityMap().get("EFFECT_LONGFLARE").copy();
-                    ee.setPos(ne.getX()+ne.getWidth()/2-ee.getWidth()/2,ee.getY());
+                    ee.setPos(ne.getX() + ne.getWidth() / 2 - ee.getWidth() / 2, ee.getY());
                     entities_matrix.add(ee);
-                    Entity to_kill = longflare.put(ne.getChannel(),ee);
-                    if(to_kill != null)to_kill.setDead(true);
+                    int chIndex = ne.getChannel().ordinal();
+                    Entity to_kill = longflare[chIndex];
+                    longflare[chIndex] = ee;
+                    if (to_kill != null) to_kill.setDead(true);
 
                     ne.setState(NoteEntity.State.LN_HOLD);
                 } else {
@@ -1161,12 +1214,12 @@ public class Render implements GameWindowCallback
         }
         
         // display the judgment
-        if(judgment_entity != null)judgment_entity.setDead(true);
-        judgment_entity = skin.getEntityMap().get("EFFECT_"+result).copy();
+        if (judgment_entity != null) judgment_entity.setDead(true);
+        judgment_entity = skin.getEntityMap().get("EFFECT_" + result).copy();
         entities_matrix.add(judgment_entity);
 
         // add to the statistics
-        note_counter.get(result).incNumber();
+        note_counter[result.ordinal()].incNumber();
         
         // for cool: display the effect
         if (result == JudgmentResult.COOL || result == JudgmentResult.GOOD) {
@@ -1329,16 +1382,16 @@ public class Render implements GameWindowCallback
      ** no such note in the moment **/
     NoteEntity nextNoteKey(Event.Channel c)
     {
-        if(note_channels.get(c).isEmpty())return null;
-        NoteEntity ne = note_channels.get(c).getFirst();
-        while(ne.getState() != NoteEntity.State.NOT_JUDGED &&
-            ne.getState() != NoteEntity.State.LN_HOLD)
-        {
-            note_channels.get(c).removeFirst();
-            if(note_channels.get(c).isEmpty())return null;
-            ne = note_channels.get(c).getFirst();
+        int chIndex = c.ordinal();
+        if (note_channels[chIndex].isEmpty()) return null;
+        NoteEntity ne = note_channels[chIndex].getFirst();
+        while (ne.getState() != NoteEntity.State.NOT_JUDGED &&
+               ne.getState() != NoteEntity.State.LN_HOLD) {
+            note_channels[chIndex].removeFirst();
+            if (note_channels[chIndex].isEmpty()) return null;
+            ne = note_channels[chIndex].getFirst();
         }
-        last_sound.put(c, ne.getSampleEntity());
+        last_sound[chIndex] = ne.getSampleEntity();
         return ne;
     }
 
@@ -1350,75 +1403,78 @@ public class Render implements GameWindowCallback
     **/
     void update_note_buffer(double now, double now_display)
     {
-        while(buffer_iterator.hasNext() && getViewport() - distance.calculate(now_display, buffer_timer, speed, null) > -10)
-        {
+        while (buffer_iterator.hasNext() && getViewport() - distance.calculate(now_display, buffer_timer, speed, null) > -10) {
             Event e = buffer_iterator.next();
 
             buffer_timer = e.getTime();
-            
-            switch(e.getChannel())
-            {
+
+            switch (e.getChannel()) {
                 case MEASURE:
                     MeasureEntity m = (MeasureEntity) skin.getEntityMap().get("MEASURE_MARK").copy();
                     m.setTime(e.getTime());
                     m.setOnJudge(increaseMeasureRunnable);
                     entities_matrix.add(m);
-		    
                 break;
-                    
-                case NOTE_1:case NOTE_2:
-                case NOTE_3:case NOTE_4:
-                case NOTE_5:case NOTE_6:case NOTE_7:
-                if(e.getFlag() == Event.Flag.NONE){
-		    if(ln_buffer.containsKey(e.getChannel()))
-			Logger.global.log(Level.WARNING, "There is a none in the current long {0} @ "+e.getTotalPosition(), e.getChannel());
-                    NoteEntity n = (NoteEntity) skin.getEntityMap().get(e.getChannel().toString()).copy();
-                    n.setTime(e.getTime());
-		    
-                    assignSample(n, e);
-		    
-		    entities_matrix.add(n);
-                    note_channels.get(n.getChannel()).add(n);
-                }
-                else if(e.getFlag() == Event.Flag.HOLD){
-		    if(ln_buffer.containsKey(e.getChannel()))
-			Logger.global.log(Level.WARNING, "There is a hold in the current long {0} @ "+e.getTotalPosition(), e.getChannel());
-                    LongNoteEntity ln = (LongNoteEntity) skin.getEntityMap().get("LONG_"+e.getChannel()).copy();
-                    ln.setTime(e.getTime());
-		    
-                    assignSample(ln, e);
-		    
-		    entities_matrix.add(ln);
-		    ln_buffer.put(e.getChannel(),ln);
-                    note_channels.get(ln.getChannel()).add(ln);
-                }
-                else if(e.getFlag() == Event.Flag.RELEASE){
-                    LongNoteEntity lne = ln_buffer.remove(e.getChannel());
-                    if(lne == null){
-                        Logger.global.log(Level.WARNING, "Attempted to RELEASE note {0} @ "+e.getTotalPosition(), e.getChannel());
-                    }else{
+
+                case NOTE_1: case NOTE_2:
+                case NOTE_3: case NOTE_4:
+                case NOTE_5: case NOTE_6: case NOTE_7:
+                if (e.getFlag() == Event.Flag.NONE) {
+                    int chIndex = e.getChannel().ordinal();
+                    if (ln_buffer[chIndex] != null)
+                        Logger.global.log(Level.WARNING, "There is a none in the current long {0} @ " + e.getTotalPosition(), e.getChannel());
+                    // Use pooled note entity instead of copy()
+                    NoteEntity n = noteEntityPool.acquireNote(e.getChannel(), e.getTime());
+                    if (n != null) {
+                        assignSample(n, e);
+                        entities_matrix.add(n);
+                        note_channels[chIndex].add(n);
+                    } else {
+                        Logger.global.log(Level.SEVERE, "Note pool exhausted! Channel: " + e.getChannel());
+                    }
+                } else if (e.getFlag() == Event.Flag.HOLD) {
+                    int chIndex = e.getChannel().ordinal();
+                    if (ln_buffer[chIndex] != null)
+                        Logger.global.log(Level.WARNING, "There is a hold in the current long {0} @ " + e.getTotalPosition(), e.getChannel());
+                    // Use pooled long note entity instead of copy()
+                    LongNoteEntity ln = noteEntityPool.acquireLongNote(e.getChannel(), e.getTime());
+                    if (ln != null) {
+                        assignSample(ln, e);
+                        entities_matrix.add(ln);
+                        ln_buffer[chIndex] = ln;
+                        note_channels[chIndex].add(ln);
+                    } else {
+                        Logger.global.log(Level.SEVERE, "Long note pool exhausted! Channel: " + e.getChannel());
+                    }
+                } else if (e.getFlag() == Event.Flag.RELEASE) {
+                    int chIndex = e.getChannel().ordinal();
+                    LongNoteEntity lne = ln_buffer[chIndex];
+                    ln_buffer[chIndex] = null;
+                    if (lne == null) {
+                        Logger.global.log(Level.WARNING, "Attempted to RELEASE note {0} @ " + e.getTotalPosition(), e.getChannel());
+                    } else {
                         lne.setEndTime(e.getTime());
                     }
                 }
                 break;
-		case BGA:
-		    if(!bgaEntity.isVideo) {
-			Sprite sprite = null;
-			if(bga_sprites.containsKey((int)e.getValue()))
-			    sprite = bga_sprites.get((int)e.getValue());
-			if(sprite == null) break;
-			sprite.setScale(1f, 1f);
-			bgaEntity.setSprite(sprite);
-		    }
-		    
-		    bgaEntity.setTime(e.getTime());
-		break;
-		    
+                case BGA:
+                    if (!bgaEntity.isVideo) {
+                        Sprite sprite = null;
+                        if (bga_sprites.containsKey((int) e.getValue()))
+                            sprite = bga_sprites.get((int) e.getValue());
+                        if (sprite == null) break;
+                        sprite.setScale(1f, 1f);
+                        bgaEntity.setSprite(sprite);
+                    }
+
+                    bgaEntity.setTime(e.getTime());
+                break;
+
                 //TODO ADD SUPPORT
                 case NOTE_SC:
-                case NOTE_8:case NOTE_9:
-                case NOTE_10:case NOTE_11:
-                case NOTE_12:case NOTE_13:case NOTE_14:
+                case NOTE_8: case NOTE_9:
+                case NOTE_10: case NOTE_11:
+                case NOTE_12: case NOTE_13: case NOTE_14:
                 case NOTE_SC2:
 
                 case AUTO_PLAY:
@@ -1458,15 +1514,15 @@ public class Render implements GameWindowCallback
 
     void check_misc_keyboard()
     {
-	    for(Map.Entry<Config.MiscEvent,Integer> entry : keyboard_misc.entrySet())
-        {
-            Config.MiscEvent event  = entry.getKey();
+        // Iterate over misc key codes using array indexing
+        for (int i = 0; i < keyboardMiscKeyCodes.length; i++) {
+            if (keyboardMiscKeyCodes[i] == NO_KEY) continue;  // No key bound
+            Config.MiscEvent event = Config.MiscEvent.values()[i];
+            int keyCode = keyboardMiscKeyCodes[i];
 
-            if(window.isKeyDown(entry.getValue()) && !misc_keys.contains(entry.getValue())) // this key is being pressed
-            {
-                misc_keys.add(entry.getValue());
-                switch(event)
-                {
+            if (window.isKeyDown(keyCode) && !misc_keys.contains(keyCode)) {
+                misc_keys.add(keyCode);
+                switch (event) {
                     case SPEED_UP:
                         speedObj.increase();
                     break;
@@ -1494,10 +1550,8 @@ public class Render implements GameWindowCallback
                         change_bgm_volume(-VOLUME_FACTOR);
                     break;
                 }
-            }
-            else if(!window.isKeyDown(entry.getValue()) && misc_keys.contains(entry.getValue()))
-            {
-                misc_keys.remove(entry.getValue());
+            } else if (!window.isKeyDown(keyCode) && misc_keys.contains(keyCode)) {
+                misc_keys.remove(Integer.valueOf(keyCode));
             }
         }
     }
@@ -1563,23 +1617,25 @@ public class Render implements GameWindowCallback
                     frac_measure = e.getValue();
                 break;
 
-                case NOTE_1:case NOTE_2:
-                case NOTE_3:case NOTE_4:
-                case NOTE_5:case NOTE_6:case NOTE_7:
+                case NOTE_1: case NOTE_2:
+                case NOTE_3: case NOTE_4:
+                case NOTE_5: case NOTE_6: case NOTE_7:
                 case NOTE_SC:
-                case NOTE_8:case NOTE_9:
-                case NOTE_10:case NOTE_11:
-                case NOTE_12:case NOTE_13:case NOTE_14:
+                case NOTE_8: case NOTE_9:
+                case NOTE_10: case NOTE_11:
+                case NOTE_12: case NOTE_13: case NOTE_14:
                 case NOTE_SC2:
                 case AUTO_PLAY:
-		case BGA:
-                    
-                    if (!last_sound.containsKey(e.getChannel()) && e.getSample() != null) {
-                        last_sound.put(e.getChannel(), createSampleEntity(e, false));
+                case BGA:
+                {
+                    int chIndex = e.getChannel().ordinal();
+                    if (last_sound[chIndex] == null && e.getSample() != null) {
+                        last_sound[chIndex] = createSampleEntity(e, false);
                     }
-                    
+
                     e.setTime(timer + e.getOffset());
-		    if(e.getOffset() != 0) System.out.println("offset: "+e.getOffset()+" timer: "+(timer+e.getOffset()));
+                    if (e.getOffset() != 0) System.out.println("offset: " + e.getOffset() + " timer: " + (timer + e.getOffset()));
+                }
                 break;
                     
                 case MEASURE:

@@ -126,4 +126,24 @@ public class Entity implements Copyable<Entity>
     public Entity copy() {
         return new Entity(this);
     }
+
+    /**
+     * Reset this entity to initial state for pool reuse.
+     */
+    public void reset()
+    {
+        this.dead = false;
+        this.dx = 0;
+        this.dy = 0;
+        // Note: x, y are NOT reset here - they are set by subclasses or render loop
+    }
+
+    /**
+     * Initialize entity with channel and time (for pooling).
+     * Subclasses override to set channel-specific properties.
+     */
+    public void initialize(org.open2jam.parsers.Event.Channel channel, double time)
+    {
+        // Base implementation does nothing
+    }
 }

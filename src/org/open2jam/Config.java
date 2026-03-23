@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.open2jam.render.lwjgl.Keyboard;
@@ -155,10 +156,47 @@ public abstract class Config
     public static EnumMap<Event.Channel,Integer> getKeyboardMap(KeyboardType kt){
         return (EnumMap<Channel, Integer>) get("keyboard_map"+kt.toString());
     }
-    
+
+    /**
+     * Get keyboard mapping as primitive int array for zero-allocation gameplay.
+     * Array is indexed by Event.Channel.ordinal().
+     * Returns -1 for unbound keys.
+     * 
+     * @param kt Keyboard type (K4-K8)
+     * @return int array of key codes, indexed by channel ordinal
+     */
+    @SuppressWarnings("unchecked")
+    public static int[] getKeyboardKeyCodes(KeyboardType kt) {
+        EnumMap<Event.Channel, Integer> keyboardMap = (EnumMap<Channel, Integer>) get("keyboard_map"+kt.toString());
+        int[] keyCodes = new int[Event.Channel.values().length];
+        java.util.Arrays.fill(keyCodes, -1);
+        for (Map.Entry<Event.Channel, Integer> entry : keyboardMap.entrySet()) {
+            keyCodes[entry.getKey().ordinal()] = entry.getValue();
+        }
+        return keyCodes;
+    }
+
     @SuppressWarnings("unchecked")
     public static EnumMap<MiscEvent,Integer> getKeyboardMisc(){
         return (EnumMap<MiscEvent, Integer>) get("keyboard_misc");
+    }
+
+    /**
+     * Get misc key mapping as primitive int array for zero-allocation gameplay.
+     * Array is indexed by Config.MiscEvent.ordinal().
+     * Returns -1 for unbound keys.
+     * 
+     * @return int array of key codes, indexed by misc event ordinal
+     */
+    @SuppressWarnings("unchecked")
+    public static int[] getMiscKeyCodes() {
+        EnumMap<MiscEvent, Integer> keyboardMisc = (EnumMap<MiscEvent, Integer>) get("keyboard_misc");
+        int[] keyCodes = new int[MiscEvent.values().length];
+        java.util.Arrays.fill(keyCodes, -1);
+        for (Map.Entry<MiscEvent, Integer> entry : keyboardMisc.entrySet()) {
+            keyCodes[entry.getKey().ordinal()] = entry.getValue();
+        }
+        return keyCodes;
     }
     
     public static void setKeyboardMisc(EnumMap<MiscEvent,Integer> km_map)
