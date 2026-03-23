@@ -39,6 +39,7 @@ import org.open2jam.render.Render;
 import org.open2jam.game.judgment.BeatJudgment;
 import org.open2jam.game.judgment.TimeJudgment;
 import org.open2jam.sound.SoundSystemException;
+import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -1157,7 +1158,7 @@ public class MusicSelection extends javax.swing.JPanel
 
             // CRITICAL: Run game loop directly on EDT for Wayland compatibility
             // GLFW operations (glfwSwapBuffers, glfwPollEvents) MUST run on main thread
-            Logger.global.info("Starting game on EDT for Wayland compatibility");
+            DebugLogger.debug("Starting game on EDT for Wayland compatibility");
             this.setEnabled(false);
             r.startRendering();
             // Game ended - re-enable and bring to front
@@ -1173,7 +1174,7 @@ public class MusicSelection extends javax.swing.JPanel
                     window.repaint();
                 }
             });
-            Logger.global.info("Game ended, GUI re-enabled and brought to front");
+            DebugLogger.debug("Game ended, GUI re-enabled and brought to front");
         } catch (SoundSystemException ex) {
             java.util.logging.Logger.getLogger(MusicSelection.class.getName()).log(Level.SEVERE, "{0}", ex);
         }

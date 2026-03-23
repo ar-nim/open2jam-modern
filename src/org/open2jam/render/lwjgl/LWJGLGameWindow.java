@@ -10,6 +10,7 @@ import org.lwjgl.system.MemoryUtil;
 import org.open2jam.render.DisplayMode;
 import org.open2jam.render.GameWindow;
 import org.open2jam.render.GameWindowCallback;
+import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
 import java.nio.IntBuffer;
@@ -115,7 +116,7 @@ public class LWJGLGameWindow implements GameWindow {
 
         // Reset exit flag for new game session
         exitViaESC = false;
-        Logger.global.info("startRendering() called, exitViaESC reset to false");
+        DebugLogger.debug("startRendering() called, exitViaESC reset to false");
 
         // Initialize GLFW
         if (!GLFW.glfwInit()) {
@@ -146,24 +147,24 @@ public class LWJGLGameWindow implements GameWindow {
 
         // Verify context is current
         long currentContext = GLFW.glfwGetCurrentContext();
-        Logger.global.info("GLFW Context check: windowHandle=" + windowHandle + " currentContext=" + currentContext);
+        DebugLogger.debug("GLFW Context check: windowHandle=" + windowHandle + " currentContext=" + currentContext);
         if (currentContext != windowHandle) {
             throw new RuntimeException("Failed to make OpenGL context current. Current: " + currentContext + " Expected: " + windowHandle);
         }
 
         // Initialize OpenGL capabilities
-        Logger.global.info("Creating GL capabilities...");
+        DebugLogger.debug("Creating GL capabilities...");
         capabilities = GL.createCapabilities();
-        Logger.global.info("GL capabilities created: " + (capabilities != null));
+        DebugLogger.debug("GL capabilities created: " + (capabilities != null));
         if (capabilities == null) {
             throw new RuntimeException("Failed to create OpenGL capabilities");
         }
-        
+
         // Log OpenGL info
-        Logger.global.info("OpenGL Version: " + GL11.glGetString(GL11.GL_VERSION));
-        Logger.global.info("GLSL Version: " + GL11.glGetString(GL32.GL_SHADING_LANGUAGE_VERSION));
-        Logger.global.info("Renderer: " + GL11.glGetString(GL11.GL_RENDERER));
-        Logger.global.info("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
+        DebugLogger.debug("OpenGL Version: " + GL11.glGetString(GL11.GL_VERSION));
+        DebugLogger.debug("GLSL Version: " + GL11.glGetString(GL32.GL_SHADING_LANGUAGE_VERSION));
+        DebugLogger.debug("Renderer: " + GL11.glGetString(GL11.GL_RENDERER));
+        DebugLogger.debug("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
 
         // Get framebuffer size (may differ from window size on HiDPI)
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -186,9 +187,9 @@ public class LWJGLGameWindow implements GameWindow {
         GLFW.glfwShowWindow(windowHandle);
 
         // Enable textures
-        Logger.global.info("Calling glEnable(GL_TEXTURE_2D)...");
+        DebugLogger.debug("Calling glEnable(GL_TEXTURE_2D)...");
         GL11.glEnable(GL11.GL_TEXTURE_2D);
-        Logger.global.info("Done glEnable");
+        DebugLogger.debug("Done glEnable");
 
         // Disable depth test for 2D rendering
         GL11.glDisable(GL11.GL_DEPTH_TEST);
@@ -205,14 +206,14 @@ public class LWJGLGameWindow implements GameWindow {
         GL11.glScissor(0, 0, width, height);
 
         // Setup projection matrix
-        Logger.global.info("Calling glMatrixMode(GL_PROJECTION)...");
+        DebugLogger.debug("Calling glMatrixMode(GL_PROJECTION)...");
         GL11.glMatrixMode(GL11.GL_PROJECTION);
-        Logger.global.info("Done glMatrixMode");
+        DebugLogger.debug("Done glMatrixMode");
         GL11.glLoadIdentity();
         GL11.glOrtho(0, width, height, 0, -1, 1);
-        Logger.global.info("Calling glMatrixMode(GL_MODELVIEW)...");
+        DebugLogger.debug("Calling glMatrixMode(GL_MODELVIEW)...");
         GL11.glMatrixMode(GL11.GL_MODELVIEW);
-        Logger.global.info("Done glMatrixMode");
+        DebugLogger.debug("Done glMatrixMode");
         GL11.glLoadIdentity();
 
         // Initialize texture loader
@@ -234,7 +235,7 @@ public class LWJGLGameWindow implements GameWindow {
             // Handle ESC key - signal to stop (instant exit, no delay)
             if (key == GLFW.GLFW_KEY_ESCAPE && action == GLFW.GLFW_PRESS) {
                 exitViaESC = true;  // Mark as ESC exit (instant close)
-                Logger.global.info("ESC pressed - exitViaESC set to true, calling stopRendering()");
+                DebugLogger.debug("ESC pressed - exitViaESC set to true, calling stopRendering()");
                 stopRendering();  // ← Signal game loop to exit
             }
         });
@@ -405,13 +406,10 @@ public class LWJGLGameWindow implements GameWindow {
         shouldStop = false;
         exitViaESC = false;  // Reset for each game session
 
-        Logger.global.info("Game loop started");
+        DebugLogger.debug("Game loop started");
         int frameCount = 0;
         while (gameRunning && !shouldStop && !GLFW.glfwWindowShouldClose(windowHandle)) {
             frameCount++;
-            if (frameCount % 100 == 0) {
-                Logger.global.info("Game loop running... frame=" + frameCount + " shouldStop=" + shouldStop + " exitViaESC=" + exitViaESC);
-            }
 
             // Clear screen
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
@@ -429,12 +427,12 @@ public class LWJGLGameWindow implements GameWindow {
 
         // Loop exited - unbind context FIRST before cleanup
         // This is critical to prevent EGL/Mesa crashes
-        Logger.global.info("=== Game loop exiting === shouldStop=" + shouldStop + " exitViaESC=" + exitViaESC + " glfwWindowShouldClose=" + GLFW.glfwWindowShouldClose(windowHandle) + " frameCount=" + frameCount);
+        DebugLogger.debug("=== Game loop exiting === shouldStop=" + shouldStop + " exitViaESC=" + exitViaESC + " glfwWindowShouldClose=" + GLFW.glfwWindowShouldClose(windowHandle) + " frameCount=" + frameCount);
         GLFW.glfwMakeContextCurrent(0);  // ← Unbind context from this thread
 
-        Logger.global.info("Game loop exited, context unbound, calling destroy()...");
+        DebugLogger.debug("Game loop exited, context unbound, calling destroy()...");
         destroy();
-        Logger.global.info("Window destroyed, gameLoop() returning");
+        DebugLogger.debug("Window destroyed, gameLoop() returning");
     }
 
     @Override
@@ -453,11 +451,11 @@ public class LWJGLGameWindow implements GameWindow {
 
     @Override
     public void destroy() {
-        Logger.global.info("destroy() called, gameRunning=" + gameRunning);
-        
+        DebugLogger.debug("destroy() called, gameRunning=" + gameRunning);
+
         // Prevent recursive destroy calls
         if (!gameRunning) {
-            Logger.global.info("destroy() already called, skipping");
+            DebugLogger.debug("destroy() already called, skipping");
             return;
         }
         gameRunning = false;
@@ -465,14 +463,14 @@ public class LWJGLGameWindow implements GameWindow {
 
         // Cleanup OpenGL resources before destroying window
         if (callback != null) {
-            Logger.global.info("Calling callback.windowClosed()");
+            DebugLogger.debug("Calling callback.windowClosed()");
             callback.windowClosed();
             callback = null;
         }
 
         // Free callbacks and hide window BEFORE destroying
         if (windowHandle != 0) {
-            Logger.global.info("Freeing GLFW callbacks for window " + windowHandle);
+            DebugLogger.debug("Freeing GLFW callbacks for window " + windowHandle);
             GLFW.glfwSetKeyCallback(windowHandle, null);
             GLFW.glfwSetFramebufferSizeCallback(windowHandle, null);
             GLFW.glfwSetWindowCloseCallback(windowHandle, null);
@@ -480,7 +478,7 @@ public class LWJGLGameWindow implements GameWindow {
             // Pause for 5 seconds before hiding/closing window (only if song ended naturally)
             // ESC exit is instant - no delay
             if (!exitViaESC) {
-                Logger.global.info("Pausing 5 seconds before closing window (song ended)...");
+                DebugLogger.debug("Pausing 5 seconds before closing window (song ended)...");
                 // Pump events during delay to keep Wayland compositor responsive
                 long startTime = System.currentTimeMillis();
                 long delayMs = 5000;
@@ -493,11 +491,11 @@ public class LWJGLGameWindow implements GameWindow {
                     }
                 }
             } else {
-                Logger.global.info("ESC exit - closing window instantly (no delay)");
+                DebugLogger.debug("ESC exit - closing window instantly (no delay)");
             }
 
             // Hide window first (helps with Wayland compositors)
-            Logger.global.info("Hiding GLFW window " + windowHandle);
+            DebugLogger.debug("Hiding GLFW window " + windowHandle);
             GLFW.glfwHideWindow(windowHandle);
             GLFW.glfwPollEvents();  // Flush compositor messages
 
@@ -509,17 +507,17 @@ public class LWJGLGameWindow implements GameWindow {
             }
 
             // Destroy window (context already unbound by gameLoop)
-            Logger.global.info("Destroying GLFW window " + windowHandle);
+            DebugLogger.debug("Destroying GLFW window " + windowHandle);
             GLFW.glfwDestroyWindow(windowHandle);
             GLFW.glfwPollEvents();  // Ensure compositor processes destruction
             windowHandle = 0;
-            Logger.global.info("GLFW window destroyed");
+            DebugLogger.debug("GLFW window destroyed");
         } else {
-            Logger.global.info("Window already destroyed (windowHandle=0)");
+            DebugLogger.debug("Window already destroyed (windowHandle=0)");
         }
 
         // DO NOT call glfwTerminate() here - only at application shutdown
-        Logger.global.info("destroy() complete");
+        DebugLogger.debug("destroy() complete");
     }
 
     public boolean isWayland() {

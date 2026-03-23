@@ -912,10 +912,10 @@ public class Render implements GameWindowCallback
                 // Wait at least 3 seconds, or remaining music time if longer
                 long waitTime = Math.max(5000, (long)remainingMusicTime + 5000);
                 finish_time = System.currentTimeMillis() + waitTime;
-                Logger.global.info("=== Notes ended === gameTime=" + gameTime + "ms, musicDuration=" + (chart.getDuration()*1000) + "ms, remaining=" + remainingMusicTime + "ms, waiting " + waitTime + "ms for audio tail");
+                DebugLogger.debug("=== Notes ended === gameTime=" + gameTime + "ms, musicDuration=" + (chart.getDuration()*1000) + "ms, remaining=" + remainingMusicTime + "ms, waiting " + waitTime + "ms for audio tail");
             } else if (System.currentTimeMillis() > finish_time) {
                 // Wait time has elapsed - music should have finished
-                Logger.global.info("=== Music finished === currentTime=" + System.currentTimeMillis() + "ms, finish_time=" + finish_time + "ms - closing window...");
+                DebugLogger.debug("=== Music finished === currentTime=" + System.currentTimeMillis() + "ms, finish_time=" + finish_time + "ms - closing window...");
                 // Song ended - stop audio FIRST, then close window
                 // This prevents PipeWire crash from concurrent audio access
                 soundSystem.release();
@@ -930,12 +930,12 @@ public class Render implements GameWindowCallback
                 // Signal window to close - gameLoop will call destroy() automatically
                 // destroy() will apply 2-second delay (or instant if ESC was pressed)
                 window.stopRendering();
-                Logger.global.info("Window stop signal sent (music ended naturally)");
+                DebugLogger.debug("Window stop signal sent (music ended naturally)");
             } else {
                 // Still waiting for music to finish
                 long timeUntilFinish = finish_time - System.currentTimeMillis();
                 if (timeUntilFinish % 1000 < 50) {  // Log every second
-                    Logger.global.info("Waiting for music... " + timeUntilFinish + "ms remaining");
+                    DebugLogger.debug("Waiting for music... " + timeUntilFinish + "ms remaining");
                 }
             }
         }
