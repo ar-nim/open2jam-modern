@@ -406,27 +406,25 @@ while (SystemTimer.getTime() - loadStartTime < loadDuration) {
 
 ## Known Issues
 
-### ⚠️ Game Window Doesn't Auto-Close After Song Ends (Linux/Wayland)
+### ✅ Game Window Auto-Close (Linux/Wayland) - FIXED
 
-**Symptom:** After a song ends (or ESC is pressed), the GLFW game window remains visible even though the game logic has ended and the GUI is functional.
+**Issue:** After a song ends (or ESC is pressed), the GLFW game window remained visible on KDE Plasma/Wayland.
 
-**Current Status:** Logic is fixed (proper delays, ESC detection, duration-based ending), but the window may remain visible due to:
-- Wayland compositor caching
-- Window not being properly hidden before destruction on KDE Plasma
-- GLFW/Wayland compositor interaction issues
+**Root Cause:** Wayland compositor (KWin) caches window surfaces. Missing `glfwPollEvents()` calls after window hide/destroy operations prevented the compositor from processing destruction events.
 
-**Current Workaround:** 
-- Game logic ends correctly (5-second delay or instant ESC exit)
-- GUI window is brought to front after game ends
-- Game is fully playable - just requires manual window close after each song
-- Program functions properly even if window is ignored
+**Fix Applied:**
+- Added `GLFW.glfwPollEvents()` after `glfwHideWindow()` to flush compositor messages
+- Added `GLFW.glfwPollEvents()` after `glfwDestroyWindow()` to ensure destruction
+- Replaced blocking `Thread.sleep(5000)` with event-pumping loop during 5-second delay
 
-**Investigation Needed:**
-- May require explicit `glfwTerminate()` call after window destruction
-- May need to force Wayland compositor to refresh
-- Could be specific to KDE Plasma's KWin compositor
+**Status:** ✅ **FIXED** (March 2026). Window now closes automatically on Wayland.
 
-**Status:** ⚠️ Under investigation. Game is fully playable with minor inconvenience.
+**Files Modified:**
+- `src/org/open2jam/render/lwjgl/LWJGLGameWindow.java` (destroy() method)
+
+**Documentation:**
+- `docs/wayland-window-close-analysis.md` - Root cause analysis
+- `docs/wayland-window-close-fix.md` - Implementation report
 
 ## Configuration Files
 
@@ -489,4 +487,4 @@ No code changes required - the codebase is already compatible.
 - ✅ Loading screen with cover art (no "frozen" detection)
 - ✅ Cross-platform distribution build system (6 platforms)
 - ✅ Apple Silicon (M1/M2/M3) native support
-- ⚠️ Window auto-close: Logic fixed, manual close still needed on Linux/Wayland
+- ✅ Window auto-close fixed on Linux/Wayland (event pumping for compositor)

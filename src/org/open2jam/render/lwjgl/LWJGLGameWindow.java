@@ -481,10 +481,16 @@ public class LWJGLGameWindow implements GameWindow {
             // ESC exit is instant - no delay
             if (!exitViaESC) {
                 Logger.global.info("Pausing 5 seconds before closing window (song ended)...");
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    // Ignore
+                // Pump events during delay to keep Wayland compositor responsive
+                long startTime = System.currentTimeMillis();
+                long delayMs = 5000;
+                while (System.currentTimeMillis() - startTime < delayMs) {
+                    GLFW.glfwPollEvents();
+                    try {
+                        Thread.sleep(16);  // ~60 FPS event polling
+                    } catch (InterruptedException e) {
+                        break;
+                    }
                 }
             } else {
                 Logger.global.info("ESC exit - closing window instantly (no delay)");
@@ -493,7 +499,8 @@ public class LWJGLGameWindow implements GameWindow {
             // Hide window first (helps with Wayland compositors)
             Logger.global.info("Hiding GLFW window " + windowHandle);
             GLFW.glfwHideWindow(windowHandle);
-            
+            GLFW.glfwPollEvents();  // Flush compositor messages
+
             // Small delay to let compositor process hide
             try {
                 Thread.sleep(50);
@@ -504,6 +511,7 @@ public class LWJGLGameWindow implements GameWindow {
             // Destroy window (context already unbound by gameLoop)
             Logger.global.info("Destroying GLFW window " + windowHandle);
             GLFW.glfwDestroyWindow(windowHandle);
+            GLFW.glfwPollEvents();  // Ensure compositor processes destruction
             windowHandle = 0;
             Logger.global.info("GLFW window destroyed");
         } else {
