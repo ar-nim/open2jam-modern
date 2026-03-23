@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.*;
 import java.util.logging.Level;
+import org.open2jam.util.DebugLogger;
 import java.util.logging.Logger;
 
 /**
@@ -51,7 +52,7 @@ public class ALSoundSystem implements SoundSystem {
         // Don't initialize here - wait for initializeWithCurrentContext()
         // This allows OpenAL to be initialized on the rendering thread
         // with a current OpenGL context
-        logger.info("OpenAL sound system created (pending initialization)");
+        DebugLogger.debug("OpenAL sound system created (pending initialization)");
     }
     
     /**
@@ -62,57 +63,57 @@ public class ALSoundSystem implements SoundSystem {
         try {
             initializeOpenAL();
             initializeSourcePool();
-            logger.info("Audio engine: OpenAL (LWJGL 3)");
+            DebugLogger.debug("Audio engine: OpenAL (LWJGL 3)");
         } catch (Exception e) {
             throw new SoundSystemInitException("Failed to initialize OpenAL: " + e.getMessage(), e);
         }
     }
 
     private void initializeOpenAL() throws SoundSystemException {
-        logger.info("Opening OpenAL device...");
+        DebugLogger.debug("Opening OpenAL device...");
         // Open default device
         device = ALC10.alcOpenDevice((ByteBuffer) null);
         if (device == 0) {
             throw new SoundSystemException("Failed to open OpenAL device");
         }
-        logger.info("OpenAL device opened: " + device);
+        DebugLogger.debug("OpenAL device opened: " + device);
 
         // Create context with desired attributes
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer contextAttribs = stack.mallocInt(1);
             contextAttribs.put(0).flip(); // No special attributes
 
-            logger.info("Creating OpenAL context...");
+            DebugLogger.debug("Creating OpenAL context...");
             context = ALC10.alcCreateContext(device, contextAttribs);
             if (context == 0) {
                 ALC10.alcCloseDevice(device);
                 throw new SoundSystemException("Failed to create OpenAL context");
             }
-            logger.info("OpenAL context created: " + context);
+            DebugLogger.debug("OpenAL context created: " + context);
 
             // Make context current FIRST - this is critical for thread-local state
-            logger.info("Making context current on thread: " + Thread.currentThread().getName());
+            DebugLogger.debug("Making context current on thread: " + Thread.currentThread().getName());
             if (!ALC10.alcMakeContextCurrent(context)) {
                 ALC10.alcDestroyContext(context);
                 ALC10.alcCloseDevice(device);
                 throw new SoundSystemException("Failed to make OpenAL context current");
             }
-            logger.info("Context is now current");
+            DebugLogger.debug("Context is now current");
 
             // 1. Create the hardware device capabilities (ALC)
-            logger.info("Creating ALC capabilities for device...");
+            DebugLogger.debug("Creating ALC capabilities for device...");
             org.lwjgl.openal.ALCCapabilities deviceCaps = ALC.createCapabilities(device);
-            logger.info("ALC capabilities created: OpenALC10=" + deviceCaps.OpenALC10);
-            
+            DebugLogger.debug("ALC capabilities created: OpenALC10=" + deviceCaps.OpenALC10);
+
             // 2. Create the audio library capabilities (AL) for the current thread
             // This is REQUIRED - AL10 functions won't work without this!
-            logger.info("Creating AL capabilities for current thread...");
+            DebugLogger.debug("Creating AL capabilities for current thread...");
             AL.createCapabilities(deviceCaps);
-            logger.info("AL capabilities created");
+            DebugLogger.debug("AL capabilities created");
 
             // Verify AL is working by calling a simple function
             int err = AL10.alGetError();
-            logger.info("OpenAL initialized, alGetError() = " + err);
+            DebugLogger.debug("OpenAL initialized, alGetError() = " + err);
         }
     }
 
@@ -123,7 +124,7 @@ public class ALSoundSystem implements SoundSystem {
             sourceInUse[i] = false;
             sourceTickets[i] = -1;
         }
-        logger.info("Initialized " + MAX_SOURCES + " OpenAL sources");
+        DebugLogger.debug("Initialized " + MAX_SOURCES + " OpenAL sources");
     }
 
     @Override
@@ -170,7 +171,7 @@ public class ALSoundSystem implements SoundSystem {
         // DO NOT destroy context/device/ALC - keep them alive for next song!
         // Only destroy at application shutdown via shutdown hook
 
-        logger.info("OpenAL sound system stopped (context kept alive)");
+        DebugLogger.debug("OpenAL sound system stopped (context kept alive)");
     }
 
     @Override

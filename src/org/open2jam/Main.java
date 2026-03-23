@@ -7,6 +7,7 @@ import java.util.logging.Level;
 import javax.swing.UIManager;
 import org.lwjgl.glfw.GLFW;
 import org.open2jam.gui.Interface;
+import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
 public class Main implements Runnable
@@ -21,6 +22,9 @@ public class Main implements Runnable
     {
         // LWJGL 3 handles native libraries automatically via Gradle dependencies
         // No need to set java.library.path manually
+
+        // Parse command-line arguments
+        parseArguments(args);
 
         // Add shutdown hook to terminate GLFW at application exit
         // (OpenAL context is kept alive between songs, only destroyed at JVM exit)
@@ -45,6 +49,20 @@ public class Main implements Runnable
     @Override
     public void run() {
         new Interface().setVisible(true);
+    }
+
+    /**
+     * Parse command-line arguments.
+     * Supported options:
+     *   -debug    Enable debug logging
+     */
+    private static void parseArguments(String[] args) {
+        for (String arg : args) {
+            if ("-debug".equals(arg)) {
+                DebugLogger.setDebugEnabled(true);
+                DebugLogger.info("Debug logging enabled");
+            }
+        }
     }
 
     private static void setupLogging()

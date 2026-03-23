@@ -91,6 +91,28 @@ After building, the runnable JAR will be in `build/libs/`:
 java -jar build/libs/open2jam-modern-1.0-SNAPSHOT-all.jar
 ```
 
+### Command-Line Options
+
+| Option | Description |
+|--------|-------------|
+| `-debug` | Enable debug logging. Shows detailed initialization logs for OpenAL, GLFW, OpenGL, and game lifecycle events. |
+
+**Example:**
+```bash
+# Run with debug logging enabled
+java -jar build/libs/open2jam-modern-1.0-SNAPSHOT-all.jar -debug
+
+# Run normally (minimal logging)
+java -jar build/libs/open2jam-modern-1.0-SNAPSHOT-all.jar
+```
+
+**Debug logs include:**
+- OpenAL device/context creation
+- OpenGL capabilities and vendor info
+- GLFW window lifecycle events
+- Game loop start/exit
+- Music timing and audio tail waiting
+
 ## Configuration
 
 Configuration files are stored in the application directory:
