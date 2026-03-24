@@ -7,6 +7,7 @@ import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
+import org.open2jam.GameOptions;
 import org.open2jam.render.DisplayMode;
 import org.open2jam.render.GameWindow;
 import org.open2jam.render.GameWindowCallback;
@@ -50,6 +51,7 @@ public class LWJGLGameWindow implements GameWindow {
     private int viewportX;      // Viewport offset X for letterboxing (fullscreen only)
     private int viewportY;      // Viewport offset Y for letterboxing (fullscreen only)
     private boolean vsync;
+    private GameOptions.FpsLimiter fpsLimiter;
     private boolean fullscreen;
     private String title = "open2jam";
     private GameWindowCallback callback;
@@ -60,6 +62,10 @@ public class LWJGLGameWindow implements GameWindow {
     private GLCapabilities capabilities;
     private boolean isWayland = false;
     private TextureLoader textureLoader;
+    private int refreshRate = 60;  // Default refresh rate
+    
+    // FPS limiter: absolute target time for next frame (nanoseconds)
+    private long nextFrameTimeNs = 0;
 
     // Available display modes
     private List<DisplayMode> displayModes = new ArrayList<>();
@@ -117,7 +123,25 @@ public class LWJGLGameWindow implements GameWindow {
         this.width = dm.getWidth();
         this.height = dm.getHeight();
         this.vsync = vsync;
+        this.fpsLimiter = GameOptions.FpsLimiter.x1;  // Default to x1 if not specified
         this.fullscreen = fullscreen;
+        this.refreshRate = dm.getFrequency() > 0 ? dm.getFrequency() : 60;
+    }
+
+    /**
+     * Set display mode with FPS limiter.
+     * @param dm display mode
+     * @param vsync enable VSync
+     * @param fullscreen enable fullscreen
+     * @param fpsLimiter FPS limiter multiplier (ignored when VSync is enabled)
+     */
+    public void setDisplay(DisplayMode dm, boolean vsync, boolean fullscreen, GameOptions.FpsLimiter fpsLimiter) {
+        this.width = dm.getWidth();
+        this.height = dm.getHeight();
+        this.vsync = vsync;
+        this.fpsLimiter = fpsLimiter != null ? fpsLimiter : GameOptions.FpsLimiter.x1;
+        this.fullscreen = fullscreen;
+        this.refreshRate = dm.getFrequency() > 0 ? dm.getFrequency() : 60;
     }
 
     @Override
@@ -594,6 +618,16 @@ public class LWJGLGameWindow implements GameWindow {
 
         DebugLogger.debug("Game loop started");
         int frameCount = 0;
+
+        // Initialize FPS limiter timing
+        long targetFps = vsync ? 0 : (refreshRate * (fpsLimiter != null ? fpsLimiter.getMultiplier() : 1));
+        long targetFrameDurationNs = targetFps > 0 ? 1_000_000_000L / targetFps : 0;
+        nextFrameTimeNs = System.nanoTime();
+        
+        DebugLogger.debug("FPS Limiter: " + fpsLimiter + ", VSync: " + vsync + 
+                         ", Refresh Rate: " + refreshRate + "Hz, Target FPS: " + targetFps + 
+                         ", Target Frame Duration: " + (targetFrameDurationNs / 1_000_000.0) + "ms");
+
         while (gameRunning && !shouldStop && !GLFW.glfwWindowShouldClose(windowHandle)) {
             frameCount++;
 
@@ -603,7 +637,7 @@ public class LWJGLGameWindow implements GameWindow {
             GL11.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glEnable(GL11.GL_SCISSOR_TEST);
-            
+
             GL11.glLoadIdentity();
 
             // Apply scale
@@ -612,8 +646,42 @@ public class LWJGLGameWindow implements GameWindow {
             // Render frame
             callback.frameRendering();
 
-            // Update window
+            // Update window (swap buffers and poll events)
             update();
+
+            // FPS limiter - Hybrid spin-wait approach (only when VSync is OFF)
+            if (!vsync && fpsLimiter != null && fpsLimiter != GameOptions.FpsLimiter.Unlimited) {
+                long now;
+                
+                // 1. Sleep while we have more than 1ms remaining (saves CPU)
+                // Sleep in 1ms increments to avoid OS oversleep issues
+                while ((now = System.nanoTime()) < nextFrameTimeNs - 1_000_000L) {
+                    try {
+                        Thread.sleep(1);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+                
+                // 2. Spin-wait for the remaining < 1ms for nanosecond precision
+                // This burns a tiny fraction of CPU but guarantees exact timing
+                while ((now = System.nanoTime()) < nextFrameTimeNs) {
+                    Thread.yield(); // Yield to prevent locking up the core entirely
+                }
+                
+                // 3. Advance target time strictly (prevents drift!)
+                nextFrameTimeNs += targetFrameDurationNs;
+                
+                // 4. Catch-up prevention (spiral of death protection)
+                // If the OS froze us for too long, don't try to run at 10,000 FPS to catch up
+                if (now - nextFrameTimeNs > targetFrameDurationNs) {
+                    nextFrameTimeNs = now;
+                }
+            } else {
+                // No FPS limit - just reset timing marker
+                nextFrameTimeNs = System.nanoTime();
+            }
         }
 
         // Loop exited - unbind context FIRST before cleanup

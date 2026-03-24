@@ -1,5 +1,7 @@
 package org.open2jam.render;
 
+import org.open2jam.GameOptions;
+
 /**
  * The window in which the game will be displayed. This interface exposes just
  * enough to allow the game logic to interact with, while still maintaining an
@@ -8,19 +10,28 @@ package org.open2jam.render;
  * @author Kevin Glass
  */
 public interface GameWindow {
-	
+
 	/**
 	 * Set the title of the game window
-	 * 
+	 *
 	 * @param title The new title for the game window
 	 */
 	public void setTitle(String title);
-	
+
 	/**
 	 * Set the game display resolution
 	 *
      */
         public void setDisplay(DisplayMode dm, boolean vsync, boolean fs);
+
+	/**
+	 * Set the game display resolution with FPS limiter
+	 * @param dm display mode
+	 * @param vsync enable VSync
+	 * @param fs enable fullscreen
+	 * @param fpsLimiter FPS limiter multiplier (ignored when VSync is enabled)
+	 */
+	public void setDisplay(DisplayMode dm, boolean vsync, boolean fs, org.open2jam.GameOptions.FpsLimiter fpsLimiter);
 
 	public int getResolutionHeight();
         public int getResolutionWidth();

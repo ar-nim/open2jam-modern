@@ -42,6 +42,7 @@ public class Configuration extends JPanel {
     private JComboBox<DisplayMode> combo_displays;
     private JCheckBox jc_full_screen;
     private JCheckBox jc_vsync;
+    private JComboBox<GameOptions.FpsLimiter> combo_fpsLimiter;
     private JCheckBox jc_custom_size;
     private JTextField txt_res_width;
     private JTextField txt_res_height;
@@ -331,8 +332,19 @@ public class Configuration extends JPanel {
         jc_vsync = new JCheckBox("Use VSync");
         jc_vsync.setSelected(true);
         
+        // FPS Limiter dropdown
+        JLabel fpsLimiterLabel = new JLabel("FPS Limiter:");
+        combo_fpsLimiter = new JComboBox<>(GameOptions.FpsLimiter.values());
+        combo_fpsLimiter.setSelectedItem(GameOptions.FpsLimiter.x1);
+        updateFpsLimiterEnabled();  // Set initial enabled state
+        
+        // Add listener to update FPS limiter enabled state when VSync changes
+        jc_vsync.addItemListener(e -> updateFpsLimiterEnabled());
+
         optionsPanel.add(jc_full_screen);
         optionsPanel.add(jc_vsync);
+        optionsPanel.add(fpsLimiterLabel);
+        optionsPanel.add(combo_fpsLimiter);
         
         panel.add(optionsPanel);
         panel.add(Box.createVerticalStrut(5));
@@ -371,7 +383,7 @@ public class Configuration extends JPanel {
      */
     private void loadDisplaySettings() {
         GameOptions go = Config.getGameOptions();
-        
+
         // Select the matching display mode
         DisplayMode currentMode = go.getDisplay();
         for (int i = 0; i < combo_displays.getItemCount(); i++) {
@@ -381,21 +393,25 @@ public class Configuration extends JPanel {
                 break;
             }
         }
-        
+
         // Set fullscreen and vsync
         jc_full_screen.setSelected(go.isDisplayFullscreen());
         jc_vsync.setSelected(go.isDisplayVsync());
         
+        // Set FPS limiter
+        combo_fpsLimiter.setSelectedItem(go.getFpsLimiter());
+        updateFpsLimiterEnabled();
+
         // Set custom size if applicable
         boolean hasCustomSize = false;
         for (DisplayMode mode : displayModes) {
-            if (mode.getWidth() == currentMode.getWidth() && 
+            if (mode.getWidth() == currentMode.getWidth() &&
                 mode.getHeight() == currentMode.getHeight()) {
                 hasCustomSize = true;
                 break;
             }
         }
-        
+
         if (!hasCustomSize && currentMode.getWidth() > 0 && currentMode.getHeight() > 0) {
             jc_custom_size.setSelected(true);
             txt_res_width.setText(String.valueOf(currentMode.getWidth()));
@@ -406,11 +422,23 @@ public class Configuration extends JPanel {
     }
 
     /**
+     * Update the enabled state of the FPS limiter dropdown.
+     * Greyed out when VSync is enabled.
+     */
+    private void updateFpsLimiterEnabled() {
+        boolean vsyncEnabled = jc_vsync.isSelected();
+        combo_fpsLimiter.setEnabled(!vsyncEnabled);
+        combo_fpsLimiter.setToolTipText(vsyncEnabled ? 
+            "Disabled when VSync is enabled" : 
+            "Limit frame rate to multiple of refresh rate");
+    }
+
+    /**
      * Save display settings from UI components to GameOptions.
      */
     private void saveDisplaySettings(GameOptions go) {
         DisplayMode selectedMode = (DisplayMode) combo_displays.getSelectedItem();
-        
+
         // Check if custom size is enabled
         if (jc_custom_size.isSelected()) {
             try {
@@ -424,10 +452,11 @@ public class Configuration extends JPanel {
                 // Invalid input, use selected mode from dropdown
             }
         }
-        
+
         go.setDisplay(selectedMode);
         go.setDisplayFullscreen(jc_full_screen.isSelected());
         go.setDisplayVsync(jc_vsync.isSelected());
+        go.setFpsLimiter((GameOptions.FpsLimiter) combo_fpsLimiter.getSelectedItem());
     }
 
     private static Font font = new Font("SansSerif", Font.BOLD, 14);
