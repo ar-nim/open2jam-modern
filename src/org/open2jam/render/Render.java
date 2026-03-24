@@ -649,7 +649,9 @@ public class Render implements GameWindowCallback
 	    }
 	}
 	
-        trueTypeFont = new TrueTypeFont(new Font("Tahoma", Font.BOLD, 14), false);
+        trueTypeFont = new TrueTypeFont(new Font("SansSerif", Font.BOLD, 14), false);
+        System.out.println("[DEBUG] Render font: " + trueTypeFont.getFont().getName() + 
+                           " (family=" + trueTypeFont.getFont().getFamily() + ")");
 
         //clean up
         System.gc();

@@ -54,8 +54,10 @@ public class Configuration extends JPanel {
     private final JComboBox<String> combo_keyboardConfig;
     private final JScrollPane tKeys_scroll;
     private final JTable tKeys;
-    private final JLabel lbl_vlc;
-    private final JButton btn_vlc;
+    private JLabel lbl_vlc;
+    private JButton btn_vlc;
+    private JLabel lbl_saveFeedback;
+    private javax.swing.Timer saveFeedbackTimer;
 
     private static FileFilter vlc_filter = new FileFilter() {
         @Override
@@ -79,7 +81,9 @@ public class Configuration extends JPanel {
         displayModes = gameWindow.getAvailableDisplayModes();
 
         bSave = new JButton("Save");
-        bSave.setFont(new Font("Tahoma", 1, 11));
+        bSave.setFont(new Font("SansSerif", Font.BOLD, 11));
+        System.out.println("[DEBUG] Save button font: " + bSave.getFont().getName() + 
+                           " (family=" + bSave.getFont().getFamily() + ")");
         bSave.setMaximumSize(new java.awt.Dimension(65, 23));
         bSave.addActionListener(e -> bSaveActionPerformed());
 
@@ -119,20 +123,39 @@ public class Configuration extends JPanel {
         // Create display configuration panel
         panel_display = createDisplayPanel();
 
-        lbl_vlc = new JLabel("VLC isn't selected");
-        lbl_vlc.setAlignmentX(CENTER_ALIGNMENT);
-        btn_vlc = new JButton("Select VLC path");
-        btn_vlc.addActionListener(e -> btn_vlcActionPerformed());
+        // Create VLC selection panel
+        JPanel panel_vlc = createVLCPanel();
+
+        // Create bottom panel with display (left) and VLC (right)
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        bottomPanel.setAlignmentX(CENTER_ALIGNMENT);
+        bottomPanel.add(panel_display);
+        bottomPanel.add(panel_vlc);
 
         add(panel_keys);
         add(Box.createVerticalStrut(10));
-        add(panel_display);
+        add(bottomPanel);
         add(Box.createVerticalStrut(10));
-        add(lbl_vlc);
-        add(Box.createVerticalStrut(10));
-        add(btn_vlc);
-        add(Box.createVerticalStrut(10));
-        add(bSave);
+        
+        // Center the save button
+        JPanel savePanel = new JPanel();
+        savePanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+        savePanel.setAlignmentX(CENTER_ALIGNMENT);
+        savePanel.add(bSave);
+        add(savePanel);
+        
+        // Save feedback label (initially hidden)
+        lbl_saveFeedback = new JLabel("Settings saved successfully!", SwingConstants.CENTER);
+        lbl_saveFeedback.setAlignmentX(CENTER_ALIGNMENT);
+        lbl_saveFeedback.setForeground(new java.awt.Color(0, 128, 0));  // Green color
+        lbl_saveFeedback.setVisible(false);
+        add(lbl_saveFeedback);
+        add(Box.createVerticalStrut(10));  // Padding below feedback label
+
+        // Initialize save feedback timer
+        saveFeedbackTimer = new javax.swing.Timer(3000, e -> lbl_saveFeedback.setVisible(false));
+        saveFeedbackTimer.setRepeats(false);
 
         loadTableKeys(Config.KeyboardType.K7);
         vlc_path = Config.getGameOptions().getVLCLibraryPath();
@@ -159,14 +182,20 @@ public class Configuration extends JPanel {
         Config.setKeyboardMap(kb_map, kt);
         GameOptions op = Config.getGameOptions();
         op.setVLCLibraryPath(vlc_path);
-        
+
         // Save display settings
         saveDisplaySettings(op);
-        
+
         Config.setGameOptions(op);
+
+        // Show feedback label instead of popup
+        lbl_saveFeedback.setVisible(true);
         
-        JOptionPane.showMessageDialog(this, "Settings saved successfully!", "Save Complete", 
-                                      JOptionPane.INFORMATION_MESSAGE);
+        // Auto-hide after 3 seconds
+        if (saveFeedbackTimer.isRunning()) {
+            saveFeedbackTimer.stop();
+        }
+        saveFeedbackTimer.start();
     }
 
     private void tKeysMouseClicked(java.awt.event.MouseEvent evt) {
@@ -312,6 +341,32 @@ public class Configuration extends JPanel {
     }
 
     /**
+     * Create the VLC selection panel.
+     */
+    private JPanel createVLCPanel() {
+        JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "VLC Library"));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(LEFT_ALIGNMENT);
+
+        lbl_vlc = new JLabel("VLC isn't selected");
+        lbl_vlc.setAlignmentX(LEFT_ALIGNMENT);
+        lbl_vlc.setMaximumSize(new java.awt.Dimension(200, 16));
+
+        btn_vlc = new JButton("Select VLC path");
+        btn_vlc.setAlignmentX(LEFT_ALIGNMENT);
+        btn_vlc.addActionListener(e -> btn_vlcActionPerformed());
+
+        panel.add(lbl_vlc);
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(btn_vlc);
+        panel.add(Box.createVerticalGlue());
+
+        return panel;
+    }
+
+    /**
      * Load display settings from GameOptions into the UI components.
      */
     private void loadDisplaySettings() {
@@ -375,7 +430,12 @@ public class Configuration extends JPanel {
         go.setDisplayVsync(jc_vsync.isSelected());
     }
 
-    private static Font font = new Font("Tahoma", Font.BOLD, 14);
+    private static Font font = new Font("SansSerif", Font.BOLD, 14);
+    
+    static {
+        System.out.println("[DEBUG] Keyboard capture font: " + font.getName() + 
+                           " (family=" + font.getFamily() + ")");
+    }
 
     private int read_keyboard_key(int lastkey) throws Exception {
         String place = tKeys.getValueAt(tKeys.getSelectedRow(), 0).toString();

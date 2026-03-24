@@ -349,6 +349,19 @@ public class LWJGLGameWindow implements GameWindow {
             }
         }
 
+        // If only 1 resolution is available (Wayland/macOS), add common windowed resolutions
+        if (uniqueModes.size() == 1) {
+            DisplayMode nativeMode = uniqueModes.get(0);
+            List<DisplayMode> commonModes = getCommonWindowedModes(nativeMode);
+            // Add common modes that are smaller than native resolution
+            for (DisplayMode common : commonModes) {
+                if (common.getWidth() < nativeMode.getWidth() || 
+                    common.getHeight() < nativeMode.getHeight()) {
+                    uniqueModes.add(common);
+                }
+            }
+        }
+
         // Sort by width (descending), then height (descending), then refresh rate (descending)
         uniqueModes.sort((a, b) -> {
             int cmp = Integer.compare(b.getWidth(), a.getWidth());
@@ -359,6 +372,45 @@ public class LWJGLGameWindow implements GameWindow {
         });
 
         return uniqueModes;
+    }
+
+    /**
+     * Generate common 16:9 and 4:3 windowed resolutions for systems with only 1 native mode.
+     * Useful for Wayland and macOS where only native resolution is enumerated.
+     */
+    private List<DisplayMode> getCommonWindowedModes(DisplayMode nativeMode) {
+        List<DisplayMode> modes = new ArrayList<>();
+        int nativeWidth = nativeMode.getWidth();
+        int nativeHeight = nativeMode.getHeight();
+        int refreshRate = nativeMode.getFrequency();
+        int bpp = nativeMode.getBitsPerPixel();
+
+        // Common 16:9 resolutions (widescreen)
+        int[][] resolutions16x9 = {
+            {1920, 1080}, {1600, 900}, {1366, 768}, {1280, 720}
+        };
+
+        // Common 4:3 resolutions (classic)
+        int[][] resolutions4x3 = {
+            {1600, 1200}, {1400, 1050}, {1280, 1024}, {1280, 960},
+            {1152, 864}, {1024, 768}, {800, 600}, {640, 480}
+        };
+
+        // Add 16:9 modes
+        for (int[] res : resolutions16x9) {
+            if (res[0] <= nativeWidth && res[1] <= nativeHeight) {
+                modes.add(new DisplayMode(res[0], res[1], bpp, refreshRate));
+            }
+        }
+
+        // Add 4:3 modes
+        for (int[] res : resolutions4x3) {
+            if (res[0] <= nativeWidth && res[1] <= nativeHeight) {
+                modes.add(new DisplayMode(res[0], res[1], bpp, refreshRate));
+            }
+        }
+
+        return modes;
     }
     
     /**
