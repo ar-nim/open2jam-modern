@@ -276,15 +276,15 @@ public class LWJGLGameWindow implements GameWindow {
     /**
      * Enumerate available display modes.
      * Returns a list sorted by resolution and refresh rate.
-     * Note: May initialize GLFW temporarily if not already initialized.
+     * Note: On Wayland, only the native resolution is typically available.
      */
     public List<DisplayMode> getAvailableDisplayModes() {
         List<DisplayMode> modes = new ArrayList<>();
-        
+
         // Check if GLFW is already initialized by trying to get primary monitor
         long monitor = GLFW.glfwGetPrimaryMonitor();
         boolean needsCleanup = false;
-        
+
         if (monitor == 0) {
             // GLFW not initialized, initialize it temporarily
             if (!GLFW.glfwInit()) {
@@ -294,18 +294,33 @@ public class LWJGLGameWindow implements GameWindow {
             needsCleanup = true;
             monitor = GLFW.glfwGetPrimaryMonitor();
         }
-        
+
         try {
             if (monitor != 0) {
-                GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
-                if (vidMode != null) {
-                    // Add native resolution
-                    modes.add(new DisplayMode(
-                            vidMode.width(),
-                            vidMode.height(),
-                            vidMode.redBits() + vidMode.greenBits() + vidMode.blueBits(),
-                            vidMode.refreshRate()
-                    ));
+                // Get all available video modes for the primary monitor
+                GLFWVidMode.Buffer vidModes = GLFW.glfwGetVideoModes(monitor);
+                if (vidModes != null) {
+                    // Add all modes from the monitor
+                    for (int i = 0; i < vidModes.capacity(); i++) {
+                        GLFWVidMode mode = vidModes.get(i);
+                        modes.add(new DisplayMode(
+                                mode.width(),
+                                mode.height(),
+                                mode.redBits() + mode.greenBits() + mode.blueBits(),
+                                mode.refreshRate()
+                        ));
+                    }
+                } else {
+                    // Fallback: try glfwGetVideoMode for single mode
+                    GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
+                    if (vidMode != null) {
+                        modes.add(new DisplayMode(
+                                vidMode.width(),
+                                vidMode.height(),
+                                vidMode.redBits() + vidMode.greenBits() + vidMode.blueBits(),
+                                vidMode.refreshRate()
+                        ));
+                    }
                 }
             }
         } catch (Exception e) {
@@ -316,38 +331,34 @@ public class LWJGLGameWindow implements GameWindow {
                 GLFW.glfwTerminate();
             }
         }
-        
-        // Add standard resolutions with estimated refresh rates
-        int[][] standardResolutions = {
-                {640, 480}, {800, 600}, {1024, 768}, {1280, 720},
-                {1280, 960}, {1280, 1024}, {1366, 768}, {1440, 900},
-                {1600, 900}, {1600, 1200}, {1680, 1050}, {1920, 1080},
-                {1920, 1200}, {2560, 1440}, {3840, 2160}
-        };
-        
-        int defaultRefreshRate = 60;
-        int defaultBpp = 32;
-        
-        // Add current mode's refresh rate if available
-        if (!modes.isEmpty()) {
-            defaultRefreshRate = modes.get(0).getFrequency();
-            defaultBpp = modes.get(0).getBitsPerPixel();
+
+        // Remove duplicates (same width/height/frequency)
+        List<DisplayMode> uniqueModes = new ArrayList<>();
+        for (DisplayMode mode : modes) {
+            boolean isDuplicate = false;
+            for (DisplayMode existing : uniqueModes) {
+                if (existing.getWidth() == mode.getWidth() &&
+                    existing.getHeight() == mode.getHeight() &&
+                    existing.getFrequency() == mode.getFrequency()) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            if (!isDuplicate) {
+                uniqueModes.add(mode);
+            }
         }
-        
-        for (int[] res : standardResolutions) {
-            modes.add(new DisplayMode(res[0], res[1], defaultBpp, defaultRefreshRate));
-        }
-        
-        // Sort by width, then height, then refresh rate
-        modes.sort((a, b) -> {
-            int cmp = Integer.compare(a.getWidth(), b.getWidth());
+
+        // Sort by width (descending), then height (descending), then refresh rate (descending)
+        uniqueModes.sort((a, b) -> {
+            int cmp = Integer.compare(b.getWidth(), a.getWidth());
             if (cmp != 0) return cmp;
-            cmp = Integer.compare(a.getHeight(), b.getHeight());
+            cmp = Integer.compare(b.getHeight(), a.getHeight());
             if (cmp != 0) return cmp;
-            return Integer.compare(a.getFrequency(), b.getFrequency());
+            return Integer.compare(b.getFrequency(), a.getFrequency());
         });
-        
-        return modes;
+
+        return uniqueModes;
     }
     
     /**

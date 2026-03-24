@@ -1,9 +1,12 @@
 package org.open2jam.gui.parts;
 
+import java.awt.BorderLayout;
 import java.awt.Font;
+import java.awt.FlowLayout;
 import java.io.File;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import javax.swing.*;
@@ -13,6 +16,8 @@ import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.parsers.Event;
+import org.open2jam.render.DisplayMode;
+import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.lwjgl.TrueTypeFont;
 import org.open2jam.util.Logger;
 import org.lwjgl.glfw.GLFW;
@@ -32,8 +37,19 @@ public class Configuration extends JPanel {
     private HashMap<Integer, Event.Channel> table_map = new HashMap<>();
     private String vlc_path;
 
+    // Display configuration fields
+    private List<DisplayMode> displayModes;
+    private JComboBox<DisplayMode> combo_displays;
+    private JCheckBox jc_full_screen;
+    private JCheckBox jc_vsync;
+    private JCheckBox jc_custom_size;
+    private JTextField txt_res_width;
+    private JTextField txt_res_height;
+    private JLabel lbl_res_x;
+
     private final JButton bSave;
     private final JPanel panel_keys;
+    private final JPanel panel_display;
     private final JLabel jLabel1;
     private final JComboBox<String> combo_keyboardConfig;
     private final JScrollPane tKeys_scroll;
@@ -57,6 +73,10 @@ public class Configuration extends JPanel {
 
     public Configuration() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+
+        // Initialize display modes
+        LWJGLGameWindow gameWindow = new LWJGLGameWindow();
+        displayModes = gameWindow.getAvailableDisplayModes();
 
         bSave = new JButton("Save");
         bSave.setFont(new Font("Tahoma", 1, 11));
@@ -96,12 +116,17 @@ public class Configuration extends JPanel {
         panel_keys.add(topPanel);
         panel_keys.add(tKeys_scroll);
 
+        // Create display configuration panel
+        panel_display = createDisplayPanel();
+
         lbl_vlc = new JLabel("VLC isn't selected");
         lbl_vlc.setAlignmentX(CENTER_ALIGNMENT);
         btn_vlc = new JButton("Select VLC path");
         btn_vlc.addActionListener(e -> btn_vlcActionPerformed());
 
         add(panel_keys);
+        add(Box.createVerticalStrut(10));
+        add(panel_display);
         add(Box.createVerticalStrut(10));
         add(lbl_vlc);
         add(Box.createVerticalStrut(10));
@@ -116,6 +141,9 @@ public class Configuration extends JPanel {
         } else {
             lbl_vlc.setText("VLC Path: " + vlc_path);
         }
+
+        // Load display settings
+        loadDisplaySettings();
     }
 
     private void bSaveActionPerformed() {
@@ -131,7 +159,14 @@ public class Configuration extends JPanel {
         Config.setKeyboardMap(kb_map, kt);
         GameOptions op = Config.getGameOptions();
         op.setVLCLibraryPath(vlc_path);
+        
+        // Save display settings
+        saveDisplaySettings(op);
+        
         Config.setGameOptions(op);
+        
+        JOptionPane.showMessageDialog(this, "Settings saved successfully!", "Save Complete", 
+                                      JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void tKeysMouseClicked(java.awt.event.MouseEvent evt) {
@@ -202,6 +237,142 @@ public class Configuration extends JPanel {
             table_map.put(i, entry.getKey());
             i++;
         }
+    }
+
+    /**
+     * Create the display configuration panel with all components.
+     */
+    private JPanel createDisplayPanel() {
+        JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "Display Configuration"));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(LEFT_ALIGNMENT);
+
+        // Display mode dropdown
+        JPanel displayPanel = new JPanel();
+        displayPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        displayPanel.setAlignmentX(LEFT_ALIGNMENT);
+        
+        JLabel displayLabel = new JLabel("Display:");
+        combo_displays = new JComboBox<>();
+        for (DisplayMode mode : displayModes) {
+            combo_displays.addItem(mode);
+        }
+        displayPanel.add(displayLabel);
+        displayPanel.add(combo_displays);
+        
+        panel.add(displayPanel);
+        panel.add(Box.createVerticalStrut(5));
+
+        // Custom size checkbox and inputs
+        JPanel customSizePanel = new JPanel();
+        customSizePanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        customSizePanel.setAlignmentX(LEFT_ALIGNMENT);
+        
+        jc_custom_size = new JCheckBox("Custom size:");
+        jc_custom_size.addActionListener(e -> {
+            boolean enabled = jc_custom_size.isSelected();
+            txt_res_width.setEnabled(enabled);
+            txt_res_height.setEnabled(enabled);
+        });
+        
+        txt_res_width = new JTextField("800", 6);
+        txt_res_width.setEnabled(false);
+        
+        lbl_res_x = new JLabel("x");
+        
+        txt_res_height = new JTextField("600", 6);
+        txt_res_height.setEnabled(false);
+        
+        customSizePanel.add(jc_custom_size);
+        customSizePanel.add(txt_res_width);
+        customSizePanel.add(lbl_res_x);
+        customSizePanel.add(txt_res_height);
+        
+        panel.add(customSizePanel);
+        panel.add(Box.createVerticalStrut(5));
+
+        // Fullscreen and VSync checkboxes
+        JPanel optionsPanel = new JPanel();
+        optionsPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        optionsPanel.setAlignmentX(LEFT_ALIGNMENT);
+        
+        jc_full_screen = new JCheckBox("Full screen");
+        jc_vsync = new JCheckBox("Use VSync");
+        jc_vsync.setSelected(true);
+        
+        optionsPanel.add(jc_full_screen);
+        optionsPanel.add(jc_vsync);
+        
+        panel.add(optionsPanel);
+        panel.add(Box.createVerticalStrut(5));
+
+        return panel;
+    }
+
+    /**
+     * Load display settings from GameOptions into the UI components.
+     */
+    private void loadDisplaySettings() {
+        GameOptions go = Config.getGameOptions();
+        
+        // Select the matching display mode
+        DisplayMode currentMode = go.getDisplay();
+        for (int i = 0; i < combo_displays.getItemCount(); i++) {
+            DisplayMode mode = combo_displays.getItemAt(i);
+            if (go.isDisplaySaved(mode)) {
+                combo_displays.setSelectedIndex(i);
+                break;
+            }
+        }
+        
+        // Set fullscreen and vsync
+        jc_full_screen.setSelected(go.isDisplayFullscreen());
+        jc_vsync.setSelected(go.isDisplayVsync());
+        
+        // Set custom size if applicable
+        boolean hasCustomSize = false;
+        for (DisplayMode mode : displayModes) {
+            if (mode.getWidth() == currentMode.getWidth() && 
+                mode.getHeight() == currentMode.getHeight()) {
+                hasCustomSize = true;
+                break;
+            }
+        }
+        
+        if (!hasCustomSize && currentMode.getWidth() > 0 && currentMode.getHeight() > 0) {
+            jc_custom_size.setSelected(true);
+            txt_res_width.setText(String.valueOf(currentMode.getWidth()));
+            txt_res_height.setText(String.valueOf(currentMode.getHeight()));
+            txt_res_width.setEnabled(true);
+            txt_res_height.setEnabled(true);
+        }
+    }
+
+    /**
+     * Save display settings from UI components to GameOptions.
+     */
+    private void saveDisplaySettings(GameOptions go) {
+        DisplayMode selectedMode = (DisplayMode) combo_displays.getSelectedItem();
+        
+        // Check if custom size is enabled
+        if (jc_custom_size.isSelected()) {
+            try {
+                int width = Integer.parseInt(txt_res_width.getText().trim());
+                int height = Integer.parseInt(txt_res_height.getText().trim());
+                if (width > 0 && height > 0) {
+                    // Create custom display mode
+                    selectedMode = new DisplayMode(width, height, 32, 60);
+                }
+            } catch (NumberFormatException e) {
+                // Invalid input, use selected mode from dropdown
+            }
+        }
+        
+        go.setDisplay(selectedMode);
+        go.setDisplayFullscreen(jc_full_screen.isSelected());
+        go.setDisplayVsync(jc_vsync.isSelected());
     }
 
     private static Font font = new Font("Tahoma", Font.BOLD, 14);
