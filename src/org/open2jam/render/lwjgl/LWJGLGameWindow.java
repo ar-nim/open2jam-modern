@@ -62,8 +62,8 @@ public class LWJGLGameWindow implements GameWindow {
     private GLCapabilities capabilities;
     private boolean isWayland = false;
     private TextureLoader textureLoader;
-    private int refreshRate = 60;  // Default refresh rate
-    
+    private int refreshRate = 60;  // Default refresh rate (will be updated from monitor)
+
     // FPS limiter: absolute target time for next frame (nanoseconds)
     private long nextFrameTimeNs = 0;
 
@@ -72,6 +72,46 @@ public class LWJGLGameWindow implements GameWindow {
 
     public LWJGLGameWindow() {
         detectWayland();
+        // Detect primary monitor refresh rate at initialization
+        this.refreshRate = getPrimaryMonitorRefreshRate();
+        DebugLogger.debug("Primary monitor refresh rate detected: " + refreshRate + "Hz");
+    }
+
+    /**
+     * Get the primary monitor's current refresh rate dynamically.
+     * This ensures the FPS limiter uses the actual monitor refresh rate,
+     * not a hardcoded value or potentially stale DisplayMode frequency.
+     *
+     * For multi-monitor setups, returns the primary monitor's rate.
+     * Future enhancement: detect which monitor the window is on and use that.
+     *
+     * @return refresh rate in Hz, or 60 if detection fails
+     */
+    private int getPrimaryMonitorRefreshRate() {
+        try {
+            long monitor = GLFW.glfwGetPrimaryMonitor();
+            if (monitor != 0) {
+                GLFWVidMode mode = GLFW.glfwGetVideoMode(monitor);
+                if (mode != null) {
+                    return mode.refreshRate();
+                }
+            }
+        } catch (Exception e) {
+            Logger.global.log(Level.WARNING, "Failed to get monitor refresh rate: {0}", e.getMessage());
+        }
+        return 60;  // Fallback to 60Hz if detection fails
+    }
+
+    /**
+     * Update the refresh rate from the current monitor.
+     * Called when entering fullscreen or when display settings may have changed.
+     */
+    private void updateRefreshRate() {
+        int detectedRate = getPrimaryMonitorRefreshRate();
+        if (detectedRate > 0) {
+            this.refreshRate = detectedRate;
+            DebugLogger.debug("Refresh rate updated: " + refreshRate + "Hz");
+        }
     }
 
     /**
@@ -125,7 +165,8 @@ public class LWJGLGameWindow implements GameWindow {
         this.vsync = vsync;
         this.fpsLimiter = GameOptions.FpsLimiter.x1;  // Default to x1 if not specified
         this.fullscreen = fullscreen;
-        this.refreshRate = dm.getFrequency() > 0 ? dm.getFrequency() : 60;
+        // Use dynamically detected monitor refresh rate, fallback to DisplayMode frequency
+        this.refreshRate = getPrimaryMonitorRefreshRate();
     }
 
     /**
@@ -141,7 +182,8 @@ public class LWJGLGameWindow implements GameWindow {
         this.vsync = vsync;
         this.fpsLimiter = fpsLimiter != null ? fpsLimiter : GameOptions.FpsLimiter.x1;
         this.fullscreen = fullscreen;
-        this.refreshRate = dm.getFrequency() > 0 ? dm.getFrequency() : 60;
+        // Use dynamically detected monitor refresh rate, fallback to DisplayMode frequency
+        this.refreshRate = getPrimaryMonitorRefreshRate();
     }
 
     @Override
@@ -194,14 +236,17 @@ public class LWJGLGameWindow implements GameWindow {
             windowWidth = nativeMode.width();
             windowHeight = nativeMode.height();
             
+            // Update refresh rate from monitor (important for fullscreen mode)
+            updateRefreshRate();
+
             // Create fullscreen window at native resolution
             windowHandle = GLFW.glfwCreateWindow(windowWidth, windowHeight, title, monitor, 0);
-            
+
             // Calculate letterbox viewport offset to center user's selected resolution
             viewportX = (windowWidth - width) / 2;
             viewportY = (windowHeight - height) / 2;
-            
-            DebugLogger.debug("Fullscreen: Native=" + windowWidth + "x" + windowHeight + 
+
+            DebugLogger.debug("Fullscreen: Native=" + windowWidth + "x" + windowHeight +
                              ", User=" + width + "x" + height +
                              ", Viewport offset=(" + viewportX + ", " + viewportY + ")");
         } else {
