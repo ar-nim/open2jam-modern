@@ -586,8 +586,13 @@ public class LWJGLGameWindow implements GameWindow {
         while (gameRunning && !shouldStop && !GLFW.glfwWindowShouldClose(windowHandle)) {
             frameCount++;
 
-            // Clear screen
+            // Clear entire screen to black (including letterbox borders)
+            // Must disable scissor test to clear the full framebuffer
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            GL11.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            
             GL11.glLoadIdentity();
 
             // Apply scale
