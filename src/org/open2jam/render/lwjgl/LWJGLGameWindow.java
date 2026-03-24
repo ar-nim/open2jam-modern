@@ -21,12 +21,34 @@ import java.util.logging.Level;
 /**
  * LWJGL 3 implementation of GameWindow using GLFW.
  * Features proper Wayland detection and window lifecycle management.
+ * 
+ * Pure Letterboxing Approach:
+ * - Fullscreen windows are created at native desktop resolution
+ * - User's selected resolution is rendered via glViewport with black borders
+ * - This ensures consistent behavior across Windows, Wayland, and macOS
+ * 
+ * Letterboxing Details:
+ * - viewportX/viewportY store the offset for centering the user's resolution
+ * - The viewport is scaled by HiDPI factor for correct physical rendering
+ * - Black borders appear when aspect ratios differ (e.g., 4:3 on 16:9)
+ * 
+ * Mouse Input (Future):
+ * - If GLFW mouse input is added, coordinates must be offset by viewportX/viewportY
+ * - glfwGetCursorPos returns window-relative coordinates, not viewport-relative
+ * - Formula: gameMouseX = glfwMouseX - viewportX (use LOGICAL offset, not physical)
+ * - Currently not needed as game uses keyboard-only input
  */
 public class LWJGLGameWindow implements GameWindow {
 
     private long windowHandle = 0;
-    private int width;
-    private int height;
+    private int width;   // LOGICAL size (user's selected resolution, for projection/game logic)
+    private int height;  // LOGICAL size (user's selected resolution, for projection/game logic)
+    private int physicalWidth;  // PHYSICAL framebuffer size (for viewport/scissor)
+    private int physicalHeight; // PHYSICAL framebuffer size (for viewport/scissor)
+    private int windowWidth;    // Actual window size (native for fullscreen, user's for windowed)
+    private int windowHeight;   // Actual window size (native for fullscreen, user's for windowed)
+    private int viewportX;      // Viewport offset X for letterboxing (fullscreen only)
+    private int viewportY;      // Viewport offset Y for letterboxing (fullscreen only)
     private boolean vsync;
     private boolean fullscreen;
     private String title = "open2jam";
@@ -134,8 +156,39 @@ public class LWJGLGameWindow implements GameWindow {
         // This allows the driver to provide a compatibility context
 
         // Create window
+        // PURE LETTERBOXING APPROACH:
+        // - Fullscreen: create at native desktop resolution, letterbox to user's resolution
+        // - Windowed: create at user's selected resolution
         long monitor = fullscreen ? GLFW.glfwGetPrimaryMonitor() : 0;
-        windowHandle = GLFW.glfwCreateWindow(width, height, title, monitor, 0);
+        
+        if (fullscreen) {
+            // Get native desktop resolution for fullscreen
+            GLFWVidMode nativeMode = GLFW.glfwGetVideoMode(monitor);
+            if (nativeMode == null) {
+                throw new RuntimeException("Failed to get native video mode");
+            }
+            windowWidth = nativeMode.width();
+            windowHeight = nativeMode.height();
+            
+            // Create fullscreen window at native resolution
+            windowHandle = GLFW.glfwCreateWindow(windowWidth, windowHeight, title, monitor, 0);
+            
+            // Calculate letterbox viewport offset to center user's selected resolution
+            viewportX = (windowWidth - width) / 2;
+            viewportY = (windowHeight - height) / 2;
+            
+            DebugLogger.debug("Fullscreen: Native=" + windowWidth + "x" + windowHeight + 
+                             ", User=" + width + "x" + height +
+                             ", Viewport offset=(" + viewportX + ", " + viewportY + ")");
+        } else {
+            // Windowed mode: use user's selected resolution
+            windowWidth = width;
+            windowHeight = height;
+            viewportX = 0;
+            viewportY = 0;
+            
+            windowHandle = GLFW.glfwCreateWindow(windowWidth, windowHeight, title, 0, 0);
+        }
 
         if (windowHandle == 0) {
             throw new RuntimeException("Failed to create GLFW window");
@@ -166,14 +219,20 @@ public class LWJGLGameWindow implements GameWindow {
         DebugLogger.debug("Renderer: " + GL11.glGetString(GL11.GL_RENDERER));
         DebugLogger.debug("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
 
-        // Get framebuffer size (may differ from window size on HiDPI)
+        // Get physical framebuffer size (for viewport/scissor)
+        // Note: width/height are already set to user's selected resolution (logical)
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer w = stack.mallocInt(1);
             IntBuffer h = stack.mallocInt(1);
+            
             GLFW.glfwGetFramebufferSize(windowHandle, w, h);
-            width = w.get(0);
-            height = h.get(0);
+            physicalWidth = w.get(0);
+            physicalHeight = h.get(0);
         }
+        
+        DebugLogger.debug("Window: " + windowWidth + "x" + windowHeight + 
+                         ", Framebuffer: " + physicalWidth + "x" + physicalHeight +
+                         ", User Resolution: " + width + "x" + height);
 
         // Center window (skip on Wayland - not supported)
         if (!isWayland && !fullscreen) {
@@ -201,11 +260,28 @@ public class LWJGLGameWindow implements GameWindow {
         GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_BLEND);
 
-        // Enable scissor test
-        GL11.glEnable(GL11.GL_SCISSOR_TEST);
-        GL11.glScissor(0, 0, width, height);
+        // Calculate HiDPI scale factor (physical / logical)
+        float hidpiScaleX = (float) physicalWidth / windowWidth;
+        float hidpiScaleY = (float) physicalHeight / windowHeight;
+        
+        // Apply letterboxing: viewport is centered with black borders
+        // Scale viewport offset and size by HiDPI factor
+        int viewportPhysicalX = (int) (viewportX * hidpiScaleX);
+        int viewportPhysicalY = (int) (viewportY * hidpiScaleY);
+        int viewportPhysicalW = (int) (width * hidpiScaleX);
+        int viewportPhysicalH = (int) (height * hidpiScaleY);
+        
+        DebugLogger.debug("Viewport: pos=(" + viewportPhysicalX + ", " + viewportPhysicalY + 
+                         "), size=" + viewportPhysicalW + "x" + viewportPhysicalH);
 
-        // Setup projection matrix
+        // Set viewport with letterboxing (centered user resolution with black borders)
+        GL11.glViewport(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
+
+        // Enable scissor test matching viewport (for proper clipping)
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
+
+        // Setup projection matrix using user's LOGICAL resolution (correct for game coordinates)
         DebugLogger.debug("Calling glMatrixMode(GL_PROJECTION)...");
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         DebugLogger.debug("Done glMatrixMode");
@@ -240,12 +316,59 @@ public class LWJGLGameWindow implements GameWindow {
             }
         });
 
-        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, w, h) -> {
-            width = w;
-            height = h;
-            // Only call glViewport if we have a current context
+        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, newPhysicalW, newPhysicalH) -> {
+            // Update physical dimensions (for viewport/scissor)
+            physicalWidth = newPhysicalW;
+            physicalHeight = newPhysicalH;
+
+            DebugLogger.debug("Framebuffer resize: " + newPhysicalW + "x" + newPhysicalH);
+
+            // Only update OpenGL state if we have a current context
             if (capabilities != null) {
-                GL11.glViewport(0, 0, w, h);
+                // Recalculate HiDPI scale
+                float hidpiScaleX = (float) newPhysicalW / windowWidth;
+                float hidpiScaleY = (float) newPhysicalH / windowHeight;
+                
+                // Recalculate letterboxed viewport
+                int viewportPhysicalX = (int) (viewportX * hidpiScaleX);
+                int viewportPhysicalY = (int) (viewportY * hidpiScaleY);
+                int viewportPhysicalW = (int) (width * hidpiScaleX);
+                int viewportPhysicalH = (int) (height * hidpiScaleY);
+                
+                // Set viewport with letterboxing
+                GL11.glViewport(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
+                GL11.glScissor(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
+            }
+        });
+
+        // Handle logical window size changes (for projection/game logic)
+        GLFW.glfwSetWindowSizeCallback(windowHandle, (window, newLogicalW, newLogicalH) -> {
+            // Update window dimensions
+            windowWidth = newLogicalW;
+            windowHeight = newLogicalH;
+            
+            // For fullscreen, recalculate letterbox offset (user resolution unchanged)
+            if (fullscreen) {
+                viewportX = (windowWidth - width) / 2;
+                viewportY = (windowHeight - height) / 2;
+                DebugLogger.debug("Window resize: " + newLogicalW + "x" + newLogicalH + 
+                                 ", Viewport offset=(" + viewportX + ", " + viewportY + ")");
+            } else {
+                // Windowed mode: window size = user resolution
+                width = newLogicalW;
+                height = newLogicalH;
+                viewportX = 0;
+                viewportY = 0;
+                DebugLogger.debug("Window resize: " + newLogicalW + "x" + newLogicalH);
+            }
+
+            // Only update OpenGL state if we have a current context
+            if (capabilities != null) {
+                // Update projection matrix using user's logical dimensions
+                GL11.glMatrixMode(GL11.GL_PROJECTION);
+                GL11.glLoadIdentity();
+                GL11.glOrtho(0, width, height, 0, -1, 1);
+                GL11.glMatrixMode(GL11.GL_MODELVIEW);
             }
         });
 
@@ -474,8 +597,13 @@ public class LWJGLGameWindow implements GameWindow {
         while (gameRunning && !shouldStop && !GLFW.glfwWindowShouldClose(windowHandle)) {
             frameCount++;
 
-            // Clear screen
+            // Clear entire screen to black (including letterbox borders)
+            // Must disable scissor test to clear the full framebuffer
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            GL11.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            
             GL11.glLoadIdentity();
 
             // Apply scale
