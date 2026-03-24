@@ -26,6 +26,17 @@ import java.util.logging.Level;
  * - Fullscreen windows are created at native desktop resolution
  * - User's selected resolution is rendered via glViewport with black borders
  * - This ensures consistent behavior across Windows, Wayland, and macOS
+ * 
+ * Letterboxing Details:
+ * - viewportX/viewportY store the offset for centering the user's resolution
+ * - The viewport is scaled by HiDPI factor for correct physical rendering
+ * - Black borders appear when aspect ratios differ (e.g., 4:3 on 16:9)
+ * 
+ * Mouse Input (Future):
+ * - If GLFW mouse input is added, coordinates must be offset by viewportX/viewportY
+ * - glfwGetCursorPos returns window-relative coordinates, not viewport-relative
+ * - Formula: gameMouseX = glfwMouseX - viewportX (use LOGICAL offset, not physical)
+ * - Currently not needed as game uses keyboard-only input
  */
 public class LWJGLGameWindow implements GameWindow {
 
