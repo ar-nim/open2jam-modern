@@ -166,14 +166,29 @@ public class LWJGLGameWindow implements GameWindow {
         DebugLogger.debug("Renderer: " + GL11.glGetString(GL11.GL_RENDERER));
         DebugLogger.debug("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
 
-        // Get framebuffer size (may differ from window size on HiDPI)
+        // Get both logical window size and physical framebuffer size
+        // Logical size is used for projection/UI coordinates
+        // Physical size is used for viewport/rendering (important for HiDPI displays)
+        int logicalWidth, logicalHeight;
+        int physicalWidth, physicalHeight;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer w = stack.mallocInt(1);
             IntBuffer h = stack.mallocInt(1);
+            
+            // Get logical window size (for projection/UI)
+            GLFW.glfwGetWindowSize(windowHandle, w, h);
+            logicalWidth = w.get(0);
+            logicalHeight = h.get(0);
+            
+            // Get physical framebuffer size (for rendering/viewport)
             GLFW.glfwGetFramebufferSize(windowHandle, w, h);
-            width = w.get(0);
-            height = h.get(0);
+            physicalWidth = w.get(0);
+            physicalHeight = h.get(0);
         }
+        
+        // Store physical dimensions for getResolutionWidth/Height
+        width = physicalWidth;
+        height = physicalHeight;
 
         // Center window (skip on Wayland - not supported)
         if (!isWayland && !fullscreen) {
@@ -201,16 +216,19 @@ public class LWJGLGameWindow implements GameWindow {
         GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_BLEND);
 
-        // Enable scissor test
-        GL11.glEnable(GL11.GL_SCISSOR_TEST);
-        GL11.glScissor(0, 0, width, height);
+        // Set viewport to physical framebuffer size (FIX: ensures fullscreen renders correctly)
+        GL11.glViewport(0, 0, physicalWidth, physicalHeight);
 
-        // Setup projection matrix
+        // Enable scissor test with physical dimensions (must match viewport)
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(0, 0, physicalWidth, physicalHeight);
+
+        // Setup projection matrix using LOGICAL dimensions (correct for HiDPI scaling)
         DebugLogger.debug("Calling glMatrixMode(GL_PROJECTION)...");
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         DebugLogger.debug("Done glMatrixMode");
         GL11.glLoadIdentity();
-        GL11.glOrtho(0, width, height, 0, -1, 1);
+        GL11.glOrtho(0, logicalWidth, logicalHeight, 0, -1, 1);
         DebugLogger.debug("Calling glMatrixMode(GL_MODELVIEW)...");
         GL11.glMatrixMode(GL11.GL_MODELVIEW);
         DebugLogger.debug("Done glMatrixMode");
@@ -240,12 +258,33 @@ public class LWJGLGameWindow implements GameWindow {
             }
         });
 
-        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, w, h) -> {
-            width = w;
-            height = h;
-            // Only call glViewport if we have a current context
+        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, physicalWidth, physicalHeight) -> {
+            // Store physical dimensions
+            width = physicalWidth;
+            height = physicalHeight;
+            
+            // Only update OpenGL state if we have a current context
             if (capabilities != null) {
-                GL11.glViewport(0, 0, w, h);
+                // Get logical window size for projection matrix
+                try (MemoryStack stack = MemoryStack.stackPush()) {
+                    IntBuffer winW = stack.mallocInt(1);
+                    IntBuffer winH = stack.mallocInt(1);
+                    GLFW.glfwGetWindowSize(windowHandle, winW, winH);
+                    int logicalWidth = winW.get(0);
+                    int logicalHeight = winH.get(0);
+                    
+                    // Set viewport to physical framebuffer size
+                    GL11.glViewport(0, 0, physicalWidth, physicalHeight);
+                    
+                    // Update scissor to match viewport
+                    GL11.glScissor(0, 0, physicalWidth, physicalHeight);
+                    
+                    // Update projection matrix using LOGICAL dimensions (correct for HiDPI)
+                    GL11.glMatrixMode(GL11.GL_PROJECTION);
+                    GL11.glLoadIdentity();
+                    GL11.glOrtho(0, logicalWidth, logicalHeight, 0, -1, 1);
+                    GL11.glMatrixMode(GL11.GL_MODELVIEW);
+                }
             }
         });
 
