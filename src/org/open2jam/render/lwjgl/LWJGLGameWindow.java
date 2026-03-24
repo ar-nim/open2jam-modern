@@ -450,10 +450,13 @@ public class LWJGLGameWindow implements GameWindow {
                     // Add all modes from the monitor
                     for (int i = 0; i < vidModes.capacity(); i++) {
                         GLFWVidMode mode = vidModes.get(i);
+                        // Modern desktop systems use 32-bit framebuffers (8 bits per channel + 8-bit alpha)
+                        // GLFW only reports RGB bits; alpha is implicit in desktop compositors
+                        int bitsPerPixel = mode.redBits() + mode.greenBits() + mode.blueBits() + 8;
                         modes.add(new DisplayMode(
                                 mode.width(),
                                 mode.height(),
-                                mode.redBits() + mode.greenBits() + mode.blueBits(),
+                                bitsPerPixel,
                                 mode.refreshRate()
                         ));
                     }
@@ -461,10 +464,13 @@ public class LWJGLGameWindow implements GameWindow {
                     // Fallback: try glfwGetVideoMode for single mode
                     GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
                     if (vidMode != null) {
+                        // Modern desktop systems use 32-bit framebuffers (8 bits per channel + 8-bit alpha)
+                        // GLFW only reports RGB bits; alpha is implicit in desktop compositors
+                        int bitsPerPixel = vidMode.redBits() + vidMode.greenBits() + vidMode.blueBits() + 8;
                         modes.add(new DisplayMode(
                                 vidMode.width(),
                                 vidMode.height(),
-                                vidMode.redBits() + vidMode.greenBits() + vidMode.blueBits(),
+                                bitsPerPixel,
                                 vidMode.refreshRate()
                         ));
                     }
