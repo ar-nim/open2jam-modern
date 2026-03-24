@@ -222,14 +222,13 @@ class OJNParser
 
                     // MIN 1 ~ 15 MAX, special 0 = MAX
                     float volume = ((volume_pan >> 4) & 0x0F) / 16f;
-                    if(volume == 0)volume = 1;
+                    if(volume == 0) volume = 1.0f;  // Special case: 0 = MAX (full volume)
 
                     // LEFT 1 ~ 8 CENTER 8 ~ 15 RIGHT, special: 0 = 8
                     float pan = (volume_pan & 0x0F);
-                    if(pan == 0)pan = 8;
-                    pan -= 8;
-                    pan /= 8f; //TODO or maybe 7f? (15-8) / 8 = 7 / 8 = 0.875 and it should be 1, right?
-		    
+                    if(pan == 0) pan = 8;
+                    pan = (pan - 8) / 7.0f;  // Correct formula: -1.0 (left) to +1.0 (right)
+
                     value--; // make zero-based ( zero was the "ignore" value )
 		    	    
 		    // A lot of fixes here are done thanks to keigen shu. He's stealing my protagonism D:

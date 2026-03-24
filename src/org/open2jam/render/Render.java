@@ -1346,13 +1346,13 @@ public class Render implements GameWindowCallback
     public SoundInstance queueSample(Event.SoundSample soundSample)
     {
         if(soundSample == null) return null;
-	
+
 	Sound sound = sounds.get(soundSample.sample_id);
         if(sound == null)return null;
-        
+
         try {
             return sound.play(soundSample.isBGM() ? SoundChannel.BGM : SoundChannel.KEY,
-                    1.0f, soundSample.pan);
+                    soundSample.volume, soundSample.pan);
         } catch (SoundSystemException ex) {
             java.util.logging.Logger.getLogger(Render.class.getName()).log(Level.SEVERE, "{0}", ex);
             return null;

@@ -29,13 +29,18 @@ public class ALSoundInstance implements SoundInstance {
             AL10.alSourcei(sourceId, AL10.AL_BUFFER, sound.getBufferId());
 
             // Set volume with channel-specific scaling
+            // Volume chain: noteVolume × channelVolume (BGM/Key) × masterVolume
             float channelVolume = channel == SoundChannel.BGM ?
                     soundSystem.bgmVolume : soundSystem.keyVolume;
             float finalVolume = volume * channelVolume * soundSystem.masterVolume;
-            AL10.alSourcef(sourceId, AL10.AL_GAIN, Math.max(0, Math.min(1, finalVolume)));
+            
+            // Clamp volume to valid OpenAL range [0.0, 1.0] to prevent errors
+            AL10.alSourcef(sourceId, AL10.AL_GAIN, Math.max(0.0f, Math.min(1.0f, finalVolume)));
 
             // Set pan (-1.0 = left, 0.0 = center, 1.0 = right)
-            AL10.alSource3f(sourceId, AL10.AL_POSITION, pan, 0.0f, 0.0f);
+            // Clamp pan to valid range [-1.0, 1.0] to prevent errors
+            float clampedPan = Math.max(-1.0f, Math.min(1.0f, pan));
+            AL10.alSource3f(sourceId, AL10.AL_POSITION, clampedPan, 0.0f, 0.0f);
 
             // Set pitch based on speed
             AL10.alSourcef(sourceId, AL10.AL_PITCH, soundSystem.speed);
