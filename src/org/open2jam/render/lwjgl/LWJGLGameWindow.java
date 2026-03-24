@@ -25,8 +25,10 @@ import java.util.logging.Level;
 public class LWJGLGameWindow implements GameWindow {
 
     private long windowHandle = 0;
-    private int width;
-    private int height;
+    private int width;   // LOGICAL window size (for game logic, projection, getResolutionWidth/Height)
+    private int height;  // LOGICAL window size (for game logic, projection, getResolutionHeight)
+    private int physicalWidth;  // PHYSICAL framebuffer size (for viewport, scissor)
+    private int physicalHeight; // PHYSICAL framebuffer size (for viewport, scissor)
     private boolean vsync;
     private boolean fullscreen;
     private String title = "open2jam";
@@ -167,28 +169,25 @@ public class LWJGLGameWindow implements GameWindow {
         DebugLogger.debug("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
 
         // Get both logical window size and physical framebuffer size
-        // Logical size is used for projection/UI coordinates
-        // Physical size is used for viewport/rendering (important for HiDPI displays)
-        int logicalWidth, logicalHeight;
-        int physicalWidth, physicalHeight;
+        // Logical size is used for projection/UI coordinates (game logic)
+        // Physical size is used for viewport/rendering (HiDPI displays)
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer w = stack.mallocInt(1);
             IntBuffer h = stack.mallocInt(1);
             
-            // Get logical window size (for projection/UI)
+            // Get logical window size (for projection/UI/game logic)
             GLFW.glfwGetWindowSize(windowHandle, w, h);
-            logicalWidth = w.get(0);
-            logicalHeight = h.get(0);
+            width = w.get(0);
+            height = h.get(0);
             
-            // Get physical framebuffer size (for rendering/viewport)
+            // Get physical framebuffer size (for viewport/scissor)
             GLFW.glfwGetFramebufferSize(windowHandle, w, h);
             physicalWidth = w.get(0);
             physicalHeight = h.get(0);
         }
         
-        // Store physical dimensions for getResolutionWidth/Height
-        width = physicalWidth;
-        height = physicalHeight;
+        DebugLogger.debug("Window size - Logical: " + width + "x" + height + 
+                         ", Physical: " + physicalWidth + "x" + physicalHeight);
 
         // Center window (skip on Wayland - not supported)
         if (!isWayland && !fullscreen) {
@@ -228,7 +227,7 @@ public class LWJGLGameWindow implements GameWindow {
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         DebugLogger.debug("Done glMatrixMode");
         GL11.glLoadIdentity();
-        GL11.glOrtho(0, logicalWidth, logicalHeight, 0, -1, 1);
+        GL11.glOrtho(0, width, height, 0, -1, 1);
         DebugLogger.debug("Calling glMatrixMode(GL_MODELVIEW)...");
         GL11.glMatrixMode(GL11.GL_MODELVIEW);
         DebugLogger.debug("Done glMatrixMode");
@@ -258,33 +257,38 @@ public class LWJGLGameWindow implements GameWindow {
             }
         });
 
-        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, physicalWidth, physicalHeight) -> {
-            // Store physical dimensions
-            width = physicalWidth;
-            height = physicalHeight;
+        GLFW.glfwSetFramebufferSizeCallback(windowHandle, (window, newPhysicalW, newPhysicalH) -> {
+            // Update physical dimensions (for viewport/scissor)
+            physicalWidth = newPhysicalW;
+            physicalHeight = newPhysicalH;
+            
+            DebugLogger.debug("Framebuffer resize: " + newPhysicalW + "x" + newPhysicalH);
             
             // Only update OpenGL state if we have a current context
             if (capabilities != null) {
-                // Get logical window size for projection matrix
-                try (MemoryStack stack = MemoryStack.stackPush()) {
-                    IntBuffer winW = stack.mallocInt(1);
-                    IntBuffer winH = stack.mallocInt(1);
-                    GLFW.glfwGetWindowSize(windowHandle, winW, winH);
-                    int logicalWidth = winW.get(0);
-                    int logicalHeight = winH.get(0);
-                    
-                    // Set viewport to physical framebuffer size
-                    GL11.glViewport(0, 0, physicalWidth, physicalHeight);
-                    
-                    // Update scissor to match viewport
-                    GL11.glScissor(0, 0, physicalWidth, physicalHeight);
-                    
-                    // Update projection matrix using LOGICAL dimensions (correct for HiDPI)
-                    GL11.glMatrixMode(GL11.GL_PROJECTION);
-                    GL11.glLoadIdentity();
-                    GL11.glOrtho(0, logicalWidth, logicalHeight, 0, -1, 1);
-                    GL11.glMatrixMode(GL11.GL_MODELVIEW);
-                }
+                // Set viewport to new physical size
+                GL11.glViewport(0, 0, newPhysicalW, newPhysicalH);
+                
+                // Update scissor to match viewport
+                GL11.glScissor(0, 0, newPhysicalW, newPhysicalH);
+            }
+        });
+        
+        // Handle logical window size changes (for projection/game logic)
+        GLFW.glfwSetWindowSizeCallback(windowHandle, (window, newLogicalW, newLogicalH) -> {
+            // Update logical dimensions (for projection/game logic)
+            width = newLogicalW;
+            height = newLogicalH;
+            
+            DebugLogger.debug("Window resize: " + newLogicalW + "x" + newLogicalH);
+            
+            // Only update OpenGL state if we have a current context
+            if (capabilities != null) {
+                // Update projection matrix using new logical dimensions
+                GL11.glMatrixMode(GL11.GL_PROJECTION);
+                GL11.glLoadIdentity();
+                GL11.glOrtho(0, newLogicalW, newLogicalH, 0, -1, 1);
+                GL11.glMatrixMode(GL11.GL_MODELVIEW);
             }
         });
 
