@@ -814,7 +814,7 @@ public class MusicSelection extends javax.swing.JPanel
                 .addComponent(panel_modifiers, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
-        bt_play.setFont(new java.awt.Font("Tahoma", 1, 24));
+        bt_play.setFont(new java.awt.Font("SansSerif", 1, 24));
         bt_play.setIcon(new javax.swing.ImageIcon(getClass().getResource("/resources/open2jam_icon.png")));
         bt_play.setText("PLAY !!!");
         bt_play.addActionListener(new java.awt.event.ActionListener() {
