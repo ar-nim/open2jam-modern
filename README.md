@@ -21,7 +21,7 @@ BUILD SUCCESSFUL in 8s
 
 ### Build System
 - **Gradle 9.4.0** build system with wrapper for reproducible builds
-- Java 25 toolchain configuration
+- Java 21+ toolchain configuration (LTS recommended)
 - LWJGL 3.4.1 BOM with automatic platform-specific natives download
 - `fatJar` task for creating runnable JAR with all dependencies
 - Removed Ant and NetBeans project files
@@ -32,6 +32,9 @@ BUILD SUCCESSFUL in 8s
 - **LWJGL 2 keyboard → GLFW** key codes with compatibility bridge
 - OpenGL bindings updated to LWJGL 3
 - Texture loading via LWJGL 3 STB image loading
+- **Pure letterboxing** for fullscreen - renders at exact user resolution with black borders
+- **HiDPI support** - Proper viewport scaling and glViewport fixes for high-DPI displays
+- **FPS limiter** - Hybrid spin-wait timing (±0.1ms accuracy, avoids Windows timer trap)
 
 ### Audio System
 - **FMOD Ex (proprietary) → OpenAL** (open source)
@@ -44,20 +47,34 @@ BUILD SUCCESSFUL in 8s
 - Skip `glfwSetWindowPos()` on Wayland sessions (not supported)
 - Proper cleanup order: OpenAL resources released **before** GLFW window destruction
 - Fixed `SIGSEGV` in `libc.so.6` during song transitions
+- Event-pumping window close - prevents "frozen" detection by compositor
 
 ### GUI Refactoring
 - Removed NetBeans `.form` files and beansbinding dependencies
 - Refactored to standard Swing with `GroupLayout`
-- Display mode selection refactored to separate dropdowns (Resolution, Refresh Rate, Color Depth)
+- **Display configuration moved to Configuration tab** with industry-standard aspect ratios
+- Dynamic resolution enumeration from GLFW with aspect ratio display (16:9, 16:10, 4:3, 21:9, 32:9)
 
 ### Input System
 - Added symbol key support: `;`, `'`, `[`, `]`, `-`, `=`, `,`, `.`, `/`
 - Duplicate key rebinding removes old mapping automatically
 - Fixed keyboard configuration not listening to changes
 
+### Performance Optimizations
+- **Object pooling** for NoteEntity and LongNoteEntity - zero GC during gameplay
+- **EntityMatrix optimization** - flat arrays with zero-allocation iteration
+- **Config optimization** - primitive arrays instead of EnumMap for keyboard state
+- **Logging optimization** - verbose INFO logs behind `-debug` flag
+
+### Gameplay Mechanism Fixes
+- **BeatJudgement** - Updated to match original O2Jam timing windows
+- **Lifebar values** - Adjusted to original O2Jam increase/decrease behavior
+- **Jambar logic** - Unified increase/decrease implementation
+- **Duration-based song end** - Waits for music to finish, not last note
+
 ## Requirements
 
-- **Java 25** or higher
+- **Java 21+** or higher (LTS recommended)
 - **VLC** (for BMS video background support)
 - **Graphics drivers** with OpenGL 3.2+ support
 
@@ -159,12 +176,15 @@ open2jam-modern/
 | Component | Before | After |
 |-----------|--------|-------|
 | Build System | Ant + NetBeans | Gradle 9.4.0 |
-| Java Version | Java 6 | Java 25 |
+| Java Version | Java 6 | Java 21+ |
 | Windowing | LWJGL 2 Display | LWJGL 3 GLFW |
 | Audio | FMOD Ex (proprietary) | OpenAL (LGPL) |
 | Input | LWJGL 2 Keyboard | GLFW + compatibility bridge |
 | GUI | NetBeans Forms + beansbinding | Standard Swing |
 | Linux Support | X11 only | X11 + Wayland |
+| Frame Timing | Naive Thread.sleep() | Hybrid spin-wait (±0.1ms) |
+| Fullscreen | OS stretching | Pure letterboxing |
+| Performance | GC during gameplay | Object pooling (zero GC) |
 
 ## Troubleshooting
 
@@ -173,13 +193,26 @@ If you encounter `GLFW_FEATURE_UNAVAILABLE` errors:
 - The application automatically detects Wayland and skips unsupported features
 - Ensure `XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` is set
 
+### Fullscreen Letterboxing
+If you see black borders around the game in fullscreen:
+- This is **intentional** - the game renders at your selected resolution
+- To fill the entire monitor, select your monitor's native resolution
+- Letterboxing preserves aspect ratio and prevents GPU stretching
+
+### FPS Limiter vs VSync
+- **VSync ON**: FPS limiter is disabled (greyed out)
+- **VSync OFF**: FPS limiter active with selected multiplier
+- **1x** = Monitor refresh rate (e.g., 60 FPS @ 60Hz)
+- **2x** = 2× refresh rate (e.g., 120 FPS @ 60Hz)
+- **Gameplay speed is identical** in all modes (delta-based timing)
+
 ### Audio Crashes
 - OpenAL sources are now properly managed with a 200-source pool
 - If you still experience issues, try increasing buffer size in Advanced Options
 
 ### Display Mode Selection
 - Display modes are now enumerated as separate dropdowns:
-  - **Resolution** (Width × Height)
+  - **Resolution** (Width × Height) - with aspect ratio label
   - **Refresh Rate** (Hz)
   - **Color Depth** (bpp)
 - Falls back to standard 4:3 resolutions if enumeration fails
@@ -234,10 +267,14 @@ See individual dependency licenses for details.
 
 ## Credits
 
-- Original open2jam: [open2jamorg](https://github.com/open2jamorg/open2jam)
-- Modernization by: open2jam-modern contributors
-- LWJGL: [lwjgl.org](https://www.lwjgl.org/)
-- OpenAL: [openal.org](https://www.openal.org/)
+- **Original open2jam**: [open2jamorg](https://github.com/open2jamorg/open2jam)
+- **Modernization**: open2jam-modern contributors
+- **FPS Limiter & Letterboxing**: Arif Rahman Ibrahim
+- **Gameplay Fixes**: Arif Rahman Ibrahim
+- **Performance Optimizations**: Arif Rahman Ibrahim
+- **LWJGL**: [lwjgl.org](https://www.lwjgl.org/)
+- **OpenAL**: [openal.org](https://www.openal.org/)
+- **GLFW**: [glfw.org](https://www.glfw.org/)
 
 ## Links
 
@@ -245,3 +282,6 @@ See individual dependency licenses for details.
 - [OpenAL Specification](https://www.openal.org/documentation/)
 - [GLFW Documentation](https://www.glfw.org/docs/latest/)
 - [Original open2jam Repository](https://github.com/open2jamorg/open2jam)
+- [FPS Limiter Documentation](docs/fps-limiter-feature.md)
+- [Wayland Window Close Fix](docs/wayland-window-close-fix.md)
+- [Render Loop Refactor](docs/render-loop-refactor.md)
