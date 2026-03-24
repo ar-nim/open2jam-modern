@@ -1,9 +1,12 @@
 package org.open2jam.gui.parts;
 
+import java.awt.BorderLayout;
 import java.awt.Font;
+import java.awt.FlowLayout;
 import java.io.File;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import javax.swing.*;
@@ -13,6 +16,8 @@ import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.parsers.Event;
+import org.open2jam.render.DisplayMode;
+import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.lwjgl.TrueTypeFont;
 import org.open2jam.util.Logger;
 import org.lwjgl.glfw.GLFW;
@@ -32,14 +37,27 @@ public class Configuration extends JPanel {
     private HashMap<Integer, Event.Channel> table_map = new HashMap<>();
     private String vlc_path;
 
+    // Display configuration fields
+    private List<DisplayMode> displayModes;
+    private JComboBox<DisplayMode> combo_displays;
+    private JCheckBox jc_full_screen;
+    private JCheckBox jc_vsync;
+    private JCheckBox jc_custom_size;
+    private JTextField txt_res_width;
+    private JTextField txt_res_height;
+    private JLabel lbl_res_x;
+
     private final JButton bSave;
     private final JPanel panel_keys;
+    private final JPanel panel_display;
     private final JLabel jLabel1;
     private final JComboBox<String> combo_keyboardConfig;
     private final JScrollPane tKeys_scroll;
     private final JTable tKeys;
-    private final JLabel lbl_vlc;
-    private final JButton btn_vlc;
+    private JLabel lbl_vlc;
+    private JButton btn_vlc;
+    private JLabel lbl_saveFeedback;
+    private javax.swing.Timer saveFeedbackTimer;
 
     private static FileFilter vlc_filter = new FileFilter() {
         @Override
@@ -58,8 +76,14 @@ public class Configuration extends JPanel {
     public Configuration() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
+        // Initialize display modes
+        LWJGLGameWindow gameWindow = new LWJGLGameWindow();
+        displayModes = gameWindow.getAvailableDisplayModes();
+
         bSave = new JButton("Save");
-        bSave.setFont(new Font("Tahoma", 1, 11));
+        bSave.setFont(new Font("SansSerif", Font.BOLD, 11));
+        System.out.println("[DEBUG] Save button font: " + bSave.getFont().getName() + 
+                           " (family=" + bSave.getFont().getFamily() + ")");
         bSave.setMaximumSize(new java.awt.Dimension(65, 23));
         bSave.addActionListener(e -> bSaveActionPerformed());
 
@@ -96,18 +120,42 @@ public class Configuration extends JPanel {
         panel_keys.add(topPanel);
         panel_keys.add(tKeys_scroll);
 
-        lbl_vlc = new JLabel("VLC isn't selected");
-        lbl_vlc.setAlignmentX(CENTER_ALIGNMENT);
-        btn_vlc = new JButton("Select VLC path");
-        btn_vlc.addActionListener(e -> btn_vlcActionPerformed());
+        // Create display configuration panel
+        panel_display = createDisplayPanel();
+
+        // Create VLC selection panel
+        JPanel panel_vlc = createVLCPanel();
+
+        // Create bottom panel with display (left) and VLC (right)
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        bottomPanel.setAlignmentX(CENTER_ALIGNMENT);
+        bottomPanel.add(panel_display);
+        bottomPanel.add(panel_vlc);
 
         add(panel_keys);
         add(Box.createVerticalStrut(10));
-        add(lbl_vlc);
+        add(bottomPanel);
         add(Box.createVerticalStrut(10));
-        add(btn_vlc);
-        add(Box.createVerticalStrut(10));
-        add(bSave);
+        
+        // Center the save button
+        JPanel savePanel = new JPanel();
+        savePanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+        savePanel.setAlignmentX(CENTER_ALIGNMENT);
+        savePanel.add(bSave);
+        add(savePanel);
+        
+        // Save feedback label (initially hidden)
+        lbl_saveFeedback = new JLabel("Settings saved successfully!", SwingConstants.CENTER);
+        lbl_saveFeedback.setAlignmentX(CENTER_ALIGNMENT);
+        lbl_saveFeedback.setForeground(new java.awt.Color(0, 128, 0));  // Green color
+        lbl_saveFeedback.setVisible(false);
+        add(lbl_saveFeedback);
+        add(Box.createVerticalStrut(10));  // Padding below feedback label
+
+        // Initialize save feedback timer
+        saveFeedbackTimer = new javax.swing.Timer(3000, e -> lbl_saveFeedback.setVisible(false));
+        saveFeedbackTimer.setRepeats(false);
 
         loadTableKeys(Config.KeyboardType.K7);
         vlc_path = Config.getGameOptions().getVLCLibraryPath();
@@ -116,6 +164,9 @@ public class Configuration extends JPanel {
         } else {
             lbl_vlc.setText("VLC Path: " + vlc_path);
         }
+
+        // Load display settings
+        loadDisplaySettings();
     }
 
     private void bSaveActionPerformed() {
@@ -131,7 +182,20 @@ public class Configuration extends JPanel {
         Config.setKeyboardMap(kb_map, kt);
         GameOptions op = Config.getGameOptions();
         op.setVLCLibraryPath(vlc_path);
+
+        // Save display settings
+        saveDisplaySettings(op);
+
         Config.setGameOptions(op);
+
+        // Show feedback label instead of popup
+        lbl_saveFeedback.setVisible(true);
+        
+        // Auto-hide after 3 seconds
+        if (saveFeedbackTimer.isRunning()) {
+            saveFeedbackTimer.stop();
+        }
+        saveFeedbackTimer.start();
     }
 
     private void tKeysMouseClicked(java.awt.event.MouseEvent evt) {
@@ -204,7 +268,174 @@ public class Configuration extends JPanel {
         }
     }
 
-    private static Font font = new Font("Tahoma", Font.BOLD, 14);
+    /**
+     * Create the display configuration panel with all components.
+     */
+    private JPanel createDisplayPanel() {
+        JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "Display Configuration"));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(LEFT_ALIGNMENT);
+
+        // Display mode dropdown
+        JPanel displayPanel = new JPanel();
+        displayPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        displayPanel.setAlignmentX(LEFT_ALIGNMENT);
+        
+        JLabel displayLabel = new JLabel("Display:");
+        combo_displays = new JComboBox<>();
+        for (DisplayMode mode : displayModes) {
+            combo_displays.addItem(mode);
+        }
+        displayPanel.add(displayLabel);
+        displayPanel.add(combo_displays);
+        
+        panel.add(displayPanel);
+        panel.add(Box.createVerticalStrut(5));
+
+        // Custom size checkbox and inputs
+        JPanel customSizePanel = new JPanel();
+        customSizePanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        customSizePanel.setAlignmentX(LEFT_ALIGNMENT);
+        
+        jc_custom_size = new JCheckBox("Custom size:");
+        jc_custom_size.addActionListener(e -> {
+            boolean enabled = jc_custom_size.isSelected();
+            txt_res_width.setEnabled(enabled);
+            txt_res_height.setEnabled(enabled);
+        });
+        
+        txt_res_width = new JTextField("800", 6);
+        txt_res_width.setEnabled(false);
+        
+        lbl_res_x = new JLabel("x");
+        
+        txt_res_height = new JTextField("600", 6);
+        txt_res_height.setEnabled(false);
+        
+        customSizePanel.add(jc_custom_size);
+        customSizePanel.add(txt_res_width);
+        customSizePanel.add(lbl_res_x);
+        customSizePanel.add(txt_res_height);
+        
+        panel.add(customSizePanel);
+        panel.add(Box.createVerticalStrut(5));
+
+        // Fullscreen and VSync checkboxes
+        JPanel optionsPanel = new JPanel();
+        optionsPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+        optionsPanel.setAlignmentX(LEFT_ALIGNMENT);
+        
+        jc_full_screen = new JCheckBox("Full screen");
+        jc_vsync = new JCheckBox("Use VSync");
+        jc_vsync.setSelected(true);
+        
+        optionsPanel.add(jc_full_screen);
+        optionsPanel.add(jc_vsync);
+        
+        panel.add(optionsPanel);
+        panel.add(Box.createVerticalStrut(5));
+
+        return panel;
+    }
+
+    /**
+     * Create the VLC selection panel.
+     */
+    private JPanel createVLCPanel() {
+        JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "VLC Library"));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(LEFT_ALIGNMENT);
+
+        lbl_vlc = new JLabel("VLC isn't selected");
+        lbl_vlc.setAlignmentX(LEFT_ALIGNMENT);
+        lbl_vlc.setMaximumSize(new java.awt.Dimension(200, 16));
+
+        btn_vlc = new JButton("Select VLC path");
+        btn_vlc.setAlignmentX(LEFT_ALIGNMENT);
+        btn_vlc.addActionListener(e -> btn_vlcActionPerformed());
+
+        panel.add(lbl_vlc);
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(btn_vlc);
+        panel.add(Box.createVerticalGlue());
+
+        return panel;
+    }
+
+    /**
+     * Load display settings from GameOptions into the UI components.
+     */
+    private void loadDisplaySettings() {
+        GameOptions go = Config.getGameOptions();
+        
+        // Select the matching display mode
+        DisplayMode currentMode = go.getDisplay();
+        for (int i = 0; i < combo_displays.getItemCount(); i++) {
+            DisplayMode mode = combo_displays.getItemAt(i);
+            if (go.isDisplaySaved(mode)) {
+                combo_displays.setSelectedIndex(i);
+                break;
+            }
+        }
+        
+        // Set fullscreen and vsync
+        jc_full_screen.setSelected(go.isDisplayFullscreen());
+        jc_vsync.setSelected(go.isDisplayVsync());
+        
+        // Set custom size if applicable
+        boolean hasCustomSize = false;
+        for (DisplayMode mode : displayModes) {
+            if (mode.getWidth() == currentMode.getWidth() && 
+                mode.getHeight() == currentMode.getHeight()) {
+                hasCustomSize = true;
+                break;
+            }
+        }
+        
+        if (!hasCustomSize && currentMode.getWidth() > 0 && currentMode.getHeight() > 0) {
+            jc_custom_size.setSelected(true);
+            txt_res_width.setText(String.valueOf(currentMode.getWidth()));
+            txt_res_height.setText(String.valueOf(currentMode.getHeight()));
+            txt_res_width.setEnabled(true);
+            txt_res_height.setEnabled(true);
+        }
+    }
+
+    /**
+     * Save display settings from UI components to GameOptions.
+     */
+    private void saveDisplaySettings(GameOptions go) {
+        DisplayMode selectedMode = (DisplayMode) combo_displays.getSelectedItem();
+        
+        // Check if custom size is enabled
+        if (jc_custom_size.isSelected()) {
+            try {
+                int width = Integer.parseInt(txt_res_width.getText().trim());
+                int height = Integer.parseInt(txt_res_height.getText().trim());
+                if (width > 0 && height > 0) {
+                    // Create custom display mode
+                    selectedMode = new DisplayMode(width, height, 32, 60);
+                }
+            } catch (NumberFormatException e) {
+                // Invalid input, use selected mode from dropdown
+            }
+        }
+        
+        go.setDisplay(selectedMode);
+        go.setDisplayFullscreen(jc_full_screen.isSelected());
+        go.setDisplayVsync(jc_vsync.isSelected());
+    }
+
+    private static Font font = new Font("SansSerif", Font.BOLD, 14);
+    
+    static {
+        System.out.println("[DEBUG] Keyboard capture font: " + font.getName() + 
+                           " (family=" + font.getFamily() + ")");
+    }
 
     private int read_keyboard_key(int lastkey) throws Exception {
         String place = tKeys.getValueAt(tKeys.getSelectedRow(), 0).toString();

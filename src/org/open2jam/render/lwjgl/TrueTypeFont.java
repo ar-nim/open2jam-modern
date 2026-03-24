@@ -84,6 +84,10 @@ public class TrueTypeFont {
         this(font, antiAlias, null);
     }
 
+    public Font getFont() {
+        return font;
+    }
+
     public void setCorrection(boolean on) {
         if (on) {
             correctL = 2;

@@ -84,7 +84,6 @@ public class MusicSelection extends javax.swing.JPanel
     private ChartListTableModel model_songlist;
     private ChartTableModel model_chartlist;
     //private File cwd;
-    private DisplayMode[] display_modes;
     private int rank = 0;
     private ChartList selected_chart;
     private Chart selected_header;
@@ -209,7 +208,7 @@ public class MusicSelection extends javax.swing.JPanel
     private void readGameOptions() {
         // TODO: read Config gameOptions and set them on the GUI
         GameOptions go = Config.getGameOptions();
-        
+
         jc_autoplay.setSelected(go.isAutoplay());
 	jc_autosound.setSelected(go.isAutosound());
         combo_channelModifier.setSelectedItem(go.getChannelModifier());
@@ -221,19 +220,10 @@ public class MusicSelection extends javax.swing.JPanel
         combo_speedType.setSelectedItem(go.getSpeedType());
         txt_displayLag.setText(go.getDisplayLag() + "");
         txt_audioLatency.setText(go.getAudioLatency() + "");
-        
-        for(DisplayMode dm : display_modes)
-        {
-            if(go.isDisplaySaved(dm))
-                combo_displays.setSelectedItem(dm);
-        }
-
-        jc_full_screen.setSelected(go.isDisplayFullscreen());
-        jc_vsync.setSelected(go.isDisplayVsync());
         jc_timed_judgment.setSelected(go.getJudgmentType() == GameOptions.JudgmentType.TimeJudgment);
-        
+
     }
-    
+
     /*
      * the parent is telling us the window is closing
      * now is a good time to save the game options
@@ -252,12 +242,8 @@ public class MusicSelection extends javax.swing.JPanel
         go.setBGMVolume(slider_bgm_vol.getValue()/100f);
         go.setSpeedMultiplier((Double)js_hispeed.getValue());
         go.setSpeedType((SpeedType)combo_speedType.getSelectedItem());
-        go.setDisplayFullscreen(jc_full_screen.isSelected());
-        go.setDisplayVsync(jc_vsync.isSelected());
         go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
-        
-        go.setDisplay((DisplayMode)combo_displays.getSelectedItem());
-        
+
         Config.setGameOptions(go);
     }
 
@@ -283,14 +269,6 @@ public class MusicSelection extends javax.swing.JPanel
         btn_reload = new javax.swing.JButton();
         btn_delete = new javax.swing.JButton();
         panel_setting = new javax.swing.JPanel();
-        combo_displays = new javax.swing.JComboBox();
-        txt_res_height = new javax.swing.JTextField();
-        txt_res_width = new javax.swing.JTextField();
-        jc_vsync = new javax.swing.JCheckBox();
-        lbl_display = new javax.swing.JLabel();
-        jc_custom_size = new javax.swing.JCheckBox();
-        lbl_res_x = new javax.swing.JLabel();
-        jc_full_screen = new javax.swing.JCheckBox();
         jLabel1 = new javax.swing.JLabel();
         txt_displayLag = new javax.swing.JTextField();
         cb_autoSyncDisplay = new javax.swing.JCheckBox();
@@ -388,31 +366,6 @@ public class MusicSelection extends javax.swing.JPanel
             }
         });
 
-        combo_displays.setModel(new javax.swing.DefaultComboBoxModel(display_modes));
-
-        txt_res_height.setText("600");
-        txt_res_height.setEnabled(false);
-
-        txt_res_width.setText("800");
-        txt_res_width.setEnabled(false);
-
-        jc_vsync.setSelected(true);
-        jc_vsync.setText("Use VSync");
-
-        lbl_display.setText("Display:");
-
-        jc_custom_size.setFont(new java.awt.Font("Tahoma", 0, 10));
-        jc_custom_size.setText("Custom size:");
-        jc_custom_size.addItemListener(new java.awt.event.ItemListener() {
-            public void itemStateChanged(java.awt.event.ItemEvent evt) {
-                jc_custom_size_clicked(evt);
-            }
-        });
-
-        lbl_res_x.setText("x");
-
-        jc_full_screen.setText("Full screen");
-
         jLabel1.setText("Display Lag:");
 
         txt_displayLag.setText("0");
@@ -451,63 +404,31 @@ public class MusicSelection extends javax.swing.JPanel
             panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(panel_settingLayout.createSequentialGroup()
                 .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(panel_settingLayout.createSequentialGroup()
-                        .addComponent(lbl_display)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(combo_displays, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addComponent(jc_custom_size, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(txt_res_width, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(lbl_res_x)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(txt_res_height, javax.swing.GroupLayout.PREFERRED_SIZE, 39, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(panel_settingLayout.createSequentialGroup()
-                        .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jc_vsync)
-                            .addComponent(jLabel1))
-                        .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(panel_settingLayout.createSequentialGroup()
-                                .addGap(58, 58, 58)
-                                .addComponent(jc_full_screen))
-                            .addGroup(panel_settingLayout.createSequentialGroup()
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                    .addComponent(txt_displayLag)
-                                    .addComponent(txt_audioLatency, javax.swing.GroupLayout.DEFAULT_SIZE, 164, Short.MAX_VALUE))
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(cb_autoSyncDisplay)
-                                    .addComponent(cb_autoSyncAudio))
-                                .addGap(4, 4, 4))))
+                    .addComponent(jLabel1)
                     .addComponent(jLabel3))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addComponent(txt_displayLag)
+                    .addComponent(txt_audioLatency, javax.swing.GroupLayout.DEFAULT_SIZE, 164, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(cb_autoSyncDisplay)
+                    .addComponent(cb_autoSyncAudio))
                 .addContainerGap(20, Short.MAX_VALUE))
         );
         panel_settingLayout.setVerticalGroup(
             panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(panel_settingLayout.createSequentialGroup()
                 .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.CENTER)
-                    .addComponent(txt_res_height, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lbl_res_x)
-                    .addComponent(txt_res_width, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jc_custom_size)
-                    .addComponent(combo_displays, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(lbl_display))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.CENTER)
-                    .addComponent(jc_vsync)
-                    .addComponent(jc_full_screen))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 13, Short.MAX_VALUE)
-                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel1)
                     .addComponent(txt_displayLag, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(cb_autoSyncDisplay))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                .addGroup(panel_settingLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.CENTER)
                     .addComponent(jLabel3)
                     .addComponent(txt_audioLatency, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(cb_autoSyncAudio)))
+                    .addComponent(cb_autoSyncAudio))
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
         );
 
         javax.swing.GroupLayout panel_listLayout = new javax.swing.GroupLayout(panel_list);
@@ -893,7 +814,7 @@ public class MusicSelection extends javax.swing.JPanel
                 .addComponent(panel_modifiers, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
         );
 
-        bt_play.setFont(new java.awt.Font("Tahoma", 1, 24));
+        bt_play.setFont(new java.awt.Font("SansSerif", 1, 24));
         bt_play.setIcon(new javax.swing.ImageIcon(getClass().getResource("/resources/open2jam_icon.png")));
         bt_play.setText("PLAY !!!");
         bt_play.addActionListener(new java.awt.event.ActionListener() {
@@ -1008,44 +929,15 @@ public class MusicSelection extends javax.swing.JPanel
                 JOptionPane.INFORMATION_MESSAGE, new ImageIcon(i));
 }//GEN-LAST:event_lbl_coverMouseClicked
 
-    private void jc_custom_size_clicked(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_jc_custom_size_clicked
-        if (evt.getStateChange() == ItemEvent.SELECTED){
-            combo_displays.setEnabled(false);
-            txt_res_width.setEnabled(true);
-            lbl_res_x.setEnabled(true);
-            txt_res_height.setEnabled(true);
-        }else{
-            txt_res_width.setEnabled(false);
-            lbl_res_x.setEnabled(false);
-            txt_res_height.setEnabled(false);
-            combo_displays.setEnabled(true);
-        }
-}//GEN-LAST:event_jc_custom_size_clicked
-
     private void bt_playActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_bt_playActionPerformed
         try {
             if(selected_header == null) return;
-            
-            
+
+
             final double hispeed = (Double) js_hispeed.getValue();
 
-            final DisplayMode dm;
-            if(jc_custom_size.isSelected()){ // custom size selected
-                int w,h;
-                try{
-                    w = Integer.parseInt(txt_res_width.getText());
-                    h = Integer.parseInt(txt_res_height.getText());
-                }catch(Exception e){
-                    JOptionPane.showMessageDialog(this, "Invalid value on custom size", "Error", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
-                dm = new DisplayMode(w, h, 32, 60);
-            }else{
-                dm = (DisplayMode) combo_displays.getSelectedItem();
-            }
-            
-            final boolean vsync = jc_vsync.isSelected();
-            boolean fs = jc_full_screen.isSelected();
+            // Get display mode from Configuration tab settings
+            final DisplayMode dm = Config.getGameOptions().getDisplay();
 
             final boolean autoplay = jc_autoplay.isSelected();
             final boolean autosound = jc_autosound.isSelected();
@@ -1061,16 +953,6 @@ public class MusicSelection extends javax.swing.JPanel
             final float keyVol = slider_key_vol.getValue() / 100f;
             final float bgmVol = slider_bgm_vol.getValue() / 100f;
 
-
-            if(!dm.isFullscreenCapable() && fs) {
-                String str = "This monitor can't support the selected resolution.\n"
-                        + "Do you want to play it in windowed mode?";
-                if(JOptionPane.showConfirmDialog(this, str, "Warning",
-                        JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE)
-                        == JOptionPane.YES_OPTION)
-                    fs = false;
-            }
-
             final GameOptions go = Config.getGameOptions();
             go.setAutoplay(autoplay);
             go.setAutosound(autosound);
@@ -1081,8 +963,6 @@ public class MusicSelection extends javax.swing.JPanel
             go.setBGMVolume(bgmVol);
             go.setSpeedMultiplier(hispeed);
             go.setSpeedType(speed_type);
-            go.setDisplayFullscreen(fs);
-            go.setDisplayVsync(vsync);
             go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
             
             System.out.println(go.isAutoplay());
@@ -1286,7 +1166,6 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JCheckBox cb_startPaused;
     private javax.swing.JComboBox combo_channelModifier;
     private javax.swing.JComboBox combo_dirs;
-    private javax.swing.JComboBox combo_displays;
     private javax.swing.JComboBox combo_speedType;
     private javax.swing.JComboBox combo_visibilityModifier;
     private javax.swing.JLabel jLabel1;
@@ -1295,10 +1174,7 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JLabel jLabel4;
     private javax.swing.JCheckBox jc_autoplay;
     private javax.swing.JCheckBox jc_autosound;
-    private javax.swing.JCheckBox jc_custom_size;
-    private javax.swing.JCheckBox jc_full_screen;
     private javax.swing.JCheckBox jc_timed_judgment;
-    private javax.swing.JCheckBox jc_vsync;
     private javax.swing.JRadioButton jr_rank_easy;
     private javax.swing.JRadioButton jr_rank_hard;
     private javax.swing.JRadioButton jr_rank_normal;
@@ -1309,7 +1185,6 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JLabel lbl_bpm1;
     private javax.swing.JLabel lbl_channelModifier;
     private javax.swing.JLabel lbl_cover;
-    private javax.swing.JLabel lbl_display;
     private javax.swing.JLabel lbl_filename;
     private javax.swing.JLabel lbl_genre;
     private javax.swing.JLabel lbl_genre1;
@@ -1322,7 +1197,6 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JLabel lbl_notes;
     private javax.swing.JLabel lbl_notes1;
     private javax.swing.JLabel lbl_rank;
-    private javax.swing.JLabel lbl_res_x;
     private javax.swing.JLabel lbl_search;
     private javax.swing.JLabel lbl_time;
     private javax.swing.JLabel lbl_time1;
@@ -1346,38 +1220,8 @@ public class MusicSelection extends javax.swing.JPanel
     private javax.swing.JTextField txt_audioLatency;
     private javax.swing.JTextField txt_displayLag;
     private javax.swing.JTextField txt_filter;
-    private javax.swing.JTextField txt_res_height;
-    private javax.swing.JTextField txt_res_width;
     // End of variables declaration//GEN-END:variables
     private void initLogic() {
-        try {
-            // Use LWJGLGameWindow to get available display modes (LWJGL 3 compatible)
-            LWJGLGameWindow gameWindow = new LWJGLGameWindow();
-            List<DisplayMode> list = gameWindow.getAvailableDisplayModes();
-
-            Collections.sort(list, new Comparator<DisplayMode>() {
-                @Override
-                public int compare(DisplayMode dm1, DisplayMode dm2) {
-                    if (dm1.getBitsPerPixel() == dm2.getBitsPerPixel()) {
-                        if (dm1.getWidth() == dm2.getWidth()) {
-                            if (dm1.getHeight() == dm2.getHeight()) {
-                                if (dm1.getFrequency() > dm2.getFrequency()) return -1;
-                                else if (dm1.getFrequency() < dm2.getFrequency()) return 1;
-                                else return 0;
-                            } else if (dm1.getHeight() > dm2.getHeight()) return -1;
-                            else return 1;
-                        } else if (dm1.getWidth() > dm2.getWidth()) return -1;
-                        else return 1;
-                    } else if (dm1.getBitsPerPixel() > dm2.getBitsPerPixel()) return -1;
-                    return 1;
-                }
-            });
-            display_modes = list.toArray(new DisplayMode[0]);
-        } catch (Exception ex) {
-            Logger.global.log(Level.WARNING, "Could not get the display modes !! {0}", ex.getMessage());
-            display_modes = new DisplayMode[0];
-        }
-
         model_songlist = new ChartListTableModel();
         model_chartlist = new ChartTableModel();
     }
