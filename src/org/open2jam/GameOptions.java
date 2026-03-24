@@ -32,7 +32,33 @@ public class GameOptions {
     public enum JudgmentType {
         BeatJudgment, TimeJudgment;
     }
-    
+
+    /**
+     * FPS Limiter multiplier when VSync is OFF
+     */
+    public enum FpsLimiter {
+        Unlimited(0),
+        x1(1),
+        x2(2),
+        x4(4),
+        x8(8);
+
+        private final int multiplier;
+
+        FpsLimiter(int multiplier) {
+            this.multiplier = multiplier;
+        }
+
+        public int getMultiplier() {
+            return multiplier;
+        }
+
+        @Override
+        public String toString() {
+            return multiplier == 0 ? "Unlimited" : multiplier + "x Refresh Rate";
+        }
+    }
+
     /*
      * "None"=>0, "Hidden"=>1, "Sudden"=>2, "Dark"=>3
      */
@@ -65,6 +91,7 @@ public class GameOptions {
     // display options
     private boolean displayFullscreen = false;
     private boolean displayVsync = true;
+    private FpsLimiter fpsLimiter = FpsLimiter.x1;
     private int displayWidth = 0;
     private int displayHeight = 0;
     private int displayBitsPerPixel = 0;
@@ -323,6 +350,14 @@ public class GameOptions {
 
     public void setDisplayVsync(boolean displayVsync) {
         this.displayVsync = displayVsync;
+    }
+
+    public FpsLimiter getFpsLimiter() {
+        return fpsLimiter;
+    }
+
+    public void setFpsLimiter(FpsLimiter fpsLimiter) {
+        this.fpsLimiter = fpsLimiter;
     }
 
     public int getDisplayWidth() {

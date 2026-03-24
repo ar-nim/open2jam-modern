@@ -402,7 +402,7 @@ public class Render implements GameWindowCallback
         
         haste = opt.isHasteMode();
         normalizeSpeed = opt.isHasteModeNormalizeSpeed();
-        window.setDisplay(dm,opt.isDisplayVsync(),opt.isDisplayFullscreen());
+        window.setDisplay(dm,opt.isDisplayVsync(),opt.isDisplayFullscreen(),opt.getFpsLimiter());
     }
 
     public void setAutosyncCallback(AutosyncCallback autosyncDelegate) {
