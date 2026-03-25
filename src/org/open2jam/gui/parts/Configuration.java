@@ -178,7 +178,7 @@ public class Configuration extends JPanel {
         final int row = tKeys.getSelectedRow();
         if (row < 0) return;
         if (tKeys.getValueAt(row, 0) == null) return;
-        if (tKeys.getValueAt(row, 1) == null) return;
+        // Allow clicking on empty cells to bind keys
         getTopLevelAncestor().setEnabled(false);
         new Thread(() -> {
             work(row);
@@ -190,8 +190,11 @@ public class Configuration extends JPanel {
         Object valueObj = tKeys.getValueAt(row, 1);
         if (valueObj == null) return;
         String currentValue = valueObj.toString();
-        if (currentValue == null || currentValue.isEmpty()) return;
-        int lastkey = Keyboard.translateKeyCode(getGlfwKeyFromName(currentValue));
+        // Allow empty values - user can bind a key to this channel
+        int lastkey = -1;  // Default to -1 if cell is empty
+        if (currentValue != null && !currentValue.isEmpty()) {
+            lastkey = Keyboard.translateKeyCode(getGlfwKeyFromName(currentValue));
+        }
         int code;
         try {
             code = read_keyboard_key(lastkey);
@@ -199,9 +202,47 @@ public class Configuration extends JPanel {
             Logger.global.log(Level.WARNING, "Failed to read keyboard key", e);
             return;
         }
-        if (kb_map.containsValue(code)) return;
+
         Event.Channel c = table_map.get(row);
         if (c == null) return;
+
+        // Check if user pressed ESC to unbind (read_keyboard_key returns -1 for ESC)
+        if (code == -1) {
+            // Unbind this channel
+            kb_map.remove(c);
+            SwingUtilities.invokeLater(() -> {
+                tKeys.setValueAt("", row, 1);
+            });
+            return;
+        }
+        
+        // Check if this key is already bound to another channel
+        if (kb_map.containsValue(code)) {
+            // Find which channel currently uses this key and unbind it
+            Event.Channel existingChannel = null;
+            for (Map.Entry<Event.Channel, Integer> entry : kb_map.entrySet()) {
+                if (entry.getValue().equals(code)) {
+                    existingChannel = entry.getKey();
+                    break;
+                }
+            }
+            // Unbind from the existing channel (set to -1 or remove)
+            if (existingChannel != null && !existingChannel.equals(c)) {
+                kb_map.remove(existingChannel);
+                // Update the table UI for the unbound channel
+                for (int i = 0; i < tKeys.getRowCount(); i++) {
+                    if (table_map.get(i).equals(existingChannel)) {
+                        int finalI = i;
+                        SwingUtilities.invokeLater(() -> {
+                            tKeys.setValueAt("", finalI, 1);
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Bind the key to the new channel
         kb_map.put(c, code);
         String keyName = Keyboard.getKeyName(code);
         SwingUtilities.invokeLater(() -> tKeys.setValueAt(keyName, row, 1));
@@ -457,41 +498,41 @@ public class Configuration extends JPanel {
 
         // Track key states for edge detection
         boolean[] keyWasPressed = new boolean[GLFW.GLFW_KEY_LAST + 1];
-        int capturedKey = -1;
-        
+        Integer capturedKey = null;  // null = waiting for input, -1 = ESC, >=0 = key code
+
         // Show and focus window
         GLFW.glfwShowWindow(window);
         GLFW.glfwFocusWindow(window);
-        
+
         // Wait for key press using polling with edge detection
         long startTime = System.currentTimeMillis();
-        while (capturedKey < 0) {
-            // Timeout after 10 seconds
+        while (capturedKey == null) {
+            // Timeout after 10 seconds - keep existing binding
             if (System.currentTimeMillis() - startTime > 10000) {
-                capturedKey = lastkey;
+                capturedKey = lastkey;  // Keep original key (or -1 if was empty)
                 break;
             }
-            
+
             // Clear and draw
             GL11.glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glLoadIdentity();
-            
+
             trueTypeFont.drawString(20, 20, "Press a KEY", 1, -1);
             trueTypeFont.drawString(20, 50, "for: " + place, 1, -1);
-            trueTypeFont.drawString(20, 80, "ESC to cancel", 1, -1);
-            
+            trueTypeFont.drawString(20, 80, "ESC to unbind", 1, -1);
+
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
-            
+
             // Check for NEW key press (edge detection)
             for (int key = GLFW.GLFW_KEY_SPACE; key <= GLFW.GLFW_KEY_LAST; key++) {
                 boolean isPressed = GLFW.glfwGetKey(window, key) == GLFW.GLFW_PRESS;
-                
+
                 // Detect key press edge (was not pressed, now is pressed)
                 if (isPressed && !keyWasPressed[key]) {
                     if (key == GLFW.GLFW_KEY_ESCAPE) {
-                        capturedKey = lastkey;
+                        capturedKey = -1;  // Special value to indicate unbind
                     } else {
                         capturedKey = Keyboard.translateKeyCode(key);
                     }
@@ -499,14 +540,19 @@ public class Configuration extends JPanel {
                 }
                 keyWasPressed[key] = isPressed;
             }
-            
+
             // Small sleep to prevent CPU spinning
             try {
                 Thread.sleep(8);
             } catch (InterruptedException e) {
-                capturedKey = lastkey;
+                capturedKey = lastkey;  // Keep original key on interrupt
                 break;
             }
+        }
+
+        // Ensure capturedKey has a value
+        if (capturedKey == null) {
+            capturedKey = lastkey;
         }
 
         // Ensure window closes properly
@@ -533,10 +579,12 @@ public class Configuration extends JPanel {
         
         // Final poll to ensure cleanup
         GLFW.glfwPollEvents();
-        
+
         // Don't terminate GLFW - main app may still need it
-        
-        return capturedKey >= 0 ? capturedKey : lastkey;
+
+        // Return captured key: -1 for ESC (unbind), or the key code
+        // On timeout/interrupt, return lastkey (original binding)
+        return capturedKey;
     }
 
     private int getGlfwKeyFromName(String keyName) {

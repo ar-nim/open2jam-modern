@@ -218,6 +218,9 @@ public class MusicSelection extends javax.swing.JPanel
 
         btn_autoplay_keys.setEnabled(jc_autoplay.isSelected());
 
+        // Attach auto-save listeners to all modifier controls
+        attachAutoSaveListeners();
+
         // Add "Refresh Library" button to popup menu
         JPopupMenu popMenu = new JPopupMenu();
         JMenuItem refreshItem = new JMenuItem("Refresh Library");
@@ -285,13 +288,132 @@ public class MusicSelection extends javax.swing.JPanel
 
     }
 
+    /**
+     * Attach auto-save listeners to all modifier controls.
+     * Changes are saved immediately with debounced disk writes.
+     */
+    private void attachAutoSaveListeners() {
+        // Volume sliders - save on state released (when user stops dragging)
+        javax.swing.event.ChangeListener sliderListener = e -> {
+            if (!slider_main_vol.getValueIsAdjusting() && 
+                !slider_key_vol.getValueIsAdjusting() && 
+                !slider_bgm_vol.getValueIsAdjusting()) {
+                saveVolumeSettings();
+            }
+        };
+        slider_main_vol.addChangeListener(sliderListener);
+        slider_key_vol.addChangeListener(sliderListener);
+        slider_bgm_vol.addChangeListener(sliderListener);
+
+        // Checkboxes - save on state change
+        java.awt.event.ItemListener checkboxListener = e -> saveModifierSettings();
+        jc_autoplay.addItemListener(checkboxListener);
+        jc_autosound.addItemListener(checkboxListener);
+        jc_timed_judgment.addItemListener(checkboxListener);
+
+        // ComboBoxes - save on selection change
+        java.awt.event.ItemListener comboListener = e -> {
+            if (e.getStateChange() == java.awt.event.ItemEvent.SELECTED) {
+                saveModifierSettings();
+            }
+        };
+        combo_channelModifier.addItemListener(comboListener);
+        combo_visibilityModifier.addItemListener(comboListener);
+        combo_speedType.addItemListener(comboListener);
+
+        // HiSpeed spinner - save on value change
+        javax.swing.event.ChangeListener spinnerListener = e -> saveModifierSettings();
+        js_hispeed.addChangeListener(spinnerListener);
+
+        // Text fields (displayLag, audioLatency) - save on focus lost with validation
+        java.awt.event.FocusListener textFieldFocusListener = new java.awt.event.FocusListener() {
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                saveDisplaySettings();
+            }
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                // Do nothing
+            }
+        };
+        txt_displayLag.addFocusListener(textFieldFocusListener);
+        txt_audioLatency.addFocusListener(textFieldFocusListener);
+    }
+
+    /**
+     * Save volume settings from sliders to config.
+     */
+    private void saveVolumeSettings() {
+        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        go.setMasterVolume(slider_main_vol.getValue() / 100f);
+        go.setKeyVolume(slider_key_vol.getValue() / 100f);
+        go.setBGMVolume(slider_bgm_vol.getValue() / 100f);
+        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        DebugLogger.debug("Auto-saved volume settings: main=" + slider_main_vol.getValue() + 
+                         ", key=" + slider_key_vol.getValue() + 
+                         ", bgm=" + slider_bgm_vol.getValue());
+    }
+
+    /**
+     * Save modifier settings (autoplay, autosound, channel/visibility mods, speed, judgment) to config.
+     */
+    private void saveModifierSettings() {
+        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        go.setAutoplay(jc_autoplay.isSelected());
+        go.setAutosound(jc_autosound.isSelected());
+        go.setChannelModifier((ChannelMod) combo_channelModifier.getSelectedItem());
+        go.setVisibilityModifier((VisibilityMod) combo_visibilityModifier.getSelectedItem());
+        go.setSpeedMultiplier((Double) js_hispeed.getValue());
+        go.setSpeedType((SpeedType) combo_speedType.getSelectedItem());
+        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
+        
+        // Update autoplay keys button state
+        btn_autoplay_keys.setEnabled(jc_autoplay.isSelected());
+        
+        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        DebugLogger.debug("Auto-saved modifier settings: autoplay=" + jc_autoplay.isSelected() + 
+                         ", autosound=" + jc_autosound.isSelected() +
+                         ", channelMod=" + combo_channelModifier.getSelectedItem() +
+                         ", visibilityMod=" + combo_visibilityModifier.getSelectedItem() +
+                         ", speed=" + js_hispeed.getValue() +
+                         ", speedType=" + combo_speedType.getSelectedItem());
+    }
+
+    /**
+     * Save display settings (displayLag, audioLatency) from text fields to config.
+     * Validates input before saving.
+     */
+    private void saveDisplaySettings() {
+        try {
+            double displayLag = Double.parseDouble(txt_displayLag.getText().trim());
+            double audioLatency = Double.parseDouble(txt_audioLatency.getText().trim());
+            
+            GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            go.setDisplayLag(displayLag);
+            go.setAudioLatency(audioLatency);
+            Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+            DebugLogger.debug("Auto-saved display settings: displayLag=" + displayLag + 
+                             ", audioLatency=" + audioLatency);
+        } catch (NumberFormatException e) {
+            // Invalid input - show error and revert to saved value
+            GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            txt_displayLag.setText(go.getDisplayLag() + "");
+            txt_audioLatency.setText(go.getAudioLatency() + "");
+            JOptionPane.showMessageDialog(this, 
+                "Invalid number format. Please enter a valid number.",
+                "Invalid Input", 
+                JOptionPane.WARNING_MESSAGE);
+            DebugLogger.debug("Invalid display/audio latency input, reverted to saved values");
+        }
+    }
+
     /*
      * the parent is telling us the window is closing
      * now is a good time to save the game options
+     * This acts as a safety net to capture any final state
      */
     public void windowClosing() {
-        // Game runs on EDT now, so no need to stop a separate thread
-        // Just save game options
+        // Save ALL settings as a safety net (in case any listeners didn't fire)
         GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
 
         go.setAutoplay(jc_autoplay.isSelected());
@@ -304,8 +426,18 @@ public class MusicSelection extends javax.swing.JPanel
         go.setSpeedMultiplier((Double)js_hispeed.getValue());
         go.setSpeedType((SpeedType)combo_speedType.getSelectedItem());
         go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
+        
+        // Also save displayLag and audioLatency from text fields
+        try {
+            go.setDisplayLag(Double.parseDouble(txt_displayLag.getText().trim()));
+            go.setAudioLatency(Double.parseDouble(txt_audioLatency.getText().trim()));
+        } catch (NumberFormatException e) {
+            // Use existing values if text fields are invalid
+            DebugLogger.debug("Invalid displayLag/audioLatency on window close, using existing values");
+        }
 
         Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        DebugLogger.debug("windowClosing() - Saved all game options as safety net");
     }
 
     /** This method is called from within the constructor to
