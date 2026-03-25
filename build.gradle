@@ -23,6 +23,8 @@ ext {
     lwjglVersion = '3.4.1'
     jnaVersion = '5.14.0'
     vlcjVersion = '4.8.2'
+    jacksonVersion = '3.1.0'
+    sqliteVersion = '3.51.2.0'
 }
 
 // LWJGL natives for each platform
@@ -68,6 +70,16 @@ dependencies {
 
     // Voile for serialization
     implementation files('lib/voile.jar')
+
+    // Jackson 3.x for JSON configuration (package: tools.jackson.*)
+    // Note: jackson-annotations remains at com.fasterxml.jackson.core for 3.x
+    implementation platform("tools.jackson:jackson-bom:${jacksonVersion}")
+    implementation "tools.jackson.core:jackson-core"
+    implementation "tools.jackson.core:jackson-databind"
+    implementation "com.fasterxml.jackson.core:jackson-annotations:2.21"
+
+    // SQLite JDBC driver for chart cache
+    implementation "org.xerial:sqlite-jdbc:${sqliteVersion}"
 
     // Parsers module
     implementation project(':parsers')

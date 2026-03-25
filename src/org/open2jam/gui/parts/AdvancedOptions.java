@@ -22,7 +22,7 @@ public class AdvancedOptions extends JPanel {
     private final GameOptions go;
 
     public AdvancedOptions() {
-        go = Config.getGameOptions();
+        go = Config.getInstance().getGameOptions().toGameOptions();
 
         hasteModeCheckbox = new JCheckBox("Haste Mode");
         bufferSize = new JTextField(String.valueOf(go.getBufferSize()), 10);

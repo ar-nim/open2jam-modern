@@ -58,6 +58,7 @@ $RECYCLE.BIN/
 /config.vl
 game-options.xml
 game_options.properties
+save/
 
 # Native libraries (downloaded by Gradle)
 lib/native/

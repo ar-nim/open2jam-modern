@@ -305,9 +305,9 @@ public class Render implements GameWindowCallback
 
     public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm) throws SoundSystemException
     {
-        // Initialize keyboard mapping arrays from Config (Component 4b - direct array return)
-        keyboardKeyCodes = Config.getKeyboardKeyCodes(Config.KeyboardType.K7);
-        keyboardMiscKeyCodes = Config.getMiscKeyCodes();
+        // Initialize keyboard mapping arrays from Config
+        keyboardKeyCodes = Config.getInstance().getKeyCodes(Config.KeyboardType.K7);
+        keyboardMiscKeyCodes = Config.getInstance().getInstanceMiscKeyCodes();
 
         window = ResourceFactory.get().getGameWindow();
 

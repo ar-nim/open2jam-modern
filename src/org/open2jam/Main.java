@@ -6,6 +6,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import javax.swing.UIManager;
 import org.lwjgl.glfw.GLFW;
+import org.open2jam.parsers.ChartCacheSQLite;
 import org.open2jam.gui.Interface;
 import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
@@ -27,17 +28,25 @@ public class Main implements Runnable
         parseArguments(args);
 
         // Add shutdown hook to terminate GLFW at application exit
-        // (OpenAL context is kept alive between songs, only destroyed at JVM exit)
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 org.lwjgl.glfw.GLFW.glfwTerminate();
             } catch (Exception e) {
                 // Ignore
             }
-            // OpenAL will be cleaned up by JVM when native library unloads
+            // Clean up SQLite cache
+            try {
+                ChartCacheSQLite.close();
+            } catch (Exception e) {
+                // Ignore
+            }
         }));
 
-        Config.openDB();
+        // Initialize Config (loads from save/config.json)
+        Config.getInstance();
+
+        // Initialize SQLite chart cache
+        ChartCacheSQLite.initialize();
 
         setupLogging();
 

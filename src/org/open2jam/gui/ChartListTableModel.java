@@ -1,74 +1,160 @@
 package org.open2jam.gui;
 
-import java.util.ArrayList;
-import java.util.List;
+import org.open2jam.parsers.Chart;
+import org.open2jam.parsers.ChartList;
+import org.open2jam.parsers.ChartMetadata;
+
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.TableModel;
-import org.open2jam.parsers.Chart;
-import org.open2jam.parsers.ChartList;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- *
- * @author fox
+ * Table model for song list display.
+ * 
+ * <p>Supports two modes:</p>
+ * <ol>
+ *   <li><strong>Memory Mode:</strong> Stores ChartList objects (legacy, for refresh scans)</li>
+ *   <li><strong>Database Mode:</strong> Stores ChartMetadata from SQLite (fast startup)</li>
+ * </ol>
+ * 
+ * <p>Database Mode is preferred - loads instantly from cache without file parsing.</p>
+ * 
+ * @author open2jam-modern team
  */
-public class ChartListTableModel implements TableModel
-{
-    private ArrayList<ChartList> items;
+public class ChartListTableModel implements TableModel {
+    
+    private ArrayList<ChartList> chartLists;           // Memory mode
+    private ArrayList<ChartMetadata> chartMetadata;    // Database mode
     private final String[] col_names = new String[] { "Name", "Level", "Genre" };
     private int rank;
-    
     private final ArrayList<TableModelListener> listeners;
 
-    public ChartListTableModel()
-    {
+    public ChartListTableModel() {
         listeners = new ArrayList<TableModelListener>();
-        items = new ArrayList<ChartList>();
-    }
-    
-    public void clear()
-    {
-        items.clear();
+        chartLists = new ArrayList<ChartList>();
+        chartMetadata = new ArrayList<ChartMetadata>();
     }
 
-    public void addRows(List<ChartList> l)
-    {
-        items.addAll(l);
+    /**
+     * Clear all data.
+     */
+    public void clear() {
+        chartLists.clear();
+        chartMetadata.clear();
+    }
+
+    /**
+     * Add rows from parsed ChartList objects (Memory Mode).
+     * 
+     * @param l List of ChartList from file parsing
+     */
+    public void addRows(List<ChartList> l) {
+        chartLists.addAll(l);
         fireListeners();
     }
 
+    /**
+     * Set data from ChartMetadata list (Database Mode).
+     * 
+     * @param metadata List of ChartMetadata from SQLite
+     */
+    public void setMetadataList(ArrayList<ChartMetadata> metadata) {
+        chartMetadata = metadata;
+        chartLists.clear();  // Clear memory mode
+        fireListeners();
+    }
+
+    /**
+     * Set raw ChartList (legacy, for backward compatibility).
+     * 
+     * @param list ChartList array
+     * @deprecated Use setMetadataList() for database mode
+     */
+    @Deprecated
     public void setRawList(ArrayList<ChartList> list) {
-        items = list;
+        chartLists = list;
+        chartMetadata.clear();  // Clear database mode
         fireListeners();
     }
 
+    /**
+     * Get raw ChartList (legacy).
+     * 
+     * @return ChartList array
+     * @deprecated Use getMetadataList() for database mode
+     */
+    @Deprecated
     public ArrayList<ChartList> getRawList() {
-        return items;
+        return chartLists;
     }
 
-    public void setRank(int rank)
-    {
+    /**
+     * Get metadata list (Database Mode).
+     * 
+     * @return ChartMetadata array
+     */
+    public ArrayList<ChartMetadata> getMetadataList() {
+        return chartMetadata;
+    }
+
+    /**
+     * Set rank (difficulty selection: 0=Easy, 1=Normal, 2=Hard).
+     * 
+     * @param rank Difficulty index
+     */
+    public void setRank(int rank) {
         this.rank = rank;
         fireListeners();
     }
 
-    public ChartList getRow(int row)
-    {
+    /**
+     * Get ChartList at row (Memory Mode).
+     * 
+     * @param row Row index
+     * @return ChartList or null
+     */
+    public ChartList getRow(int row) {
         try {
-            return items.get(row);
+            return chartLists.get(row);
         } catch (IndexOutOfBoundsException e) {
             return null;
         }
     }
 
+    /**
+     * Get ChartMetadata at row (Database Mode).
+     * 
+     * @param row Row index
+     * @return ChartMetadata or null
+     */
+    public ChartMetadata getMetadata(int row) {
+        try {
+            return chartMetadata.get(row);
+        } catch (IndexOutOfBoundsException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Check if model is in Database Mode.
+     * 
+     * @return true if using ChartMetadata from SQLite
+     */
+    public boolean isDatabaseMode() {
+        return !chartMetadata.isEmpty();
+    }
+
     @Override
     public int getRowCount() {
-        return items.size();
+        // Use whichever mode is active
+        return chartMetadata.isEmpty() ? chartLists.size() : chartMetadata.size();
     }
 
     @Override
     public int getColumnCount() {
-       return col_names.length;
+        return col_names.length;
     }
 
     @Override
@@ -78,13 +164,12 @@ public class ChartListTableModel implements TableModel
 
     @Override
     public Class<?> getColumnClass(int columnIndex) {
-       switch(columnIndex)
-        {
-            case 0:return String.class;
-            case 1:return Integer.class;
-            case 2:return String.class;
+        switch(columnIndex) {
+            case 0: return String.class;
+            case 1: return Integer.class;
+            case 2: return String.class;
         }
-       return Object.class;
+        return Object.class;
     }
 
     @Override
@@ -94,23 +179,45 @@ public class ChartListTableModel implements TableModel
 
     @Override
     public Object getValueAt(int rowIndex, int columnIndex) {
+        // Database Mode - read from ChartMetadata
+        if (isDatabaseMode()) {
+            ChartMetadata m = getMetadata(rowIndex);
+            if (m == null) return null;
+            
+            // Get the specific difficulty's metadata
+            // (chartMetadata has one row per difficulty)
+            switch(columnIndex) {
+                case 0:
+                    String title = m.getDisplayTitle();
+                    // Show difficulty indicator
+                    if (m.chartIndex == 0) title = "[EX] " + title;
+                    else if (m.chartIndex == 1) title = "[NX] " + title;
+                    else if (m.chartIndex == 2) title = "[HX] " + title;
+                    return title;
+                case 1: return m.level;
+                case 2: return m.genre != null ? m.genre : "";
+            }
+            return null;
+        }
         
+        // Memory Mode - read from ChartList (legacy)
         Chart c;
-        if(items.size() <= rowIndex)return null;
-        if(items.get(rowIndex).isEmpty()) return null;
-        if(items.get(rowIndex).size()-1 < rank)
-            c = items.get(rowIndex).get(0);
+        if (chartLists.size() <= rowIndex) return null;
+        if (chartLists.get(rowIndex).isEmpty()) return null;
+        
+        if (chartLists.get(rowIndex).size() - 1 < rank)
+            c = chartLists.get(rowIndex).get(0);
         else
-            c = items.get(rowIndex).get(rank);
-        switch(columnIndex)
-        {
+            c = chartLists.get(rowIndex).get(rank);
+            
+        switch(columnIndex) {
             case 0:
                 String str = c.getTitle();
-                if(items.get(rowIndex).size()-1 < rank)
-                    str = "[AUTO-EASY] "+str;
+                if (chartLists.get(rowIndex).size() - 1 < rank)
+                    str = "[AUTO-EASY] " + str;
                 return str;
-            case 1:return c.getLevel();
-            case 2:return c.getGenre();
+            case 1: return c.getLevel();
+            case 2: return c.getGenre();
         }
         return null;
     }
@@ -127,7 +234,7 @@ public class ChartListTableModel implements TableModel
 
     @Override
     public void removeTableModelListener(TableModelListener l) {
-       listeners.remove(l);
+        listeners.remove(l);
     }
 
     private void fireListeners() {
@@ -136,6 +243,8 @@ public class ChartListTableModel implements TableModel
     }
 
     private void fireListeners(TableModelEvent e) {
-        for(TableModelListener l : listeners)l.tableChanged(e);
+        for (TableModelListener l : listeners) {
+            l.tableChanged(e);
+        }
     }
 }

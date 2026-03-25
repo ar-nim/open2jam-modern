@@ -159,7 +159,7 @@ public class Configuration extends JPanel {
         saveFeedbackTimer.setRepeats(false);
 
         loadTableKeys(Config.KeyboardType.K7);
-        vlc_path = Config.getGameOptions().getVLCLibraryPath();
+        vlc_path = Config.getInstance().getGameOptions().toGameOptions().getVLCLibraryPath();
         if (vlc_path.isEmpty()) {
             lbl_vlc.setText("Select the VLC path");
         } else {
@@ -180,14 +180,19 @@ public class Configuration extends JPanel {
             case 4: kt = Config.KeyboardType.K8; break;
             default: return;
         }
-        Config.setKeyboardMap(kb_map, kt);
-        GameOptions op = Config.getGameOptions();
+        // Save keyboard map
+        Config config = Config.getInstance();
+        for (Map.Entry<Event.Channel, Integer> entry : kb_map.entrySet()) {
+            config.setKeyCode(kt, entry.getKey(), entry.getValue());
+        }
+        
+        GameOptions op = config.getGameOptions().toGameOptions();
         op.setVLCLibraryPath(vlc_path);
 
         // Save display settings
         saveDisplaySettings(op);
 
-        Config.setGameOptions(op);
+        config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(op));
 
         // Show feedback label instead of popup
         lbl_saveFeedback.setVisible(true);
@@ -256,7 +261,15 @@ public class Configuration extends JPanel {
     }
 
     private void loadTableKeys(Config.KeyboardType kt) {
-        kb_map = Config.getKeyboardMap(kt).clone();
+        // Get key codes as primitive array and convert to map for display
+        int[] keyCodes = Config.getInstance().getKeyCodes(kt);
+        kb_map = new java.util.EnumMap<>(Event.Channel.class);
+        for (Event.Channel channel : Event.Channel.values()) {
+            if (keyCodes[channel.ordinal()] != -1) {
+                kb_map.put(channel, keyCodes[channel.ordinal()]);
+            }
+        }
+        
         DefaultTableModel dm = (DefaultTableModel) tKeys.getModel();
         dm.setRowCount(0);
         dm.setRowCount(kb_map.size());
@@ -382,7 +395,7 @@ public class Configuration extends JPanel {
      * Load display settings from GameOptions into the UI components.
      */
     private void loadDisplaySettings() {
-        GameOptions go = Config.getGameOptions();
+        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
 
         // Select the matching display mode
         DisplayMode currentMode = go.getDisplay();

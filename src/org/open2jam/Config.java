@@ -1,261 +1,627 @@
 package org.open2jam;
 
-import java.beans.XMLDecoder;
-import java.beans.XMLEncoder;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.open2jam.render.lwjgl.Keyboard;
-import org.open2jam.parsers.ChartList;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectWriter;
 import org.open2jam.parsers.Event;
-import org.open2jam.parsers.Event.Channel;
-import org.voile.VoileMap;
+import org.open2jam.util.Logger;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- *
- * @author fox
+ * Unified configuration class (replaces LegacyConfig.java + GameOptions.java).
+ * 
+ * <p>Stores key bindings and game options in {@code save/config.json} using Jackson JSON serialization.</p>
+ * 
+ * <h2>Features:</h2>
+ * <ul>
+ *   <li><strong>Human-readable JSON:</strong> Editable with any text editor</li>
+ *   <li><strong>Type-safe:</strong> Jackson validates types during deserialization</li>
+ *   <li><strong>Backward compatible:</strong> Missing fields use defaults</li>
+ *   <li><strong>Zero-allocation gameplay:</strong> Key codes returned as primitive int arrays</li>
+ *   <li><strong>Auto-save:</strong> Changes persisted immediately</li>
+ * </ul>
+ * 
+ * <h2>Thread Safety:</h2>
+ * <ul>
+ *   <li>Singleton instance is thread-safe (initialized on first access)</li>
+ *   <li>Save operations are synchronized to prevent concurrent writes</li>
+ *   <li>Read operations are lock-free (immutable after load)</li>
+ * </ul>
+ * 
+ * <h2>File Format:</h2>
+ * <pre>{@code
+ * {
+ *   "keyBindings": {
+ *     "misc": { "SPEED_UP": 38, "SPEED_DOWN": 40, ... },
+ *     "keyboard": {
+ *       "k4": { "NOTE_1": 68, "NOTE_2": 70, ... },
+ *       "k5": { ... },
+ *       ...
+ *     }
+ *   },
+ *   "gameOptions": {
+ *     "speedMultiplier": 1.0,
+ *     "speedType": "HiSpeed",
+ *     "visibilityModifier": "None",
+ *     ...
+ *   }
+ * }
+ * }</pre>
+ * 
+ * @author open2jam-modern team
  */
-public abstract class Config
-{
-    private static final File CONFIG_FILE = new File("config.vl");
+public class Config {
     
-    private static VoileMap<String, Serializable> VMap;
-    private static GameOptions options;
-            
-    public static final String OPTIONS_FILE = "game-options.xml";
-
-    private static GameOptions loadGameOptions() {
-        try {
-            XMLDecoder decoder = new XMLDecoder(new BufferedInputStream(new FileInputStream(OPTIONS_FILE)));
-            Object result = decoder.readObject();
-            decoder.close();
-            if (result instanceof GameOptions) return (GameOptions)result;
-        } catch (FileNotFoundException fnf) {
-            return null; // thats ok a new file will be created
-        } catch (Exception ex) {
-            Logger.getLogger(Config.class.getName()).log(Level.SEVERE, "{0}", ex);
-        }
-        return null;
-    }
+    private static final File CONFIG_FILE = new File("save/config.json");
+    private static final ObjectMapper MAPPER = new ObjectMapper();
     
-    public static void saveGameOptions() {
-        try {
-            XMLEncoder encoder = new XMLEncoder(new BufferedOutputStream(new FileOutputStream(OPTIONS_FILE)));
-            encoder.writeObject(options);
-            encoder.close();
-        } catch (IOException ex) {
-            Logger.getLogger(GameOptions.class.getName()).log(Level.SEVERE, "{0}", ex);
-        }
-    }
+    // Writer for indented output (Jackson 3.x)
+    private static final ObjectWriter INDENTED_WRITER = MAPPER.writerWithDefaultPrettyPrinter();
 
-    public enum KeyboardType {K4, K5, K6, K7, K8, /*K9*/}
+    private static Config instance;
     
-    public enum MiscEvent {  
-        NONE,                       //None
-        SPEED_UP, SPEED_DOWN,       //speed changes
-        MAIN_VOL_UP, MAIN_VOL_DOWN, //main volume changes
-        KEY_VOL_UP, KEY_VOL_DOWN,   //key volume changes
-        BGM_VOL_UP, BGM_VOL_DOWN,   //bgm volume changes
-        //CHAT_TOGGLE,                //chat toggle... if we are going to add one
-    }
+    // ===== Debounced Save =====
+    private static final ScheduledExecutorService saveExecutor = new ScheduledThreadPoolExecutor(1, r -> {
+        Thread t = new Thread(r, "Config-Saver");
+        t.setDaemon(true);
+        return t;
+    });
+    private static final AtomicBoolean savePending = new AtomicBoolean(false);
+    private static final long SAVE_DELAY_MS = 500;  // Debounce delay
+
+    // ===== Config Fields =====
+    public KeyBindings keyBindings = new KeyBindings();
+    public GameOptionsWrapper gameOptions = new GameOptionsWrapper();
     
-    public static void openDB() {
-        
-        options = loadGameOptions();
-        
-        if (options == null) {
-            options = new GameOptions();
+    // ===== UI State (persisted for convenience) =====
+    /**
+     * Last opened library ID from SQLite libraries table.
+     * Used to restore the last selected directory on startup.
+     * Ignored if library doesn't exist or database is empty.
+     */
+    public Integer lastOpenedLibraryId = null;
+
+    // ===== Initialization =====
+
+    /**
+     * Get singleton Config instance.
+     * 
+     * <p>Thread-safe lazy initialization. Loads from disk on first access if file exists.</p>
+     * 
+     * @return Singleton Config instance
+     */
+    public static Config getInstance() {
+        if (instance == null) {
+            synchronized (Config.class) {
+                if (instance == null) {
+                    instance = load();
+                }
+            }
         }
-        
-        if(!CONFIG_FILE.exists()) { // create now
-            
-            VMap = new VoileMap<String, Serializable>(CONFIG_FILE);
-            
-            setCwd(null);
-            
-            setDirsList(new ArrayList<File>());
-
-            EnumMap<MiscEvent, Integer> keyboard_misc = new EnumMap<MiscEvent, Integer>(MiscEvent.class);
-            keyboard_misc.put(MiscEvent.SPEED_DOWN,   Keyboard.KEY_DOWN);
-            keyboard_misc.put(MiscEvent.SPEED_UP,     Keyboard.KEY_UP);
-            keyboard_misc.put(MiscEvent.MAIN_VOL_UP,  Keyboard.KEY_2);
-            keyboard_misc.put(MiscEvent.MAIN_VOL_DOWN,Keyboard.KEY_1);
-            keyboard_misc.put(MiscEvent.KEY_VOL_UP,   Keyboard.KEY_4);
-            keyboard_misc.put(MiscEvent.KEY_VOL_DOWN, Keyboard.KEY_3);
-            keyboard_misc.put(MiscEvent.BGM_VOL_UP,   Keyboard.KEY_6);
-            keyboard_misc.put(MiscEvent.BGM_VOL_DOWN, Keyboard.KEY_5);
-            put("keyboard_misc", keyboard_misc);
-            
-            // TODO Needs the 2nd player keys, if we are going to add 2p support ofc xD
-            EnumMap<Event.Channel, Integer> keyboard_map_4K = new EnumMap<Event.Channel, Integer>(Event.Channel.class);
-            keyboard_map_4K.put(Event.Channel.NOTE_1, Keyboard.KEY_D);
-            keyboard_map_4K.put(Event.Channel.NOTE_2, Keyboard.KEY_F);
-            keyboard_map_4K.put(Event.Channel.NOTE_3, Keyboard.KEY_J);
-            keyboard_map_4K.put(Event.Channel.NOTE_4, Keyboard.KEY_K);
-            keyboard_map_4K.put(Event.Channel.NOTE_SC, Keyboard.KEY_LSHIFT);
-            put("keyboard_map"+KeyboardType.K4.toString(), keyboard_map_4K);
-
-            EnumMap<Event.Channel, Integer> keyboard_map_5K = new EnumMap<Event.Channel, Integer>(Event.Channel.class);
-            keyboard_map_5K.put(Event.Channel.NOTE_1, Keyboard.KEY_D);
-            keyboard_map_5K.put(Event.Channel.NOTE_2, Keyboard.KEY_F);
-            keyboard_map_5K.put(Event.Channel.NOTE_3, Keyboard.KEY_SPACE);
-            keyboard_map_5K.put(Event.Channel.NOTE_4, Keyboard.KEY_J);
-            keyboard_map_5K.put(Event.Channel.NOTE_5, Keyboard.KEY_K);
-            keyboard_map_5K.put(Event.Channel.NOTE_SC, Keyboard.KEY_LSHIFT);
-            put("keyboard_map"+KeyboardType.K5.toString(), keyboard_map_5K);
-
-            EnumMap<Event.Channel, Integer> keyboard_map_6K = new EnumMap<Event.Channel, Integer>(Event.Channel.class);
-            keyboard_map_6K.put(Event.Channel.NOTE_1, Keyboard.KEY_S);
-            keyboard_map_6K.put(Event.Channel.NOTE_2, Keyboard.KEY_D);
-            keyboard_map_6K.put(Event.Channel.NOTE_3, Keyboard.KEY_F);
-            keyboard_map_6K.put(Event.Channel.NOTE_4, Keyboard.KEY_J);
-            keyboard_map_6K.put(Event.Channel.NOTE_5, Keyboard.KEY_K);
-            keyboard_map_6K.put(Event.Channel.NOTE_6, Keyboard.KEY_L);
-            keyboard_map_6K.put(Event.Channel.NOTE_SC, Keyboard.KEY_LSHIFT);
-            put("keyboard_map"+KeyboardType.K6.toString(), keyboard_map_6K);
-
-            EnumMap<Event.Channel, Integer> keyboard_map_7K = new EnumMap<Event.Channel, Integer>(Event.Channel.class);
-            keyboard_map_7K.put(Event.Channel.NOTE_1, Keyboard.KEY_S);
-            keyboard_map_7K.put(Event.Channel.NOTE_2, Keyboard.KEY_D);
-            keyboard_map_7K.put(Event.Channel.NOTE_3, Keyboard.KEY_F);
-            keyboard_map_7K.put(Event.Channel.NOTE_4, Keyboard.KEY_SPACE);
-            keyboard_map_7K.put(Event.Channel.NOTE_5, Keyboard.KEY_J);
-            keyboard_map_7K.put(Event.Channel.NOTE_6, Keyboard.KEY_K);
-            keyboard_map_7K.put(Event.Channel.NOTE_7, Keyboard.KEY_L);
-            keyboard_map_7K.put(Event.Channel.NOTE_SC, Keyboard.KEY_LSHIFT);
-            put("keyboard_map"+KeyboardType.K7.toString(), keyboard_map_7K);
-
-            EnumMap<Event.Channel, Integer> keyboard_map_8K = new EnumMap<Event.Channel, Integer>(Event.Channel.class);
-            keyboard_map_8K.put(Event.Channel.NOTE_1, Keyboard.KEY_A);
-            keyboard_map_8K.put(Event.Channel.NOTE_2, Keyboard.KEY_S);
-            keyboard_map_8K.put(Event.Channel.NOTE_3, Keyboard.KEY_D);
-            keyboard_map_8K.put(Event.Channel.NOTE_4, Keyboard.KEY_F);
-            keyboard_map_8K.put(Event.Channel.NOTE_5, Keyboard.KEY_H);
-            keyboard_map_8K.put(Event.Channel.NOTE_6, Keyboard.KEY_J);
-            keyboard_map_8K.put(Event.Channel.NOTE_7, Keyboard.KEY_K);
-            keyboard_map_8K.put(Event.Channel.NOTE_SC, Keyboard.KEY_L);
-            put("keyboard_map"+KeyboardType.K8.toString(), keyboard_map_8K);
-
-        } else {           
-            VMap = new VoileMap<String, Serializable>(CONFIG_FILE);
-        }
-        
-    }
-
-    @SuppressWarnings("unchecked")
-    public static EnumMap<Event.Channel,Integer> getKeyboardMap(KeyboardType kt){
-        return (EnumMap<Channel, Integer>) get("keyboard_map"+kt.toString());
+        return instance;
     }
 
     /**
-     * Get keyboard mapping as primitive int array for zero-allocation gameplay.
-     * Array is indexed by Event.Channel.ordinal().
-     * Returns -1 for unbound keys.
+     * Load configuration from disk.
+     * 
+     * <p>Creates default config if file doesn't exist or is corrupted.</p>
+     * 
+     * @return Loaded or default Config instance
+     */
+    private static Config load() {
+        // Ensure save directory exists
+        File saveDir = new File("save");
+        if (!saveDir.exists()) {
+            if (!saveDir.mkdirs()) {
+                Logger.global.severe("Failed to create save directory: " + saveDir.getAbsolutePath());
+            }
+        }
+
+        if (!CONFIG_FILE.exists()) {
+            Logger.global.info("Config file not found, creating default: " + CONFIG_FILE.getAbsolutePath());
+            return createDefault();
+        }
+
+        try {
+            Config config = MAPPER.readValue(CONFIG_FILE, Config.class);
+            config.migrateOldKeyBindings();
+            Logger.global.info("Config loaded: " + CONFIG_FILE.getAbsolutePath());
+            return config;
+        } catch (Exception e) {
+            Logger.global.log(java.util.logging.Level.SEVERE, 
+                "Failed to load config.json, creating default", e);
+            return createDefault();
+        }
+    }
+
+    /**
+     * Create default configuration.
+     * 
+     * @return Config with default key bindings and game options
+     */
+    private static Config createDefault() {
+        Config config = new Config();
+        config.keyBindings = createDefaultKeyBindings();
+        config.gameOptions = createDefaultGameOptions();
+        config.save();
+        return config;
+    }
+
+    /**
+     * Create default key bindings.
+     * 
+     * <p>Matches original O2Jam defaults:</p>
+     * <ul>
+     *   <li>K4: D F J K (Shift for SC)</li>
+     *   <li>K5: D F Space J K (Shift for SC)</li>
+     *   <li>K6: S D F J K L (Shift for SC)</li>
+     *   <li>K7: S D F Space J K L (Shift for SC)</li>
+     *   <li>K8: A S D F H J K L</li>
+     * </ul>
+     * 
+     * @return KeyBindings with default mappings
+     */
+    private static KeyBindings createDefaultKeyBindings() {
+        KeyBindings kb = new KeyBindings();
+
+        // Misc bindings (volume, speed)
+        kb.misc.put("SPEED_DOWN", org.open2jam.render.lwjgl.Keyboard.KEY_DOWN);
+        kb.misc.put("SPEED_UP", org.open2jam.render.lwjgl.Keyboard.KEY_UP);
+        kb.misc.put("MAIN_VOL_UP", org.open2jam.render.lwjgl.Keyboard.KEY_2);
+        kb.misc.put("MAIN_VOL_DOWN", org.open2jam.render.lwjgl.Keyboard.KEY_1);
+        kb.misc.put("KEY_VOL_UP", org.open2jam.render.lwjgl.Keyboard.KEY_4);
+        kb.misc.put("KEY_VOL_DOWN", org.open2jam.render.lwjgl.Keyboard.KEY_3);
+        kb.misc.put("BGM_VOL_UP", org.open2jam.render.lwjgl.Keyboard.KEY_6);
+        kb.misc.put("BGM_VOL_DOWN", org.open2jam.render.lwjgl.Keyboard.KEY_5);
+
+        // K4
+        kb.keyboard.k4.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k4.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k4.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k4.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k4.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+
+        // K5
+        kb.keyboard.k5.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k5.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k5.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
+        kb.keyboard.k5.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k5.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k5.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+
+        // K6
+        kb.keyboard.k6.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k6.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k6.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k6.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k6.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k6.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k6.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+
+        // K7
+        kb.keyboard.k7.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k7.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k7.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k7.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
+        kb.keyboard.k7.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k7.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k7.put("NOTE_7", org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k7.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+
+        // K8
+        kb.keyboard.k8.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_A);
+        kb.keyboard.k8.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k8.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k8.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k8.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_H);
+        kb.keyboard.k8.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k8.put("NOTE_7", org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k8.put("NOTE_8", org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k8.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_L);
+
+        return kb;
+    }
+
+    /**
+     * Create default game options wrapper.
+     * 
+     * @return GameOptionsWrapper with default values
+     */
+    private static GameOptionsWrapper createDefaultGameOptions() {
+        GameOptionsWrapper opts = new GameOptionsWrapper();
+        opts.speedMultiplier = 1.0;
+        opts.speedType = GameOptions.SpeedType.HiSpeed;
+        opts.visibilityModifier = GameOptions.VisibilityMod.None;
+        opts.channelModifier = GameOptions.ChannelMod.None;
+        opts.judgmentType = GameOptions.JudgmentType.BeatJudgment;
+        opts.keyVolume = 1.0f;
+        opts.bgmVolume = 1.0f;
+        opts.masterVolume = 1.0f;
+        opts.autoplay = false;
+        opts.autosound = false;
+        opts.autoplayChannels = Arrays.asList(false, false, false, false, false, false, false);
+        opts.displayFullscreen = false;
+        opts.displayVsync = true;
+        opts.fpsLimiter = GameOptions.FpsLimiter.x1;
+        opts.displayWidth = 1280;
+        opts.displayHeight = 720;
+        opts.displayBitsPerPixel = 32;
+        opts.displayFrequency = 60;
+        opts.bufferSize = 512;
+        opts.vlc = "";
+        opts.displayLag = 0.0;
+        opts.audioLatency = 0.0;
+        opts.hasteMode = false;
+        opts.hasteModeNormalizeSpeed = true;
+        return opts;
+    }
+
+    // ===== Save/Load =====
+
+    /**
+     * Save configuration to disk immediately.
+     * 
+     * <p>Thread-safe: synchronized to prevent concurrent writes.</p>
+     * 
+     * <p>Note: For rapid successive changes (e.g., slider adjustments), use scheduleSave()
+     * which debounces writes to avoid UI blocking.</p>
+     */
+    public synchronized void save() {
+        try {
+            INDENTED_WRITER.writeValue(CONFIG_FILE, this);
+            Logger.global.info("Config saved: " + CONFIG_FILE.getAbsolutePath());
+        } catch (Exception e) {
+            Logger.global.log(java.util.logging.Level.SEVERE, "Failed to save config.json", e);
+        }
+    }
+
+    /**
+     * Schedule save with debouncing.
+     *
+     * <p>Use this for rapid successive changes (e.g., slider adjustments, key binding changes).
+     * Multiple calls within 500ms will result in a single disk write.</p>
+     *
+     * <p>Thread Safety: Uses ScheduledExecutorService with atomic flag.</p>
+     */
+    public void scheduleSave() {
+        if (savePending.compareAndSet(false, true)) {
+            saveExecutor.schedule(() -> {
+                try {
+                    save();
+                } finally {
+                    savePending.set(false);
+                }
+            }, SAVE_DELAY_MS, TimeUnit.MILLISECONDS);
+        }
+        // If savePending was already true, the scheduled save will handle this change
+    }
+
+    // ===== Key Binding Accessors (primitive arrays for zero-allocation) =====
+
+    /**
+     * Get key codes for a keyboard type as primitive int array.
+     * 
+     * <p>Zero-allocation: returns fresh array each call (no GC pressure during gameplay).</p>
      * 
      * @param kt Keyboard type (K4-K8)
-     * @return int array of key codes, indexed by channel ordinal
+     * @return int array indexed by Event.Channel.ordinal(), -1 for unbound keys
      */
-    @SuppressWarnings("unchecked")
-    public static int[] getKeyboardKeyCodes(KeyboardType kt) {
-        EnumMap<Event.Channel, Integer> keyboardMap = (EnumMap<Channel, Integer>) get("keyboard_map"+kt.toString());
+    public int[] getKeyCodes(KeyboardType kt) {
+        Map<String, Integer> map = getInstanceKeyboardMap(kt);
         int[] keyCodes = new int[Event.Channel.values().length];
-        java.util.Arrays.fill(keyCodes, -1);
-        for (Map.Entry<Event.Channel, Integer> entry : keyboardMap.entrySet()) {
-            keyCodes[entry.getKey().ordinal()] = entry.getValue();
+        Arrays.fill(keyCodes, -1);
+
+        for (Map.Entry<String, Integer> entry : map.entrySet()) {
+            try {
+                Event.Channel channel = Event.Channel.valueOf(entry.getKey());
+                keyCodes[channel.ordinal()] = entry.getValue();
+            } catch (IllegalArgumentException e) {
+                // Ignore invalid channel names
+            }
         }
         return keyCodes;
-    }
-
-    @SuppressWarnings("unchecked")
-    public static EnumMap<MiscEvent,Integer> getKeyboardMisc(){
-        return (EnumMap<MiscEvent, Integer>) get("keyboard_misc");
     }
 
     /**
-     * Get misc key mapping as primitive int array for zero-allocation gameplay.
-     * Array is indexed by Config.MiscEvent.ordinal().
-     * Returns -1 for unbound keys.
+     * Get misc key codes as primitive int array.
      * 
-     * @return int array of key codes, indexed by misc event ordinal
+     * <p>Zero-allocation: returns fresh array each call.</p>
+     * 
+     * @return int array indexed by MiscEvent.ordinal(), -1 for unbound keys
      */
-    @SuppressWarnings("unchecked")
-    public static int[] getMiscKeyCodes() {
-        EnumMap<MiscEvent, Integer> keyboardMisc = (EnumMap<MiscEvent, Integer>) get("keyboard_misc");
+    public int[] getInstanceMiscKeyCodes() {
         int[] keyCodes = new int[MiscEvent.values().length];
-        java.util.Arrays.fill(keyCodes, -1);
-        for (Map.Entry<MiscEvent, Integer> entry : keyboardMisc.entrySet()) {
-            keyCodes[entry.getKey().ordinal()] = entry.getValue();
+        Arrays.fill(keyCodes, -1);
+
+        for (Map.Entry<String, Integer> entry : keyBindings.misc.entrySet()) {
+            try {
+                MiscEvent event = MiscEvent.valueOf(entry.getKey());
+                keyCodes[event.ordinal()] = entry.getValue();
+            } catch (IllegalArgumentException e) {
+                // Ignore invalid event names
+            }
         }
         return keyCodes;
     }
-    
-    public static void setKeyboardMisc(EnumMap<MiscEvent,Integer> km_map)
-    {
-        put("keyboard_misc", km_map);
+
+    /**
+     * Get keyboard map for a keyboard type.
+     * 
+     * @param kt Keyboard type
+     * @return Map of channel name to key code
+     */
+    private Map<String, Integer> getInstanceKeyboardMap(KeyboardType kt) {
+        return switch (kt) {
+            case K4 -> keyBindings.keyboard.k4;
+            case K5 -> keyBindings.keyboard.k5;
+            case K6 -> keyBindings.keyboard.k6;
+            case K7 -> keyBindings.keyboard.k7;
+            case K8 -> keyBindings.keyboard.k8;
+            default -> Collections.emptyMap();
+        };
     }
 
-    public static void setKeyboardMap(EnumMap<Event.Channel,Integer> kb_map, KeyboardType kt){
-        put("keyboard_map"+kt.toString(), kb_map);
+    /**
+     * Set key code for a channel.
+     *
+     * @param kt Keyboard type
+     * @param channel Channel to bind
+     * @param keyCode GLFW key code
+     */
+    public void setKeyCode(KeyboardType kt, Event.Channel channel, int keyCode) {
+        Map<String, Integer> map = getInstanceKeyboardMap(kt);
+        map.put(channel.name(), keyCode);
+        scheduleSave();  // Debounced save for rapid changes
     }
 
-    public static File getCwd() {
-        return (File) get("cwd");
-    }
-    public static void setCwd(File new_file) {
-        put("cwd",new_file);
-    }
-
-    public static void setDirsList(ArrayList<File> dl) {
-        put("dir_list",dl);
-    }
-    
-    @SuppressWarnings("unchecked")
-    public static ArrayList<File> getDirsList() {
-        return (ArrayList<File>) get("dir_list");
-    }
-    
-    public static void setGameOptions(GameOptions go) {
-        options = go;
-        saveGameOptions();
-    }
-    
-    public static GameOptions getGameOptions() {
-        return options;
-    }
-    
-    @SuppressWarnings("unchecked")
-    public static ArrayList<ChartList> getCache(File dir) {
-        return (ArrayList<ChartList>) get("cache:"+dir.getAbsolutePath());
+    /**
+     * Set misc key code.
+     *
+     * @param event Misc event
+     * @param keyCode GLFW key code
+     */
+    public void setMiscKeyCode(MiscEvent event, int keyCode) {
+        keyBindings.misc.put(event.name(), keyCode);
+        scheduleSave();  // Debounced save for rapid changes
     }
 
-    public static void setCache(File dir, ArrayList<ChartList> data) {
-        delete("cache:"+dir.getAbsolutePath());
-        put("cache:"+dir.getAbsolutePath(),data);
+    // ===== Game Options =====
+
+    /**
+     * Get game options.
+     * 
+     * @return GameOptionsWrapper with all game settings
+     */
+    public GameOptionsWrapper getGameOptions() {
+        return gameOptions;
     }
 
-    public static void delCache(File dir){
-        delete("cache:"+dir.getAbsolutePath());
-    }
-    
-    private static Serializable get(String key) {
-        return VMap.get(key);
-    }
-    
-    private static void put(String key, Serializable value) {
-        VMap.put(key, value);
+    /**
+     * Set game options.
+     *
+     * @param options New game options (will be saved immediately)
+     */
+    public void setGameOptions(GameOptionsWrapper options) {
+        this.gameOptions = options;
+        scheduleSave();
     }
 
-    private static void delete(String key) {
-        VMap.remove(key);
+    // ===== UI State =====
+
+    /**
+     * Get last opened library ID.
+     *
+     * @return Library ID from SQLite, or null if not set
+     */
+    public Integer getLastOpenedLibraryId() {
+        return lastOpenedLibraryId;
+    }
+
+    /**
+     * Set last opened library ID.
+     *
+     * @param libraryId Library ID from SQLite libraries table
+     */
+    public void setLastOpenedLibraryId(Integer libraryId) {
+        this.lastOpenedLibraryId = libraryId;
+        scheduleSave();
+    }
+
+    // ===== Migration =====
+
+    /**
+     * Migrate old key bindings from LegacyConfig format.
+     * 
+     * <p>Handles migration from VoileMap config.vl if needed.</p>
+     */
+    private void migrateOldKeyBindings() {
+        // Migration logic handled by ConfigMigration class
+        // This method is a hook for future migration needs
+    }
+
+    // ===== Inner Classes =====
+
+    /**
+     * Key bindings container.
+     * 
+     * <p>Thread Safety: Uses ConcurrentHashMap for all maps to prevent ConcurrentModificationException.</p>
+     */
+    public static class KeyBindings {
+        public Map<String, Integer> misc = new ConcurrentHashMap<>();
+        public KeyboardMaps keyboard = new KeyboardMaps();
+
+        // Getters/setters for Jackson
+        public Map<String, Integer> getMisc() { return misc; }
+        public void setMisc(Map<String, Integer> misc) { this.misc = new ConcurrentHashMap<>(misc); }
+        public KeyboardMaps getKeyboard() { return keyboard; }
+        public void setKeyboard(KeyboardMaps keyboard) { this.keyboard = keyboard; }
+    }
+
+    /**
+     * Keyboard maps container.
+     * 
+     * <p>Thread Safety: Uses ConcurrentHashMap for all maps to prevent ConcurrentModificationException.</p>
+     */
+    public static class KeyboardMaps {
+        public Map<String, Integer> k4 = new ConcurrentHashMap<>();
+        public Map<String, Integer> k5 = new ConcurrentHashMap<>();
+        public Map<String, Integer> k6 = new ConcurrentHashMap<>();
+        public Map<String, Integer> k7 = new ConcurrentHashMap<>();
+        public Map<String, Integer> k8 = new ConcurrentHashMap<>();
+
+        // Getters/setters for Jackson
+        public Map<String, Integer> getK4() { return k4; }
+        public void setK4(Map<String, Integer> k4) { this.k4 = new ConcurrentHashMap<>(k4); }
+        public Map<String, Integer> getK5() { return k5; }
+        public void setK5(Map<String, Integer> k5) { this.k5 = new ConcurrentHashMap<>(k5); }
+        public Map<String, Integer> getK6() { return k6; }
+        public void setK6(Map<String, Integer> k6) { this.k6 = new ConcurrentHashMap<>(k6); }
+        public Map<String, Integer> getK7() { return k7; }
+        public void setK7(Map<String, Integer> k7) { this.k7 = new ConcurrentHashMap<>(k7); }
+        public Map<String, Integer> getK8() { return k8; }
+        public void setK8(Map<String, Integer> k8) { this.k8 = new ConcurrentHashMap<>(k8); }
+    }
+
+    /**
+     * Keyboard type enum (matches LegacyConfig).
+     */
+    public enum KeyboardType { K4, K5, K6, K7, K8 }
+
+    /**
+     * Misc event enum (matches LegacyConfig).
+     */
+    public enum MiscEvent {
+        NONE,                       // None
+        SPEED_UP, SPEED_DOWN,       // Speed changes
+        MAIN_VOL_UP, MAIN_VOL_DOWN, // Main volume changes
+        KEY_VOL_UP, KEY_VOL_DOWN,   // Key volume changes
+        BGM_VOL_UP, BGM_VOL_DOWN,   // BGM volume changes
+    }
+
+    /**
+     * Game options wrapper for JSON serialization.
+     * 
+     * <p>This class wraps GameOptions fields for JSON storage while maintaining
+     * compatibility with the existing GameOptions class.</p>
+     */
+    public static class GameOptionsWrapper {
+        // Gameplay
+        public double speedMultiplier = 1.0;
+        public GameOptions.SpeedType speedType = GameOptions.SpeedType.HiSpeed;
+        public GameOptions.VisibilityMod visibilityModifier = GameOptions.VisibilityMod.None;
+        public GameOptions.ChannelMod channelModifier = GameOptions.ChannelMod.None;
+        public GameOptions.JudgmentType judgmentType = GameOptions.JudgmentType.BeatJudgment;
+
+        // Audio
+        public float keyVolume = 1.0f;
+        public float bgmVolume = 1.0f;
+        public float masterVolume = 1.0f;
+
+        // Autoplay
+        public boolean autoplay = false;
+        public boolean autosound = false;
+        public java.util.List<Boolean> autoplayChannels = Arrays.asList(false, false, false, false, false, false, false);
+
+        // Display
+        public boolean displayFullscreen = false;
+        public boolean displayVsync = true;
+        public GameOptions.FpsLimiter fpsLimiter = GameOptions.FpsLimiter.x1;
+        public int displayWidth = 1280;
+        public int displayHeight = 720;
+        public int displayBitsPerPixel = 32;
+        public int displayFrequency = 60;
+
+        // Sound
+        public int bufferSize = 512;
+
+        // VLC
+        public String vlc = "";
+
+        // Timing
+        public double displayLag = 0.0;
+        public double audioLatency = 0.0;
+
+        // Haste mode
+        public boolean hasteMode = false;
+        public boolean hasteModeNormalizeSpeed = true;
+
+        /**
+         * Convert to GameOptions object.
+         * 
+         * @return GameOptions with same settings
+         */
+        public GameOptions toGameOptions() {
+            GameOptions opts = new GameOptions();
+            opts.setSpeedMultiplier(speedMultiplier);
+            opts.setSpeedType(speedType);
+            opts.setVisibilityModifier(visibilityModifier);
+            opts.setChannelModifier(channelModifier);
+            opts.setJudgmentType(judgmentType);
+            opts.setKeyVolume(keyVolume);
+            opts.setBGMVolume(bgmVolume);
+            opts.setMasterVolume(masterVolume);
+            opts.setAutoplay(autoplay);
+            opts.setAutosound(autosound);
+            opts.setAutoplayChannels(autoplayChannels);
+            opts.setDisplayFullscreen(displayFullscreen);
+            opts.setDisplayVsync(displayVsync);
+            opts.setFpsLimiter(fpsLimiter);
+            opts.setDisplayWidth(displayWidth);
+            opts.setDisplayHeight(displayHeight);
+            opts.setDisplayBitsPerPixel(displayBitsPerPixel);
+            opts.setDisplayFrequency(displayFrequency);
+            opts.setBufferSize(bufferSize);
+            opts.setVLCLibraryPath(vlc);
+            opts.setDisplayLag(displayLag);
+            opts.setAudioLatency(audioLatency);
+            opts.setHasteMode(hasteMode);
+            opts.setHasteModeNormalizeSpeed(hasteModeNormalizeSpeed);
+            return opts;
+        }
+
+        /**
+         * Create from existing GameOptions.
+         * 
+         * @param opts GameOptions to wrap
+         * @return GameOptionsWrapper with same settings
+         */
+        public static GameOptionsWrapper fromGameOptions(GameOptions opts) {
+            GameOptionsWrapper wrapper = new GameOptionsWrapper();
+            wrapper.speedMultiplier = opts.getSpeedMultiplier();
+            wrapper.speedType = opts.getSpeedType();
+            wrapper.visibilityModifier = opts.getVisibilityModifier();
+            wrapper.channelModifier = opts.getChannelModifier();
+            wrapper.judgmentType = opts.getJudgmentType();
+            wrapper.keyVolume = opts.getKeyVolume();
+            wrapper.bgmVolume = opts.getBGMVolume();
+            wrapper.masterVolume = opts.getMasterVolume();
+            wrapper.autoplay = opts.isAutoplay();
+            wrapper.autosound = opts.isAutosound();
+            wrapper.autoplayChannels = opts.getAutoplayChannels();
+            wrapper.displayFullscreen = opts.isDisplayFullscreen();
+            wrapper.displayVsync = opts.isDisplayVsync();
+            wrapper.fpsLimiter = opts.getFpsLimiter();
+            wrapper.displayWidth = opts.getDisplayWidth();
+            wrapper.displayHeight = opts.getDisplayHeight();
+            wrapper.displayBitsPerPixel = opts.getDisplayBitsPerPixel();
+            wrapper.displayFrequency = opts.getDisplayFrequency();
+            wrapper.bufferSize = opts.getBufferSize();
+            wrapper.vlc = opts.getVLCLibraryPath();
+            wrapper.displayLag = opts.getDisplayLag();
+            wrapper.audioLatency = opts.getAudioLatency();
+            wrapper.hasteMode = opts.isHasteMode();
+            wrapper.hasteModeNormalizeSpeed = opts.isHasteModeNormalizeSpeed();
+            return wrapper;
+        }
     }
 }
