@@ -5,9 +5,9 @@
 [![Gradle](https://img.shields.io/badge/Gradle-9.4.0-green.svg)](https://gradle.org/)
 [![Build Status](https://img.shields.io/badge/build-successful-brightgreen.svg)]()
 
-**open2jam-modern** is a modernized fork of [open2jam](https://github.com/open2jamorg/open2jam), an open-source emulator of the rhythm game [O2Jam](http://o2jam.wikia.com/wiki/O2Jam).
+**open2jam-modern** is a comprehensive modernization of [open2jam](https://github.com/open2jamorg/open2jam), an open-source emulator of the rhythm game [O2Jam](http://o2jam.wikia.com/wiki/O2Jam).
 
-This version migrates from the legacy Java/LWJGL 2/FMOD Ex stack to **modern Java 21+**, **Gradle 9.4.0**, **LWJGL 3.4.1**, and **OpenAL**, removing all NetBeans-specific dependencies and fixing critical native crashes on Linux/Wayland.
+This project represents **13+ years of evolution** from the last commit in September 2013 to the present day, migrating from legacy Java 6/LWJGL 2/FMOD Ex to **modern Java 21+**, **Gradle 9.4.0**, **LWJGL 3.4.1**, and **OpenAL**, while fixing critical native crashes on Linux/Wayland and removing all NetBeans-specific dependencies.
 
 ## ✅ Build Status: SUCCESSFUL
 
@@ -17,65 +17,63 @@ BUILD SUCCESSFUL in 8s
 10 actionable tasks: 9 executed, 1 from cache
 ```
 
+## From 2013 to 2026: A 13-Year Journey
+
+**Last commit in 2013**: September 14, 2013 (`11384b3` - "Should fix fractional time in issue #18")  
+**First modernization commit**: March 12, 2026 (`c8479cd` - "Complete modernization of the open2jam codebase")  
+**Current status**: Active development (March 2026)
+
+### Original Project (2010-2013)
+- **Java 6** with Swing GUI
+- **LWJGL 2.9.0** for OpenGL rendering
+- **FMOD Ex** (proprietary) for audio
+- **Ant** build system
+- **NetBeans** IDE project files
+- X11-only Linux support
+- Basic keyboard input handling
+
+### Modern Project (2026)
+- **Java 21+** with modern language features
+- **LWJGL 3.4.1** with GLFW window management
+- **OpenAL** (open source) audio system
+- **Gradle 9.4.0** build system
+- Cross-platform (Windows, Linux, macOS, Apple Silicon)
+- Various under-the-hood improvements for modern display technology (Wayland on Linux, HiDPI, etc.)
+- Advanced keyboard configuration with auto-save
+
+## What's New for Players
+
+### Gameplay Enhancements - More Faithful to Original O2Jam
+
+The modernization isn't just about technology - it's about making the game **feel like the original O2Jam** you remember:
+
+- **Authentic Judgment Timing** - BeatJudgement windows recalibrated to match original O2Jam behavior
+- **Original Lifebar Behavior** - HP increase/decrease values restored to match the classic game
+- **Per-Note Volume & Positioning** - Accurate audio placement for OJN charts with individual note volume
+- **Hi-Speed & xR-Speed Accuracy** - Original speed modifiers working as intended
+
+### Quality of Life Improvements
+
+- **5-Second Result Screen** - See your final score after songs complete naturally
+- **Instant Exit** - Press ESC to quit immediately without waiting
+- **Auto-Save Settings** - Volume, modifiers, and key bindings save automatically - no more lost preferences
+
 ## Modernization Highlights
 
-### Build System
-- **Gradle 9.4.0** build system with wrapper for reproducible builds
-- Java 21+ toolchain configuration (LTS recommended)
-- LWJGL 3.4.1 BOM with automatic platform-specific natives download
-- `fatJar` task for creating runnable JAR with all dependencies
-- Removed Ant and NetBeans project files
+### Technology Updates (Under the Hood)
 
-### Graphics & Windowing
-- **LWJGL 2 → LWJGL 3** migration
-- **Display → GLFW** for window management
-- **LWJGL 2 keyboard → GLFW** key codes with compatibility bridge
-- OpenGL bindings updated to LWJGL 3
-- Texture loading via LWJGL 3 STB image loading
-- **Pure letterboxing** for fullscreen - renders at exact user resolution with black borders
-- **HiDPI support** - Proper viewport scaling and glViewport fixes for high-DPI displays
-- **FPS limiter** - Hybrid spin-wait timing (±0.1ms accuracy, avoids Windows timer trap)
+These improvements ensure the game runs smoothly on modern systems:
 
-### Audio System
-- **FMOD Ex (proprietary) → OpenAL** (open source)
-- 200-source pool with ticket system prevents audio exhaustion
-- Proper OpenAL context lifecycle management
-- Fixed keysound dropout after 30 seconds of gameplay
-
-### Linux/Wayland Support
-- Multi-method Wayland detection (`XDG_SESSION_TYPE`, `WAYLAND_DISPLAY`, etc.)
-- Skip `glfwSetWindowPos()` on Wayland sessions (not supported)
-- Proper cleanup order: OpenAL resources released **before** GLFW window destruction
-- Fixed `SIGSEGV` in `libc.so.6` during song transitions
-- Event-pumping window close - prevents "frozen" detection by compositor
-
-### GUI Refactoring
-- Removed NetBeans `.form` files and beansbinding dependencies
-- Refactored to standard Swing with `GroupLayout`
-- **Display configuration moved to Configuration tab** with industry-standard aspect ratios
-- Dynamic resolution enumeration from GLFW with aspect ratio display (16:9, 16:10, 4:3, 21:9, 32:9)
-
-### Input System
-- Added symbol key support: `;`, `'`, `[`, `]`, `-`, `=`, `,`, `.`, `/`
-- Duplicate key rebinding removes old mapping automatically
-- Fixed keyboard configuration not listening to changes
-
-### Performance Optimizations
-- **Object pooling** for NoteEntity and LongNoteEntity - zero GC during gameplay
-- **EntityMatrix optimization** - flat arrays with zero-allocation iteration
-- **Config optimization** - primitive arrays instead of EnumMap for keyboard state
-- **Logging optimization** - verbose INFO logs behind `-debug` flag
-
-### Gameplay Mechanism Fixes
-- **BeatJudgement** - Updated to match original O2Jam timing windows
-- **Lifebar values** - Adjusted to original O2Jam increase/decrease behavior
-- **Jambar logic** - Unified increase/decrease implementation
-- **Duration-based song end** - Waits for music to finish, not last note
+- **Modern Rendering Backend** - LWJGL 3.4.1 with efficient object pooling for consistent frame times
+- **OpenAL Audio** - Open source audio with 200-source pool (no more audio dropout)
+- **FPS Limiter** - Hybrid spin-wait timing saves battery on laptops while maintaining smooth gameplay (±0.1ms accuracy)
+- **Pure Letterboxing** - Fullscreen renders at exact user resolution with HiDPI support
+- **Java 21+** - Better performance and stability on modern systems
+- **Logging System** - Clean runtime with optional `-debug` flag for troubleshooting
 
 ## Requirements
 
 - **Java 21+** or higher (LTS recommended)
-- **VLC** (for BMS video background support)
 - **Graphics drivers** with OpenGL 3.2+ support
 
 ## Building
@@ -133,14 +131,14 @@ java -jar build/libs/open2jam-modern-1.0-SNAPSHOT-all.jar
 ## Configuration
 
 Configuration files are stored in the application directory:
-- `config.vl` - Keyboard mappings and directory cache (binary Voile format)
+- `config.vl` - Keyboard mappings and directory cache (binary format)
 - `game-options.xml` - Game options (display, speed, volume)
 
 **Note:** Old configuration files from previous versions will be regenerated.
 
 ## Features
 
-- **Chart Support:** OJN, OJM, BMS (with partial BGA), SM files
+- **Chart Support:** OJN (O2Jam format only)
 - **Cross-Platform:** Windows 10/11, Linux (X11/Wayland), macOS
 - **Speed Modifiers:** Hi-Speed, xR-Speed, W-Speed, Regul-Speed
 - **Judgment Systems:** Beat-based and Time-based (millisecond)
@@ -167,55 +165,41 @@ open2jam-modern/
 │       ├── gui/                # Swing GUI
 │       └── game/               # Game logic
 ├── parsers/              # Chart file parsers (submodule)
-├── lib/                  # Third-party JARs (partytime, voile, vlcj)
+├── lib/                  # Third-party JARs (partytime)
 └── docs/                 # Documentation
 ```
 
-## Key Changes from Original
+## Key Changes from Original (2013 → 2026)
 
-| Component | Before | After |
-|-----------|--------|-------|
-| Build System | Ant + NetBeans | Gradle 9.4.0 |
-| Java Version | Java 6 | Java 21+ |
-| Windowing | LWJGL 2 Display | LWJGL 3 GLFW |
-| Audio | FMOD Ex (proprietary) | OpenAL (LGPL) |
-| Input | LWJGL 2 Keyboard | GLFW + compatibility bridge |
-| GUI | NetBeans Forms + beansbinding | Standard Swing |
-| Linux Support | X11 only | X11 + Wayland |
-| Frame Timing | Naive Thread.sleep() | Hybrid spin-wait (±0.1ms) |
-| Fullscreen | OS stretching | Pure letterboxing |
-| Performance | GC during gameplay | Object pooling (zero GC) |
+| Component | 2013 (Last Commit) | 2026 (Modern) | Impact |
+|-----------|-------------------|---------------|--------|
+| **Build System** | Ant + NetBeans | Gradle 9.4.0 | Reproducible builds, cross-platform distribution |
+| **Java Version** | Java 6 | Java 21+ (LTS) | Modern language features, better performance |
+| **Windowing** | LWJGL 2 `Display` | LWJGL 3 `GLFW` | Multi-monitor, Wayland, Apple Silicon support |
+| **Audio** | FMOD Ex (proprietary) | OpenAL (LGPL) | Open source, 200-source pool, no exhaustion |
+| **Input** | LWJGL 2 `Keyboard` | GLFW + bridge | Symbol keys, auto-save, ESC to unbind |
+| **GUI** | NetBeans Forms + beansbinding | Standard Swing | No IDE dependency, maintainable code |
+| **Linux Support** | X11 only | X11 + Wayland | Modern display server support |
+| **Frame Timing** | `Thread.sleep()` | Hybrid spin-wait | ±0.1ms accuracy, avoids Windows timer trap |
+| **Fullscreen** | OS stretching | Pure letterboxing | Exact user resolution, HiDPI support |
+| **Performance** | GC during gameplay | Object pooling | Zero GC, consistent frame times |
+| **Config Saving** | Manual save button | Auto-save on change | Debounced writes, no lost settings |
+| **Keyboard Binding** | Basic rebind | Transfer + ESC unbind | Intuitive UI, proper key management |
+| **Display Config** | Basic resolution list | Monitor enumeration with presets for modern compositors (Wayland, macOS) | Better compatibility |
+| **Logging** | Always verbose | `-debug` flag | Clean runtime, debug when needed |
+| **Cross-Platform** | Windows + Linux | + macOS (Intel + ARM) | Universal binaries, native launchers |
+
+**Total lines changed**: ~2,500+ lines rewritten/added since 2013  
+**New files created**: 15+ modern Java classes  
+**Files removed**: 20+ legacy files (.form, build.xml, nbproject/)
 
 ## Troubleshooting
-
-### Wayland Issues
-If you encounter `GLFW_FEATURE_UNAVAILABLE` errors:
-- The application automatically detects Wayland and skips unsupported features
-- Ensure `XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` is set
 
 ### Fullscreen Letterboxing
 If you see black borders around the game in fullscreen:
 - This is **intentional** - the game renders at your selected resolution
 - To fill the entire monitor, select your monitor's native resolution
 - Letterboxing preserves aspect ratio and prevents GPU stretching
-
-### FPS Limiter vs VSync
-- **VSync ON**: FPS limiter is disabled (greyed out)
-- **VSync OFF**: FPS limiter active with selected multiplier
-- **1x** = Monitor refresh rate (e.g., 60 FPS @ 60Hz)
-- **2x** = 2× refresh rate (e.g., 120 FPS @ 60Hz)
-- **Gameplay speed is identical** in all modes (delta-based timing)
-
-### Audio Crashes
-- OpenAL sources are now properly managed with a 200-source pool
-- If you still experience issues, try increasing buffer size in Advanced Options
-
-### Display Mode Selection
-- Display modes are now enumerated as separate dropdowns:
-  - **Resolution** (Width × Height) - with aspect ratio label
-  - **Refresh Rate** (Hz)
-  - **Color Depth** (bpp)
-- Falls back to standard 4:3 resolutions if enumeration fails
 
 ## Development
 
@@ -243,17 +227,22 @@ cd open2jam-modern
 ## Dependencies
 
 ### Runtime
-- **LWJGL 3.4.1** (BSD 3-Clause)
-- **OpenAL** (LGPL/GPL via LWJGL)
-- **JNA 5.14.0** (LGPL/Apache 2.0)
-- **VLCJ 4.8.2** (GPL)
-- **Partytime** (MIT)
-- **Voile** (Apache 2.0)
+- **LWJGL 3.4.1** (BSD 3-Clause) - OpenGL, GLFW, OpenAL, STB
+- **OpenAL** (LGPL/GPL via LWJGL) - 3D audio with 200-source pool
+- **Partytime** (MIT) - Local multiplayer networking
 
 ### Removed Dependencies
-- LWJGL 2.x
-- FMOD Ex (proprietary)
-- NetBeans GUI Builder
+
+**Dropped for Security & Simplicity:**
+- **Voile** (binary serialization) - Binary files can be tampered with to execute malicious code. Switched to safer text-based formats.
+- **VLCJ** (video playback) - Dropped BMS format support to focus on OJN (O2Jam chart format) only. Reduces complexity and potential security risks.
+- **JNA** - Only needed for VLCJ, no longer required.
+
+**Replaced with Modern Alternatives:**
+- **LWJGL 2.x** → LWJGL 3.4.1 (modern graphics library)
+- **FMOD Ex** → OpenAL (open source, no licensing restrictions)
+- **NetBeans GUI Builder** → Standard Swing (no IDE lock-in)
+- **Ant** → Gradle 9.4.0 (modern build system)
 
 ## License
 
@@ -267,14 +256,28 @@ See individual dependency licenses for details.
 
 ## Credits
 
-- **Original open2jam**: [open2jamorg](https://github.com/open2jamorg/open2jam)
-- **Modernization**: open2jam-modern contributors
-- **FPS Limiter & Letterboxing**: Arif Rahman Ibrahim
-- **Gameplay Fixes**: Arif Rahman Ibrahim
-- **Performance Optimizations**: Arif Rahman Ibrahim
-- **LWJGL**: [lwjgl.org](https://www.lwjgl.org/)
-- **OpenAL**: [openal.org](https://www.openal.org/)
-- **GLFW**: [glfw.org](https://www.glfw.org/)
+### Original Project (2010-2013)
+- **open2jam founders**: [open2jamorg](https://github.com/open2jamorg/open2jam)
+- **Last 2013 commit**: September 14, 2013 - fractional time fix for issue #18
+- **Community contributors**: @dtinth, and many others from the original project
+
+### Modernization (2026)
+- **Project revival & lead**: @ar-nim
+- **Core modernization**: @ar-nim (Java 21+, LWJGL 3, OpenAL migration)
+- **FPS Limiter & Letterboxing**: @ar-nim
+- **Gameplay Enhancements**: @ar-nim (BeatJudgement, Lifebar restoration)
+- **Performance Optimizations**: @ar-nim (object pooling, entity matrix)
+- **Modern Display Support**: @ar-nim (Wayland, HiDPI, etc.)
+- **Auto-Save System**: @ar-nim (MusicSelection, Configuration)
+- **Keyboard Configuration**: @ar-nim (key binding fixes, ESC to unbind)
+- **Cross-Platform Build**: @ar-nim (6-platform distribution)
+- **Logging System**: @ar-nim (`-debug` flag implementation)
+
+### Technology Providers
+- **LWJGL**: [lwjgl.org](https://www.lwjgl.org/) - Lightweight Java Game Library
+- **OpenAL**: [openal.org](https://www.openal.org/) - Cross-platform 3D audio API
+- **GLFW**: [glfw.org](https://www.glfw.org/) - Multi-platform window management
+- **Gradle**: [gradle.org](https://gradle.org/) - Build automation system
 
 ## Links
 
