@@ -5,7 +5,57 @@ plugins {
 }
 
 group = 'org.open2jam'
-version = '1.0-SNAPSHOT'
+
+// Dynamic version configuration
+// Priority: git tag > command line > gradle.properties > default
+// - Git tag (e.g., "0.1.0"): triggers release build (CI/CD)
+// - Command line (-Pversion=x): manual override
+// - gradle.properties: for development (e.g., "0.1.0-SNAPSHOT")
+// - Fallback: "0.1.0-SNAPSHOT"
+
+def getVersionFromGit() {
+    // Try to get exact tag (works for both annotated and lightweight tags)
+    try {
+        def process = "git tag --points-at HEAD".execute()
+        def stdout = new ByteArrayOutputStream()
+        process.consumeProcessOutput(stdout, System.err)
+        process.waitFor()
+        def tag = stdout.toString().trim()
+        if (tag) {
+            // Use first tag if multiple exist
+            return tag.split('\n')[0].trim()
+        }
+    } catch (Exception e) {
+        // Git not available or error
+    }
+    
+    // No tag on current commit - return null to use gradle.properties version
+    return null
+}
+
+// Check for git tag first (CI/CD release trigger)
+def gitVersion = getVersionFromGit()
+
+// Priority 1: Command line override (-PoverrideVersion=x)
+if (project.hasProperty('overrideVersion')) {
+    version = project.getProperty('overrideVersion')
+    logger.lifecycle("⚙️  Version overridden via command line: ${version}")
+}
+// Priority 2: Git tag (release build)
+else if (gitVersion) {
+    version = gitVersion
+    logger.lifecycle("🏷️  Release build from git tag: ${version}")
+}
+// Priority 3: gradle.properties version (development build)
+else if (project.hasProperty('version') && project.getProperty('version')) {
+    version = project.getProperty('version')
+    logger.lifecycle("📦 Development build: ${version}")
+}
+// Priority 4: Fallback
+else {
+    version = '0.1.0-SNAPSHOT'
+    logger.lifecycle("📦 Default version: ${version}")
+}
 
 java {
     // Use Java 21 for compilation (available on this system)
@@ -77,6 +127,7 @@ application {
     mainClass = 'org.open2jam.Main'
     applicationDefaultJvmArgs = [
         '-Djava.library.path=${applicationDefaultJvmArgs}',
+        '-Dopen2jam.version=' + version,
         '-Xmx2G'
     ]
 }
