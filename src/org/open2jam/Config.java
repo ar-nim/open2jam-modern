@@ -508,7 +508,7 @@ public class Config {
 
     /**
      * Game options wrapper for JSON serialization.
-     * 
+     *
      * <p>This class wraps GameOptions fields for JSON storage while maintaining
      * compatibility with the existing GameOptions class.</p>
      */
@@ -552,7 +552,7 @@ public class Config {
 
         /**
          * Convert to GameOptions object.
-         * 
+         *
          * @return GameOptions with same settings
          */
         public GameOptions toGameOptions() {

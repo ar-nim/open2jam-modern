@@ -2,10 +2,15 @@ package org.open2jam.gui.parts;
 
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
+import org.open2jam.util.DebugLogger;
 
 import javax.swing.*;
 import javax.swing.GroupLayout;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 
 /**
  * Advanced options panel for game settings.
@@ -20,9 +25,11 @@ public class AdvancedOptions extends JPanel {
     private final JLabel jLabel1;
     private final JCheckBox normalizeSpeedCheckbox;
     private final GameOptions go;
+    private final Config config;
 
     public AdvancedOptions() {
-        go = Config.getInstance().getGameOptions().toGameOptions();
+        config = Config.getInstance();
+        go = config.getGameOptions().toGameOptions();
 
         hasteModeCheckbox = new JCheckBox("Haste Mode");
         bufferSize = new JTextField(String.valueOf(go.getBufferSize()), 10);
@@ -34,24 +41,31 @@ public class AdvancedOptions extends JPanel {
         normalizeSpeedCheckbox.setSelected(go.isHasteModeNormalizeSpeed());
         normalizeSpeedCheckbox.setEnabled(go.isHasteMode());
 
-        // Add listeners to update GameOptions
+        // Add listeners to update GameOptions and persist to Config
         hasteModeCheckbox.addActionListener(e -> {
             go.setHasteMode(hasteModeCheckbox.isSelected());
             normalizeSpeedCheckbox.setEnabled(hasteModeCheckbox.isSelected());
+            saveSettings();
         });
 
         normalizeSpeedCheckbox.addActionListener(e -> {
             go.setHasteModeNormalizeSpeed(normalizeSpeedCheckbox.isSelected());
+            saveSettings();
         });
 
+        // Save buffer size on focus lost (when user clicks away)
+        bufferSize.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                saveBufferSizeFromText();
+            }
+        });
+
+        // Also save on Enter key press (original behavior)
         bufferSize.addActionListener(e -> {
-            try {
-                int size = Integer.parseInt(bufferSize.getText());
-                if (size > 0 && size <= 4096) {
-                    go.setBufferSize(size);
-                }
-            } catch (NumberFormatException ex) {
-                // Invalid input, ignore
+            if (saveBufferSizeFromText()) {
+                // Transfer focus after successful save on Enter
+                bufferSize.transferFocus();
             }
         });
 
@@ -86,6 +100,60 @@ public class AdvancedOptions extends JPanel {
                     .addComponent(bufferSize, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel1))
                 .addGap(296)
+        );
+    }
+
+    /**
+     * Persist settings from local GameOptions copy to Config.
+     * Updates Config.GameOptionsWrapper and triggers debounced save.
+     */
+    private void saveSettings() {
+        // Update Config's GameOptionsWrapper with current values
+        Config.GameOptionsWrapper wrapper = config.getGameOptions();
+        wrapper.hasteMode = go.isHasteMode();
+        wrapper.hasteModeNormalizeSpeed = go.isHasteModeNormalizeSpeed();
+        wrapper.bufferSize = go.getBufferSize();
+        
+        // Trigger debounced save to persist to disk
+        config.scheduleSave();
+        
+        DebugLogger.debug("AdvancedOptions saved: hasteMode=" + go.isHasteMode() 
+            + ", normalizeSpeed=" + go.isHasteModeNormalizeSpeed() 
+            + ", bufferSize=" + go.getBufferSize());
+    }
+
+    /**
+     * Parse and save buffer size from text field.
+     * @return true if successful, false if invalid input
+     */
+    private boolean saveBufferSizeFromText() {
+        try {
+            int size = Integer.parseInt(bufferSize.getText().trim());
+            if (size > 0 && size <= 4096) {
+                go.setBufferSize(size);
+                saveSettings();
+                return true;
+            } else {
+                showInvalidInputMessage();
+                bufferSize.setText(String.valueOf(go.getBufferSize()));
+                return false;
+            }
+        } catch (NumberFormatException ex) {
+            showInvalidInputMessage();
+            bufferSize.setText(String.valueOf(go.getBufferSize()));
+            return false;
+        }
+    }
+
+    /**
+     * Show error message for invalid buffer size input.
+     */
+    private void showInvalidInputMessage() {
+        JOptionPane.showMessageDialog(
+            this,
+            "Buffer size must be between 1 and 4096.",
+            "Invalid Input",
+            JOptionPane.ERROR_MESSAGE
         );
     }
 }
