@@ -4,6 +4,7 @@ import org.open2jam.parsers.ChartCacheSQLite;
 import org.open2jam.parsers.Library;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.parsers.ChartParser;
+import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
 import java.io.File;
@@ -66,7 +67,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
 
     @Override
     protected ChartListTableModel doInBackground() {
-        Logger.global.info("Starting chart scan: " + dir.getAbsolutePath());
+        DebugLogger.debug("Starting chart scan: " + dir.getAbsolutePath());
         boolean transactionStarted = false;
 
         try {
@@ -94,11 +95,11 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
                 return null;
             }
 
-            Logger.global.info("Library ID: " + library.id + ", scanning for charts...");
+            DebugLogger.debug("Library ID: " + library.id + ", scanning for charts...");
 
             // Collect all files to scan
             ArrayList<File> files = collectFiles(dir);
-            Logger.global.info("Found " + files.size() + " files to scan");
+            DebugLogger.debug("Found " + files.size() + " files to scan");
 
             if (files.isEmpty()) {
                 Logger.global.warning("No files found in " + dir.getAbsolutePath());
@@ -111,7 +112,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
 
             // Delete old cache for this directory WITHIN the transaction
             ChartCacheSQLite.deleteCacheForLibrary(library.id);
-            Logger.global.info("Cleared old cache for library " + library.id);
+            DebugLogger.debug("Cleared old cache for library " + library.id);
 
             try (ChartCacheSQLite.BatchInserter batch = new ChartCacheSQLite.BatchInserter()) {
                 double perc = files.size() / 100d;
@@ -150,7 +151,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
 
                     // Check for cancellation
                     if (isCancelled()) {
-                        Logger.global.info("Chart scan cancelled by user");
+                        DebugLogger.debug("Chart scan cancelled by user");
                         return null;
                     }
                 }
@@ -158,7 +159,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
                 // Flush remaining batch entries
                 batch.flush();
 
-                Logger.global.info("Scan complete: " + chartsFound + " charts found from " + files.size() + " files");
+                DebugLogger.debug("Scan complete: " + chartsFound + " charts found from " + files.size() + " files");
 
             } catch (Exception e) {
                 // Error during batch insertion - rollback
@@ -195,13 +196,13 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
     protected void done() {
         // SwingWorker cleanup runs on EDT
         if (isCancelled()) {
-            Logger.global.info("Chart loading cancelled");
+            DebugLogger.debug("Chart loading cancelled");
             return;
         }
         
         try {
             ChartListTableModel result = get();  // This will throw exception if doInBackground failed
-            Logger.global.info("Chart loading complete: " + table_model.getRowCount() + " charts");
+            DebugLogger.debug("Chart loading complete: " + table_model.getRowCount() + " charts");
         } catch (Exception e) {
             Logger.global.log(Level.SEVERE, "Chart loading failed", e);
             javax.swing.JOptionPane.showMessageDialog(

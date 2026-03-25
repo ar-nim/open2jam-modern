@@ -41,7 +41,7 @@ public class DebugLogger {
      */
     public static void debug(String message) {
         if (debugEnabled) {
-            System.out.println("DEBUG: " + message);
+            System.out.println("[DEBUG] " + message);
         }
     }
 
@@ -54,7 +54,7 @@ public class DebugLogger {
      */
     public static void debug(String message, Object... args) {
         if (debugEnabled) {
-            System.out.println("DEBUG: " + String.format(message, args));
+            System.out.println("[DEBUG] " + String.format(message, args));
         }
     }
     

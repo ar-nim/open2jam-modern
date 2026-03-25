@@ -270,16 +270,16 @@ public class Config {
 
     /**
      * Save configuration to disk immediately.
-     * 
+     *
      * <p>Thread-safe: synchronized to prevent concurrent writes.</p>
-     * 
+     *
      * <p>Note: For rapid successive changes (e.g., slider adjustments), use scheduleSave()
      * which debounces writes to avoid UI blocking.</p>
      */
     public synchronized void save() {
         try {
             INDENTED_WRITER.writeValue(CONFIG_FILE, this);
-            Logger.global.info("Config saved: " + CONFIG_FILE.getAbsolutePath());
+            // Silent save - no log spam
         } catch (Exception e) {
             Logger.global.log(java.util.logging.Level.SEVERE, "Failed to save config.json", e);
         }

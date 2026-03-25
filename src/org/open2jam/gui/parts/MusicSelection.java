@@ -22,6 +22,9 @@ import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableRowSorter;
+import org.open2jam.parsers.Chart;
+import org.open2jam.parsers.ChartList;
+import org.open2jam.render.Render;
 import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.DisplayMode;
 import org.open2jam.Config;
@@ -35,9 +38,17 @@ import org.open2jam.gui.ChartTableModel;
 import org.open2jam.parsers.BMSWriter;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
-import org.open2jam.render.Render;
+import org.open2jam.parsers.ChartParser;
 import org.open2jam.game.judgment.BeatJudgment;
 import org.open2jam.game.judgment.TimeJudgment;
+import org.open2jam.render.Render;
+import org.open2jam.render.lwjgl.LWJGLGameWindow;
+import org.open2jam.render.DisplayMode;
+import org.open2jam.Config;
+import org.open2jam.GameOptions;
+import org.open2jam.GameOptions.ChannelMod;
+import org.open2jam.GameOptions.SpeedType;
+import org.open2jam.GameOptions.VisibilityMod;
 import org.open2jam.sound.SoundSystemException;
 import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
@@ -989,7 +1000,7 @@ public class MusicSelection extends javax.swing.JPanel
                         return;
                     }
                     
-                    Logger.global.info("Loaded chart for play: " + cached.relativePath);
+                    DebugLogger.debug("Loaded chart for play: " + cached.relativePath);
                 }
             }
 
@@ -1312,12 +1323,12 @@ public class MusicSelection extends javax.swing.JPanel
         // Clear model first to prevent duplicates
         model_songlist.clear();
         
-        Logger.global.info("=== loadDir called for: " + dir.getAbsolutePath());
+        DebugLogger.debug("=== loadDir called for: " + dir.getAbsolutePath());
 
         // Load from SQLite cache (Database Mode - instant load!)
         try {
             List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
-            Logger.global.info("Found " + libs.size() + " libraries in SQLite");
+            DebugLogger.debug("Found " + libs.size() + " libraries in SQLite");
             
             org.open2jam.parsers.Library library = null;
             String dirPathWithSlash = dir.getAbsolutePath().replace("\\", "/");
@@ -1326,11 +1337,11 @@ public class MusicSelection extends javax.swing.JPanel
             }
             
             for (org.open2jam.parsers.Library lib : libs) {
-                Logger.global.info("  Library: " + lib.rootPath + " (id=" + lib.id + ")");
+                DebugLogger.debug("  Library: " + lib.rootPath + " (id=" + lib.id + ")");
                 // Compare with trailing slash (matches how SQLite stores paths)
                 if (lib.rootPath.equals(dirPathWithSlash)) {
                     library = lib;
-                    Logger.global.info("  ✓ Found matching library with id=" + lib.id);
+                    DebugLogger.debug("  ✓ Found matching library with id=" + lib.id);
                     break;
                 }
             }
@@ -1340,10 +1351,10 @@ public class MusicSelection extends javax.swing.JPanel
                 ArrayList<org.open2jam.parsers.ChartMetadata> allMetadata =
                     new ArrayList<>(org.open2jam.parsers.ChartCacheSQLite.getCachedCharts(library.id));
 
-                Logger.global.info("Loaded " + allMetadata.size() + " chart metadata entries from cache");
+                DebugLogger.debug("Loaded " + allMetadata.size() + " chart metadata entries from cache");
                 
                 if (!allMetadata.isEmpty()) {
-                    Logger.global.info("✓ Using cache - " + allMetadata.size() + " entries for " + dir.getName());
+                    DebugLogger.debug("✓ Using cache - " + allMetadata.size() + " entries for " + dir.getName());
                     
                     // Set libraryRootPath for all metadata (in case JOIN didn't populate it)
                     for (org.open2jam.parsers.ChartMetadata m : allMetadata) {
@@ -1365,7 +1376,7 @@ public class MusicSelection extends javax.swing.JPanel
                         groupedBySong.get(key).add(m);
                     }
                     
-                    Logger.global.info("Grouped into " + groupedBySong.size() + " songs");
+                    DebugLogger.debug("Grouped into " + groupedBySong.size() + " songs");
                     
                     // For each song group, we need to load the actual ChartList from disk
                     // This is necessary because the UI expects Chart objects, not just metadata
@@ -1394,7 +1405,7 @@ public class MusicSelection extends javax.swing.JPanel
                             fullPath = rootPath + "/" + first.relativePath;
                         }
                         
-                        Logger.global.info("  Loading ChartList from: " + fullPath);
+                        DebugLogger.debug("  Loading ChartList from: " + fullPath);
                         File sourceFile = new File(fullPath);
                         
                         if (sourceFile.exists()) {
@@ -1403,7 +1414,7 @@ public class MusicSelection extends javax.swing.JPanel
                             
                             if (chartList != null && !chartList.isEmpty()) {
                                 chartLists.add(chartList);
-                                Logger.global.info("  ✓ Loaded ChartList with " + chartList.size() + " difficulties");
+                                DebugLogger.debug("  ✓ Loaded ChartList with " + chartList.size() + " difficulties");
                             } else {
                                 Logger.global.warning("  ⚠ ChartList is empty for: " + fullPath);
                             }
@@ -1412,7 +1423,7 @@ public class MusicSelection extends javax.swing.JPanel
                         }
                     }
                     
-                    Logger.global.info("Loaded " + chartLists.size() + " ChartList objects");
+                    DebugLogger.debug("Loaded " + chartLists.size() + " ChartList objects");
                     model_songlist.setRawList(chartLists);
                     
                     // Save last opened library ID
@@ -1429,7 +1440,7 @@ public class MusicSelection extends javax.swing.JPanel
         }
 
         // Cache empty or error - scan files (ChartModelLoader will populate cache)
-        Logger.global.info("⚠ Calling updateSelection() - will scan files");
+        DebugLogger.debug("⚠ Calling updateSelection() - will scan files");
         updateSelection(dir);
     }
 
@@ -1439,7 +1450,7 @@ public class MusicSelection extends javax.swing.JPanel
      * @param dir Directory to rescan
      */
     private void refreshLibrary(File dir) {
-        Logger.global.info("Refreshing library: " + dir.getAbsolutePath());
+        DebugLogger.debug("Refreshing library: " + dir.getAbsolutePath());
         
         // Show progress
         load_progress.setValue(0);
@@ -1701,7 +1712,7 @@ public class MusicSelection extends javax.swing.JPanel
                                 stmt.executeUpdate();
                             }
                             
-                            Logger.global.info("Removed library: " + lib.name);
+                            DebugLogger.debug("Removed library: " + lib.name);
                             break;
                         }
                     }
@@ -1720,7 +1731,7 @@ public class MusicSelection extends javax.swing.JPanel
     private void refreshSavedDirsDropdown() {
         // Save current selection
         File previouslySelectedDir = currentDirectory;
-        Logger.global.info("=== refreshSavedDirsDropdown() - previously selected: " + previouslySelectedDir);
+        DebugLogger.debug("=== refreshSavedDirsDropdown() - previously selected: " + previouslySelectedDir);
         
         // Set flag to prevent dropdown listener from triggering
         isRefreshingDropdown = true;
@@ -1733,13 +1744,13 @@ public class MusicSelection extends javax.swing.JPanel
             List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
             FileItem selectedItemToRestore = null;
             
-            Logger.global.info("Reloading " + libs.size() + " libraries from SQLite");
+            DebugLogger.debug("Reloading " + libs.size() + " libraries from SQLite");
             
             if (libs != null) {
                 for (org.open2jam.parsers.Library lib : libs) {
                     FileItem item = new FileItem(new File(lib.rootPath));
                     combo_dirs.addItem(item);
-                    Logger.global.info("  Added: " + lib.rootPath);
+                    DebugLogger.debug("  Added: " + lib.rootPath);
                     
                     // Find the previously selected directory
                     if (previouslySelectedDir != null) {
@@ -1749,11 +1760,11 @@ public class MusicSelection extends javax.swing.JPanel
                         if (!currentPath.endsWith("/")) {
                             currentPath += "/";
                         }
-                        Logger.global.info("  Comparing: '" + libPath + "' == '" + currentPath + "' ? " + libPath.equals(currentPath));
+                        DebugLogger.debug("  Comparing: '" + libPath + "' == '" + currentPath + "' ? " + libPath.equals(currentPath));
                         
                         if (libPath.equals(currentPath)) {
                             selectedItemToRestore = item;
-                            Logger.global.info("  ✓ Found match to restore");
+                            DebugLogger.debug("  ✓ Found match to restore");
                         }
                     }
                 }
@@ -1761,11 +1772,11 @@ public class MusicSelection extends javax.swing.JPanel
             
             // Restore selection using setSelectedItem (forces display refresh)
             if (selectedItemToRestore != null) {
-                Logger.global.info("Restoring selection to: " + selectedItemToRestore.file);
+                DebugLogger.debug("Restoring selection to: " + selectedItemToRestore.file);
                 combo_dirs.setSelectedItem(selectedItemToRestore);
             } else if (combo_dirs.getItemCount() > 0) {
                 // If previously selected not found, select first
-                Logger.global.info("No match found, selecting first item");
+                DebugLogger.debug("No match found, selecting first item");
                 combo_dirs.setSelectedIndex(0);
             }
         } catch (Exception e) {
@@ -1773,7 +1784,7 @@ public class MusicSelection extends javax.swing.JPanel
         } finally {
             // Clear flag
             isRefreshingDropdown = false;
-            Logger.global.info("=== refreshSavedDirsDropdown() complete");
+            DebugLogger.debug("=== refreshSavedDirsDropdown() complete");
         }
     }
 }
