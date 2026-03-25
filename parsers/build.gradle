@@ -18,8 +18,7 @@ repositories {
 }
 
 dependencies {
-    // JChardet for character encoding detection
-    implementation files('../lib/chardet.jar')
+    // No external dependencies - all utilities are internal
 }
 
 sourceSets {

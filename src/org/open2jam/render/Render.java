@@ -599,15 +599,11 @@ public class Render implements GameWindowCallback
 	
 	bgaEntity = (BgaEntity) skin.getEntityMap().get("BGA");
 	entities_matrix.add(bgaEntity);
-	
+
 	bga_sprites = new HashMap<Integer, Sprite>();
-	if(chart.hasVideo()) {
-	    bgaEntity.isVideo = true;
-	    bgaEntity.videoFile = chart.getVideo();
-	    bgaEntity.initVideo();
-	} else if(!chart.getBgaIndex().isEmpty()) {
+	if(!chart.getBgaIndex().isEmpty()) {
 	    // get all the bgaEntity sprites
-	    
+
 	    for(Entry<Integer, File> entry: chart.getImages().entrySet()) {
 		BufferedImage img;
 		try {
@@ -616,7 +612,7 @@ public class Render implements GameWindowCallback
 		    bga_sprites.put(entry.getKey(), s);
 		} catch (IOException ex) {
 		    java.util.logging.Logger.getLogger(Render.class.getName()).log(Level.SEVERE, "{0}", ex);
-		}    
+		}
 	    }
 	}
 	
@@ -1460,14 +1456,12 @@ public class Render implements GameWindowCallback
                 }
                 break;
                 case BGA:
-                    if (!bgaEntity.isVideo) {
-                        Sprite sprite = null;
-                        if (bga_sprites.containsKey((int) e.getValue()))
-                            sprite = bga_sprites.get((int) e.getValue());
-                        if (sprite == null) break;
-                        sprite.setScale(1f, 1f);
-                        bgaEntity.setSprite(sprite);
-                    }
+                    Sprite sprite = null;
+                    if (bga_sprites.containsKey((int) e.getValue()))
+                        sprite = bga_sprites.get((int) e.getValue());
+                    if (sprite == null) break;
+                    sprite.setScale(1f, 1f);
+                    bgaEntity.setSprite(sprite);
 
                     bgaEntity.setTime(e.getTime());
                 break;
@@ -1592,11 +1586,8 @@ public class Render implements GameWindowCallback
                 measure_pointer = 0;
             }
 
-	    if(chart.type == Chart.TYPE.OJN) {
-		event_position = e.getPosition();
-	    } else {
-		event_position = e.getPosition() * frac_measure;
-	    }
+	    // OJN-only: event_position is direct
+	    event_position = e.getPosition();
             timer += (BEATS_PER_MSEC * (event_position-measure_pointer)) / my_bpm;
             measure_pointer = event_position;
 
@@ -1605,9 +1596,6 @@ public class Render implements GameWindowCallback
 		case STOP:
                     timing.add(timer, 0);
 		    double stop_time = e.getValue();
-		    if(chart.type == Chart.TYPE.BMS) {
-			stop_time = (e.getValue() / 192) * BEATS_PER_MSEC / my_bpm;
-		    }
                     timing.add(timer + stop_time, my_bpm);
 		    timer += stop_time;
 		break;
@@ -1708,9 +1696,8 @@ public class Render implements GameWindowCallback
         } catch (InterruptedException e) {
             // Ignore
         }
-        
+
         // Now safe to release audio
-        bgaEntity.release();
         soundSystem.release();
         System.gc();
         

@@ -99,11 +99,7 @@ public class GameOptions {
     
     // sound options
     private int bufferSize = 512;
-    
-    
-    // VLC lib path
-    private String vlc = "";
-    
+
     // display lag and audio latency
     private double displayLag = 0;
     private double audioLatency = 0;
@@ -366,14 +362,6 @@ public class GameOptions {
 
     public void setDisplayWidth(int displayWidth) {
         this.displayWidth = displayWidth;
-    }
-
-    public String getVLCLibraryPath() {
-        return vlc;
-    }
-
-    public void setVLCLibraryPath(String vlc) {
-        this.vlc = vlc;
     }
 
     public JudgmentType getJudgmentType() {

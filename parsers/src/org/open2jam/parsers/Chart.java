@@ -21,10 +21,10 @@ import org.open2jam.parsers.utils.SampleData;
 */
 public abstract class Chart implements Comparable<Chart>, java.io.Serializable
 {
-    public static enum TYPE {NONE, BMS, OJN, SM, XNT};
-    
+    public static enum TYPE {NONE, OJN};
+
     public TYPE type = TYPE.NONE;
-    
+
     protected File source;
     protected int level = 0;
     protected int keys = 7;
@@ -36,10 +36,9 @@ public abstract class Chart implements Comparable<Chart>, java.io.Serializable
     protected double bpm = 130;
     protected int notes = 0;
     protected int duration = 0;
-    
+
     protected String cover_name = null;
     protected File image_cover = null;
-    protected File video = null;
     
     protected Map<Integer, String> sample_index = new HashMap<Integer, String>();
     protected Map<Integer, String> bga_index = new HashMap<Integer, String>();
@@ -111,16 +110,7 @@ public abstract class Chart implements Comparable<Chart>, java.io.Serializable
     public boolean hasCover() {
 	return image_cover != null;
     }
-    
-    /** Return true if the chart has a video */
-    public boolean hasVideo() {
-	return video != null;
-    }
-    
-    public File getVideo() {
-	return video;
-    }
-           
+
     /** Get the sample index of the chart */
     public Map<Integer, String> getSampleIndex() {
 	return sample_index;

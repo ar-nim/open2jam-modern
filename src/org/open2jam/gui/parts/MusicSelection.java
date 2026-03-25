@@ -2,7 +2,6 @@ package org.open2jam.gui.parts;
 
 import com.github.dtinth.partytime.server.Server;
 import com.github.dtinth.partytime.server.ServerUI;
-import com.sun.jna.NativeLibrary;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.event.ItemEvent;
@@ -35,7 +34,6 @@ import org.open2jam.GameOptions.VisibilityMod;
 import org.open2jam.gui.ChartListTableModel;
 import org.open2jam.gui.ChartModelLoader;
 import org.open2jam.gui.ChartTableModel;
-import org.open2jam.parsers.BMSWriter;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.parsers.ChartParser;
@@ -230,26 +228,40 @@ public class MusicSelection extends javax.swing.JPanel
             }
         });
         popMenu.add(refreshItem);
-        
-        JMenuItem bmsConvItem = new JMenuItem("Convert to BMS");
-	
-	bmsConvItem.addActionListener(new java.awt.event.ActionListener() {
+
+        // Keysound Extractor - Extract audio files from OJN
+        JMenuItem extractKeysoundItem = new JMenuItem("Extract Keysounds");
+        extractKeysoundItem.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-		try {
-		    BMSWriter.export(selected_header, "converted");
-		} catch (IOException ex) {
-		    java.util.logging.Logger.getLogger(MusicSelection.class.getName()).log(Level.SEVERE, "{0}", ex);
-		} finally {
-		    System.gc();
-		}
+                try {
+                    // Create output directory: extraction/[filename_without_ojn]/
+                    String baseName = selected_header.getSource().getName();
+                    int dotIndex = baseName.lastIndexOf(".");
+                    if (dotIndex > 0) {
+                        baseName = baseName.substring(0, dotIndex);
+                    }
+                    File outputDir = new File("extraction/" + baseName);
+                    outputDir.mkdirs();
+                    
+                    // Extract keysounds
+                    selected_header.copySampleFiles(outputDir);
+                    
+                    JOptionPane.showMessageDialog(null, 
+                        "Keysounds extracted to: " + outputDir.getAbsolutePath(),
+                        "Extraction Complete",
+                        JOptionPane.INFORMATION_MESSAGE);
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(null, 
+                        "Failed to extract keysounds: " + ex.getMessage(), 
+                        "Extraction Error", 
+                        JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    System.gc();
+                }
             }
         });
-	
-	popMenu.add(bmsConvItem);
-	popMenu.add(new JMenuItem("Convert to OJN"));
-	popMenu.add(new JMenuItem("Convert to SM"));
-	popMenu.add(new JMenuItem("Convert to SNP"));
-	
+        popMenu.add(extractKeysoundItem);
+
 	//table_chartlist.addMouseListener(new PopupListener(popMenu));
 	table_songlist.addMouseListener(new PopupListener(popMenu));
     }
@@ -1050,8 +1062,6 @@ public class MusicSelection extends javax.swing.JPanel
                 JOptionPane.showMessageDialog(this, "Invalid audio latency value", "Error", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-
-            NativeLibrary.addSearchPath("vlc", go.getVLCLibraryPath());
 
             final Render r;
             r = new Render(chartToPlay, go, dm);  // Use validated chart

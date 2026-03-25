@@ -1,40 +1,25 @@
 /*
  * BgaEntity - Background Animation Entity
- * Updated for vlcj 4.x API
+ * O2Jam-only: No video playback support
  */
 package org.open2jam.render.entities;
 
-import com.sun.jna.Memory;
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.logging.Level;
 import org.open2jam.parsers.utils.Logger;
 import org.open2jam.render.Sprite;
-import uk.co.caprica.vlcj.player.base.MediaPlayer;
-import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent;
 
 /**
- * Background Animation Entity supporting video playback.
+ * Background Animation Entity for O2Jam.
+ * Video playback removed - OJM/OJN files don't contain video.
  *
  * @author CdK
  */
 public class BgaEntity extends Entity implements TimeEntity {
 
-    public boolean isVideo = false;
-    public File videoFile;
     boolean isPlaying = false;
     boolean newBuffer = false;
-
-    // vlcj 4.x components
-    CallbackMediaPlayerComponent mediaPlayerComponent;
-    MediaPlayer mediaPlayer;
-    ByteBuffer videoBuffer = null;
-
-    private static final int WIDTH = 320;
-    private static final int HEIGHT = 240;
-    private static final int DEPTH = 4;
-    private static final int BUFFER_SIZE = WIDTH * HEIGHT * DEPTH;
 
     private LinkedList<Double> times;
     private LinkedList<Sprite> next_sprites;
@@ -46,22 +31,6 @@ public class BgaEntity extends Entity implements TimeEntity {
         scale_h = height;
         next_sprites = new LinkedList<Sprite>();
         times = new LinkedList<Double>();
-    }
-
-    public void initVideo() {
-        try {
-            // Initialize vlcj 4.x media player
-            mediaPlayerComponent = new CallbackMediaPlayerComponent();
-            mediaPlayer = mediaPlayerComponent.mediaPlayer();
-
-            // Play the video file
-            mediaPlayer.media().play(videoFile.toURI().toString());
-
-            isPlaying = true;
-        } catch (Exception e) {
-            Logger.global.log(Level.WARNING, "Failed to initialize video: {0}", e.getMessage());
-            isVideo = false;
-        }
     }
 
     @Override
@@ -125,15 +94,5 @@ public class BgaEntity extends Entity implements TimeEntity {
     @Override
     public boolean isDead() {
         return dead;
-    }
-
-    public void release() {
-        if (mediaPlayer != null) {
-            mediaPlayer.controls().stop();
-            mediaPlayer.release();
-        }
-        if (mediaPlayerComponent != null) {
-            mediaPlayerComponent.release();
-        }
     }
 }

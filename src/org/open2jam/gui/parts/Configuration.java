@@ -26,7 +26,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.glfw.GLFWVidMode;
 
 /**
- * Configuration panel for keyboard mappings and VLC path.
+ * Configuration panel for keyboard mappings.
  * Refactored to use standard Swing without beansbinding.
  *
  * @author CdK
@@ -35,7 +35,6 @@ public class Configuration extends JPanel {
 
     private EnumMap<Event.Channel, Integer> kb_map;
     private HashMap<Integer, Event.Channel> table_map = new HashMap<>();
-    private String vlc_path;
 
     // Display configuration fields
     private List<DisplayMode> displayModes;
@@ -55,24 +54,8 @@ public class Configuration extends JPanel {
     private final JComboBox<String> combo_keyboardConfig;
     private final JScrollPane tKeys_scroll;
     private final JTable tKeys;
-    private JLabel lbl_vlc;
-    private JButton btn_vlc;
     private JLabel lbl_saveFeedback;
     private javax.swing.Timer saveFeedbackTimer;
-
-    private static FileFilter vlc_filter = new FileFilter() {
-        @Override
-        public boolean accept(File file) {
-            if (file.isDirectory()) return true;
-            String name = file.getName().toLowerCase();
-            return name.startsWith("libvlc");
-        }
-
-        @Override
-        public String getDescription() {
-            return "libvlc file";
-        }
-    };
 
     public Configuration() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -122,15 +105,11 @@ public class Configuration extends JPanel {
         // Create display configuration panel
         panel_display = createDisplayPanel();
 
-        // Create VLC selection panel
-        JPanel panel_vlc = createVLCPanel();
-
-        // Create bottom panel with display (left) and VLC (right)
+        // Create bottom panel with display
         JPanel bottomPanel = new JPanel();
         bottomPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 0));
         bottomPanel.setAlignmentX(CENTER_ALIGNMENT);
         bottomPanel.add(panel_display);
-        bottomPanel.add(panel_vlc);
 
         add(panel_keys);
         add(Box.createVerticalStrut(10));
@@ -157,12 +136,6 @@ public class Configuration extends JPanel {
         saveFeedbackTimer.setRepeats(false);
 
         loadTableKeys(Config.KeyboardType.K7);
-        vlc_path = Config.getInstance().getGameOptions().toGameOptions().getVLCLibraryPath();
-        if (vlc_path.isEmpty()) {
-            lbl_vlc.setText("Select the VLC path");
-        } else {
-            lbl_vlc.setText("VLC Path: " + vlc_path);
-        }
 
         // Load display settings
         loadDisplaySettings();
@@ -183,9 +156,8 @@ public class Configuration extends JPanel {
         for (Map.Entry<Event.Channel, Integer> entry : kb_map.entrySet()) {
             config.setKeyCode(kt, entry.getKey(), entry.getValue());
         }
-        
+
         GameOptions op = config.getGameOptions().toGameOptions();
-        op.setVLCLibraryPath(vlc_path);
 
         // Save display settings
         saveDisplaySettings(op);
@@ -242,19 +214,6 @@ public class Configuration extends JPanel {
             case 2: loadTableKeys(Config.KeyboardType.K6); break;
             case 3: loadTableKeys(Config.KeyboardType.K4); break;
             case 4: loadTableKeys(Config.KeyboardType.K8); break;
-        }
-    }
-
-    private void btn_vlcActionPerformed() {
-        JFileChooser jfc = new JFileChooser();
-        if (!vlc_path.isEmpty())
-            jfc.setCurrentDirectory(new File(vlc_path));
-        jfc.setDialogTitle("Choose the libvlc file");
-        jfc.addChoosableFileFilter(vlc_filter);
-        jfc.setAcceptAllFileFilterUsed(false);
-        if (jfc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            vlc_path = jfc.getSelectedFile().getParent();
-            lbl_vlc.setText("VLC Path: " + vlc_path);
         }
     }
 
@@ -359,32 +318,6 @@ public class Configuration extends JPanel {
         
         panel.add(optionsPanel);
         panel.add(Box.createVerticalStrut(5));
-
-        return panel;
-    }
-
-    /**
-     * Create the VLC selection panel.
-     */
-    private JPanel createVLCPanel() {
-        JPanel panel = new JPanel();
-        panel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), "VLC Library"));
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setAlignmentX(LEFT_ALIGNMENT);
-
-        lbl_vlc = new JLabel("VLC isn't selected");
-        lbl_vlc.setAlignmentX(LEFT_ALIGNMENT);
-        lbl_vlc.setMaximumSize(new java.awt.Dimension(200, 16));
-
-        btn_vlc = new JButton("Select VLC path");
-        btn_vlc.setAlignmentX(LEFT_ALIGNMENT);
-        btn_vlc.addActionListener(e -> btn_vlcActionPerformed());
-
-        panel.add(lbl_vlc);
-        panel.add(Box.createVerticalStrut(10));
-        panel.add(btn_vlc);
-        panel.add(Box.createVerticalGlue());
 
         return panel;
     }

@@ -259,7 +259,6 @@ public class Config {
         opts.displayBitsPerPixel = 32;
         opts.displayFrequency = 60;
         opts.bufferSize = 512;
-        opts.vlc = "";
         opts.displayLag = 0.0;
         opts.audioLatency = 0.0;
         opts.hasteMode = false;
@@ -442,8 +441,6 @@ public class Config {
 
     /**
      * Migrate old key bindings from LegacyConfig format.
-     * 
-     * <p>Handles migration from VoileMap config.vl if needed.</p>
      */
     private void migrateOldKeyBindings() {
         // Migration logic handled by ConfigMigration class
@@ -545,9 +542,6 @@ public class Config {
         // Sound
         public int bufferSize = 512;
 
-        // VLC
-        public String vlc = "";
-
         // Timing
         public double displayLag = 0.0;
         public double audioLatency = 0.0;
@@ -582,7 +576,6 @@ public class Config {
             opts.setDisplayBitsPerPixel(displayBitsPerPixel);
             opts.setDisplayFrequency(displayFrequency);
             opts.setBufferSize(bufferSize);
-            opts.setVLCLibraryPath(vlc);
             opts.setDisplayLag(displayLag);
             opts.setAudioLatency(audioLatency);
             opts.setHasteMode(hasteMode);
@@ -617,7 +610,6 @@ public class Config {
             wrapper.displayBitsPerPixel = opts.getDisplayBitsPerPixel();
             wrapper.displayFrequency = opts.getDisplayFrequency();
             wrapper.bufferSize = opts.getBufferSize();
-            wrapper.vlc = opts.getVLCLibraryPath();
             wrapper.displayLag = opts.getDisplayLag();
             wrapper.audioLatency = opts.getAudioLatency();
             wrapper.hasteMode = opts.isHasteMode();

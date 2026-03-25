@@ -15,7 +15,8 @@ public class ByteHelper {
     public static final byte[] tmp_buffer = new byte[1024];
     
     /**
-     * Convert a byte[] to a String, also will try to get the charset (cross your fingers on this xD)
+     * Convert a byte[] to a String.
+     * Uses UTF-8 encoding for O2Jam files.
      * @param ch The byte[]
      * @return a nice String
      */
@@ -23,11 +24,10 @@ public class ByteHelper {
     {
         int i = 0;
         while(i<ch.length && ch[i]!=0)i++; // find \0 terminator
-        String charset = CharsetDetector.analyze(ch);
         try {
-            return new String(ch,0,i,charset);
+            return new String(ch,0,i,"UTF-8");
         } catch (UnsupportedEncodingException ex) {
-            Logger.global.log(Level.WARNING, "Encoding [{0}] not supported !", charset);
+            Logger.global.log(Level.WARNING, "UTF-8 encoding not supported !");
             return new String(ch,0,i);
         }
     }
