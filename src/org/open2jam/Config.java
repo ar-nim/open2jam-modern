@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectWriter;
 import org.open2jam.parsers.Event;
+import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
 import java.io.File;
@@ -128,17 +129,17 @@ public class Config {
         }
 
         if (!CONFIG_FILE.exists()) {
-            Logger.global.info("Config file not found, creating default: " + CONFIG_FILE.getAbsolutePath());
+            DebugLogger.debug("Config file not found, creating default: " + CONFIG_FILE.getAbsolutePath());
             return createDefault();
         }
 
         try {
             Config config = MAPPER.readValue(CONFIG_FILE, Config.class);
             config.migrateOldKeyBindings();
-            Logger.global.info("Config loaded: " + CONFIG_FILE.getAbsolutePath());
+            DebugLogger.debug("Config loaded: " + CONFIG_FILE.getAbsolutePath());
             return config;
         } catch (Exception e) {
-            Logger.global.log(java.util.logging.Level.SEVERE, 
+            Logger.global.log(java.util.logging.Level.SEVERE,
                 "Failed to load config.json, creating default", e);
             return createDefault();
         }

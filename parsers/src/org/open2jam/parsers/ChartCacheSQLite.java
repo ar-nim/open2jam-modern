@@ -268,7 +268,7 @@ public class ChartCacheSQLite {
                 stmt.executeUpdate(CREATE_TABLES_SQL);
             }
 
-            Logger.global.info("ChartCacheSQLite initialized: " + dbFile.getAbsolutePath());
+            // Silent initialization
             
         } catch (SQLException e) {
             Logger.global.log(Level.SEVERE, "Failed to initialize ChartCacheSQLite", e);
@@ -301,7 +301,7 @@ public class ChartCacheSQLite {
             try {
                 if (!writerConnection.isClosed()) {
                     writerConnection.close();
-                    Logger.global.info("ChartCacheSQLite writer connection closed");
+                    // Silent close
                 }
             } catch (SQLException e) {
                 Logger.global.log(Level.WARNING, "Failed to close writer connection", e);
@@ -817,7 +817,7 @@ public class ChartCacheSQLite {
         // File modified - re-parse and re-cache (Fix #6)
         long currentModified = sourceFile.lastModified();
         if (currentModified != cached.sourceFileModified) {
-            Logger.global.info("Chart modified: " + cached.relativePath + " - re-parsing");
+            // Chart modified - re-parsing
 
             // Invalidate old cache entry
             invalidateCache(cached.id);
