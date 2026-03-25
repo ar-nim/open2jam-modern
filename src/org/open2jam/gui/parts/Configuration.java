@@ -83,8 +83,6 @@ public class Configuration extends JPanel {
 
         bSave = new JButton("Save");
         bSave.setFont(new Font("SansSerif", Font.BOLD, 11));
-        System.out.println("[DEBUG] Save button font: " + bSave.getFont().getName() + 
-                           " (family=" + bSave.getFont().getFamily() + ")");
         bSave.setMaximumSize(new java.awt.Dimension(65, 23));
         bSave.addActionListener(e -> bSaveActionPerformed());
 
@@ -473,11 +471,6 @@ public class Configuration extends JPanel {
     }
 
     private static Font font = new Font("SansSerif", Font.BOLD, 14);
-    
-    static {
-        System.out.println("[DEBUG] Keyboard capture font: " + font.getName() + 
-                           " (family=" + font.getFamily() + ")");
-    }
 
     private int read_keyboard_key(int lastkey) throws Exception {
         String place = tKeys.getValueAt(tKeys.getSelectedRow(), 0).toString();
