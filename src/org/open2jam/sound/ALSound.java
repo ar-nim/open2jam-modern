@@ -152,7 +152,7 @@ public class ALSound implements Sound {
     public void dispose() {
         if (!disposed) {
             AL10.alDeleteBuffers(bufferId);
-            // Free native memory
+            // Free native memory (already direct, no double-copy)
             if (rawData != null && rawData.isDirect()) {
                 MemoryUtil.memFree(rawData);
             }

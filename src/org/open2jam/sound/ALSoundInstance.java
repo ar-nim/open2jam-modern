@@ -3,8 +3,13 @@ package org.open2jam.sound;
 import org.lwjgl.openal.AL10;
 
 /**
- * OpenAL sound instance with source pooling.
+ * OpenAL sound instance with source pooling and latency optimizations.
  * Manages playback of a single sound on an OpenAL source from the pool.
+ * 
+ * Optimizations:
+ * - Pre-bound buffer to source (only alSourcePlay on trigger for keysounds)
+ * - Cached gain/pitch/pan to skip redundant AL calls
+ * - O(1) source acquisition from free-list stack
  */
 public class ALSoundInstance implements SoundInstance {
 
@@ -33,17 +38,38 @@ public class ALSoundInstance implements SoundInstance {
             float channelVolume = channel == SoundChannel.BGM ?
                     soundSystem.bgmVolume : soundSystem.keyVolume;
             float finalVolume = volume * channelVolume * soundSystem.masterVolume;
-            
+
             // Clamp volume to valid OpenAL range [0.0, 1.0] to prevent errors
-            AL10.alSourcef(sourceId, AL10.AL_GAIN, Math.max(0.0f, Math.min(1.0f, finalVolume)));
+            float clampedGain = Math.max(0.0f, Math.min(1.0f, finalVolume));
+            
+            // Cached gain set - skip if unchanged
+            if (Math.abs(soundSystem.sourceLastGain[sourceIndex] - clampedGain) > ALSoundSystem.EPSILON) {
+                AL10.alSourcef(sourceId, AL10.AL_GAIN, clampedGain);
+                soundSystem.sourceLastGain[sourceIndex] = clampedGain;
+            }
 
             // Set pan (-1.0 = left, 0.0 = center, 1.0 = right)
             // Clamp pan to valid range [-1.0, 1.0] to prevent errors
             float clampedPan = Math.max(-1.0f, Math.min(1.0f, pan));
-            AL10.alSource3f(sourceId, AL10.AL_POSITION, clampedPan, 0.0f, 0.0f);
+            
+            // Cached pan set - skip if unchanged
+            if (Math.abs(soundSystem.sourceLastPanX[sourceIndex] - clampedPan) > ALSoundSystem.EPSILON ||
+                Math.abs(soundSystem.sourceLastPanY[sourceIndex] - 0.0f) > ALSoundSystem.EPSILON ||
+                Math.abs(soundSystem.sourceLastPanZ[sourceIndex] - 0.0f) > ALSoundSystem.EPSILON) {
+                AL10.alSource3f(sourceId, AL10.AL_POSITION, clampedPan, 0.0f, 0.0f);
+                soundSystem.sourceLastPanX[sourceIndex] = clampedPan;
+                soundSystem.sourceLastPanY[sourceIndex] = 0.0f;
+                soundSystem.sourceLastPanZ[sourceIndex] = 0.0f;
+            }
 
             // Set pitch based on speed
-            AL10.alSourcef(sourceId, AL10.AL_PITCH, soundSystem.speed);
+            float pitch = soundSystem.speed;
+            
+            // Cached pitch set - skip if unchanged
+            if (Math.abs(soundSystem.sourceLastPitch[sourceIndex] - pitch) > ALSoundSystem.EPSILON) {
+                AL10.alSourcef(sourceId, AL10.AL_PITCH, pitch);
+                soundSystem.sourceLastPitch[sourceIndex] = pitch;
+            }
 
             // Start playback
             AL10.alSourcePlay(sourceId);
