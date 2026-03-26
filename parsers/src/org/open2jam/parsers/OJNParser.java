@@ -224,7 +224,7 @@ class OJNParser
                     if(value == 0)continue; // ignore value=0 events
 
                     // MIN 1 ~ 15 MAX, special 0 = MAX
-                    float volume = ((volume_pan >> 4) & 0x0F) / 16f;
+                    float volume = ((volume_pan >> 4) & 0x0F) / 15f;
                     if(volume == 0) volume = 1.0f;  // Special case: 0 = MAX (full volume)
 
                     // LEFT 1 ~ 8 CENTER 8 ~ 15 RIGHT, special: 0 = 8
@@ -258,7 +258,9 @@ class OJNParser
 			break;
 		    }
 		    
-		    event_list.add(new Event(channel,measure,position,value,f,volume, pan));
+		    Event evt = new Event(channel,measure,position,value,f,volume, pan);
+		    if(channel == Event.Channel.AUTO_PLAY) evt.getSample().toBGM();
+		    event_list.add(evt);
                 }
             }
         }
