@@ -10,27 +10,24 @@ import java.util.logging.Level;
 import org.open2jam.parsers.utils.ByteHelper;
 import org.open2jam.parsers.utils.Logger;
 
-class OJNParser
-{
-    private static final String genre_map[] = {"Ballad","Rock","Dance","Techno","Hip-hop",
-                    "Soul/R&B","Jazz","Funk","Classical","Traditional","Etc"};
+class OJNParser {
+    private static final String genre_map[] = { "Ballad", "Rock", "Dance", "Techno", "Hip-hop",
+            "Soul/R&B", "Jazz", "Funk", "Classical", "Traditional", "Etc" };
 
     /** the signature that appears at offset 4, "ojn\0" in little endian */
     private static final int OJN_SIGNATURE = 0x006E6A6F;
 
-    public static boolean canRead(File file)
-    {
+    public static boolean canRead(File file) {
         return file.getName().toLowerCase().endsWith(".ojn");
     }
 
-    public static ChartList parseFile(File file)
-    {
+    public static ChartList parseFile(File file) {
         ByteBuffer buffer;
         RandomAccessFile f;
-        try{
-            f = new RandomAccessFile(file.getAbsolutePath(),"r");
+        try {
+            f = new RandomAccessFile(file.getAbsolutePath(), "r");
             buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, 300);
-        }catch(IOException e){
+        } catch (IOException e) {
             Logger.global.log(Level.WARNING, "IO exception on reading OJN file {0}", file.getName());
             return null;
         }
@@ -43,19 +40,19 @@ class OJNParser
 
         int songid = buffer.getInt();
         int signature = buffer.getInt();
-        if(signature != OJN_SIGNATURE){
+        if (signature != OJN_SIGNATURE) {
             Logger.global.log(Level.WARNING, "File [{0}] isn't a OJN file !", file);
             return null;
         }
 
         float encode_version = buffer.getFloat();
-        
+
         int genre = buffer.getInt();
-        String str_genre = genre_map[(genre<0||genre>10)?10:genre];
+        String str_genre = genre_map[(genre < 0 || genre > 10) ? 10 : genre];
         easy.genre = str_genre;
         normal.genre = str_genre;
         hard.genre = str_genre;
-        
+
         float bpm = buffer.getFloat();
         easy.bpm = bpm;
         normal.bpm = bpm;
@@ -125,7 +122,7 @@ class OJNParser
         easy.cover_size = cover_size;
         normal.cover_size = cover_size;
         hard.cover_size = cover_size;
-        
+
         easy.duration = buffer.getInt();
         normal.duration = buffer.getInt();
         hard.duration = buffer.getInt();
@@ -153,7 +150,7 @@ class OJNParser
         list.add(hard);
 
         list.source_file = file;
-	buffer.clear();
+        buffer.clear();
 
         try {
             f.close();
@@ -163,104 +160,123 @@ class OJNParser
         return list;
     }
 
-    public static EventList parseChart(OJNChart chart)
-    {
+    public static EventList parseChart(OJNChart chart) {
         EventList event_list = new EventList();
-        try{
-	    RandomAccessFile f = new RandomAccessFile(chart.getSource().getAbsolutePath(), "r");
+        try {
+            RandomAccessFile f = new RandomAccessFile(chart.getSource().getAbsolutePath(), "r");
 
-	    int start = chart.note_offset;
-	    int end = chart.note_offset_end;
+            int start = chart.note_offset;
+            int end = chart.note_offset_end;
 
-	    ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, start, end - start);
-	    buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-	    readNoteBlock(event_list, buffer);
-	    
-	    f.close();
-        }catch(java.io.FileNotFoundException e){
+            ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, start, end - start);
+            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            readNoteBlock(event_list, buffer);
+
+            f.close();
+        } catch (java.io.FileNotFoundException e) {
             Logger.global.log(Level.WARNING, "File {0} not found !!", chart.getSource().getName());
-        } catch (IOException e){
+        } catch (IOException e) {
             Logger.global.log(Level.WARNING, "IO exception on reading OJN file {0}", chart.getSource().getName());
         }
         return event_list;
     }
 
     private static void readNoteBlock(EventList event_list, ByteBuffer buffer) {
-        while(buffer.hasRemaining())
-        {
+        while (buffer.hasRemaining()) {
             int measure = buffer.getInt();
             short channel_number = buffer.getShort();
             short events_count = buffer.getShort();
 
             Event.Channel channel;
-            switch(channel_number)
-            {
-                case 0:channel = Event.Channel.TIME_SIGNATURE;break;
-                case 1:channel = Event.Channel.BPM_CHANGE;break;
-                case 2:channel = Event.Channel.NOTE_1;break;
-                case 3:channel = Event.Channel.NOTE_2;break;
-                case 4:channel = Event.Channel.NOTE_3;break;
-                case 5:channel = Event.Channel.NOTE_4;break;
-                case 6:channel = Event.Channel.NOTE_5;break;
-                case 7:channel = Event.Channel.NOTE_6;break;
-                case 8:channel = Event.Channel.NOTE_7;break;
+            switch (channel_number) {
+                case 0:
+                    channel = Event.Channel.TIME_SIGNATURE;
+                    break;
+                case 1:
+                    channel = Event.Channel.BPM_CHANGE;
+                    break;
+                case 2:
+                    channel = Event.Channel.NOTE_1;
+                    break;
+                case 3:
+                    channel = Event.Channel.NOTE_2;
+                    break;
+                case 4:
+                    channel = Event.Channel.NOTE_3;
+                    break;
+                case 5:
+                    channel = Event.Channel.NOTE_4;
+                    break;
+                case 6:
+                    channel = Event.Channel.NOTE_5;
+                    break;
+                case 7:
+                    channel = Event.Channel.NOTE_6;
+                    break;
+                case 8:
+                    channel = Event.Channel.NOTE_7;
+                    break;
                 default:
-                channel = Event.Channel.AUTO_PLAY;
+                    channel = Event.Channel.AUTO_PLAY;
             }
 
-            for(double i=0;i<events_count;i++)
-            {
+            for (double i = 0; i < events_count; i++) {
                 double position = i / events_count;
-                if(channel == Event.Channel.BPM_CHANGE || channel == Event.Channel.TIME_SIGNATURE) // fractional measure or BPM event
+                if (channel == Event.Channel.BPM_CHANGE || channel == Event.Channel.TIME_SIGNATURE) // fractional
+                                                                                                    // measure or BPM
+                                                                                                    // event
                 {
                     float v = buffer.getFloat();
-                    if(v == 0)continue;
+                    if (v == 0)
+                        continue;
 
-                    event_list.add(new Event(channel,measure,position,v,Event.Flag.NONE));
-                }else{ // note event
+                    event_list.add(new Event(channel, measure, position, v, Event.Flag.NONE));
+                } else { // note event
                     short value = buffer.getShort();
                     int volume_pan = buffer.get();
                     int type = buffer.get();
-                    if(value == 0)continue; // ignore value=0 events
+                    if (value == 0)
+                        continue; // ignore value=0 events
 
                     // MIN 1 ~ 15 MAX, special 0 = MAX
                     float volume = ((volume_pan >> 4) & 0x0F) / 15f;
-                    if(volume == 0) volume = 1.0f;  // Special case: 0 = MAX (full volume)
+                    if (volume == 0)
+                        volume = 1.0f; // Special case: 0 = MAX (full volume)
 
                     // LEFT 1 ~ 8 CENTER 8 ~ 15 RIGHT, special: 0 = 8
                     float pan = (volume_pan & 0x0F);
-                    if(pan == 0) pan = 8;
-                    pan = (pan - 8) / 7.0f;  // Correct formula: -1.0 (left) to +1.0 (right)
+                    if (pan == 0)
+                        pan = 8;
+                    pan = (pan - 8) / 7.0f; // Correct formula: -1.0 (left) to +1.0 (right)
 
                     value--; // make zero-based ( zero was the "ignore" value )
-		    	    
-		    // A lot of fixes here are done thanks to keigen shu. He's stealing my protagonism D:
-		    Event.Flag f = Event.Flag.NONE;
 
-		    if(type%8 > 3)
-			value += 1000;
-		    type %= 4;
-		    
-		    switch(type)
-		    {
-			case 0:
-			    f = Event.Flag.NONE;
-			break;
-			case 1:
-			    //Unused (#W Normal displayed in NoteTool)
-			break;
-			case 2:
-			    //fix for autoplay longnotes, convert them to normal notes (it doesn't matter but... still xD)
-			    f = Event.Flag.HOLD;
-			break;
-			case 3:
-			    f = Event.Flag.RELEASE;
-			break;
-		    }
-		    
-		    Event evt = new Event(channel,measure,position,value,f,volume, pan);
-		    if(channel == Event.Channel.AUTO_PLAY) evt.getSample().toBGM();
-		    event_list.add(evt);
+                    // A lot of fixes here are done thanks to keigen shu. He's stealing my
+                    // protagonism D:
+                    Event.Flag f = Event.Flag.NONE;
+
+                    if (type % 8 > 3)
+                        value += 1000;
+                    type %= 4;
+
+                    switch (type) {
+                        case 0:
+                            f = Event.Flag.NONE;
+                            break;
+                        case 1:
+                            // Unused (#W Normal displayed in NoteTool)
+                            break;
+                        case 2:
+                            // fix for autoplay longnotes, convert them to normal notes (it doesn't matter
+                            // but... still xD)
+                            f = Event.Flag.HOLD;
+                            break;
+                        case 3:
+                            f = Event.Flag.RELEASE;
+                            break;
+                    }
+
+                    event_list.add(new Event(channel, measure, position, value, f, volume, pan));
                 }
             }
         }
