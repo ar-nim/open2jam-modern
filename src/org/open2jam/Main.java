@@ -5,6 +5,12 @@ import java.io.File;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import javax.swing.UIManager;
+import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatIntelliJLaf;
+import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.themes.FlatMacDarkLaf;
+import com.formdev.flatlaf.themes.FlatMacLightLaf;
+import com.formdev.flatlaf.util.SystemInfo;
 import org.lwjgl.glfw.GLFW;
 import org.open2jam.parsers.ChartCacheSQLite;
 import org.open2jam.gui.Interface;
@@ -50,7 +56,7 @@ public class Main implements Runnable
 
         setupLogging();
 
-        trySetLAF();
+        initFlatLaf();
 
         EventQueue.invokeLater(new Main());
     }
@@ -82,19 +88,63 @@ public class Main implements Runnable
         Logger.global.setLevel(Level.INFO);
     }
 
-    private static void trySetLAF()
+    public static void initFlatLaf()
     {
         try {
-            for(UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels())
-            {
-                if("Nimbus".equals(info.getName())){
-                    UIManager.setLookAndFeel(info.getClassName());
-                    return;
-                }
+            // Enable HiDPI scaling specifically for FlatLaf
+            System.setProperty("flatlaf.uiScale.enabled", "true");
+            
+            // Handle UI Scale: "automatic" (system default) or a custom number
+            String uiScaleStr = Config.getInstance().getGameOptions().uiScale;
+            if (uiScaleStr != null && !"automatic".equalsIgnoreCase(uiScaleStr)) {
+                System.setProperty("flatlaf.uiScale", uiScaleStr);
             }
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            
+            // Handle UI Theme selection
+            GameOptions.UiTheme themeSetting = Config.getInstance().getGameOptions().uiTheme;
+            boolean isDark;
+            
+            if (themeSetting == GameOptions.UiTheme.Automatic) {
+                // Auto-detection for system dark mode (heuristic)
+                // For now, default to Light until native detection is added via JNA or platform calls
+                isDark = false; 
+            } else {
+                isDark = (themeSetting == GameOptions.UiTheme.Dark);
+            }
+            
+            // Choose theme based on OS and dark mode preference
+            String os = getOS();
+            if ("macosx".equals(os)) {
+                if (isDark) FlatMacDarkLaf.setup();
+                else FlatMacLightLaf.setup();
+            } else if ("windows".equals(os)) {
+                // For Windows, use IntelliJLaf for light and DarkLaf for dark
+                if (isDark) FlatDarkLaf.setup();
+                else FlatIntelliJLaf.setup();
+            } else {
+                // Linux/Other: use default Flat themes
+                if (isDark) FlatDarkLaf.setup();
+                else FlatLightLaf.setup();
+            }
+            
+            // Refine UI for a more premium feel
+            UIManager.put("Component.focusWidth", 2);
+            UIManager.put("Button.arc", 6);
+            UIManager.put("ProgressBar.arc", 6);
+            UIManager.put("ScrollBar.showButtons", true);
+            UIManager.put("TabbedPane.showTabSeparators", true);
+            
+            if (isDark) {
+                UIManager.put("TabbedPane.selectedBackground", 0x3d3d3d);
+            }
+            
         } catch (Exception e) {
-            Logger.global.info(e.toString());
+            Logger.global.log(Level.WARNING, "Failed to initialize FlatLaf, falling back to system LAF", e);
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ex) {
+                // Last resort
+            }
         }
     }
 

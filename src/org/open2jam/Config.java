@@ -184,6 +184,16 @@ public class Config {
             Logger.global.warning("Invalid displayBitsPerPixel (" + gameOptions.displayBitsPerPixel + "), using default 32");
             gameOptions.displayBitsPerPixel = 32;
         }
+        // Validate UI scale ("automatic" or numeric original 0.5-4.0)
+        if (!"automatic".equalsIgnoreCase(gameOptions.uiScale)) {
+            try {
+                double val = Double.parseDouble(gameOptions.uiScale);
+                if (val < 0.5 || val > 4.0) throw new NumberFormatException();
+            } catch (NumberFormatException e) {
+                Logger.global.warning("Invalid uiScale (" + gameOptions.uiScale + "), using default 'automatic'");
+                gameOptions.uiScale = "automatic";
+            }
+        }
     }
 
     /**
@@ -579,6 +589,8 @@ public class Config {
         public int displayHeight = 720;
         public int displayBitsPerPixel = 32;
         public int displayFrequency = 60;
+        public String uiScale = "automatic"; // "automatic" = system default, or a string number like "1.25"
+        public GameOptions.UiTheme uiTheme = GameOptions.UiTheme.Automatic;
 
         // Sound
         public int bufferSize = 512;
@@ -619,6 +631,8 @@ public class Config {
             opts.setBufferSize(bufferSize);
             opts.setDisplayLag(displayLag);
             opts.setAudioLatency(audioLatency);
+            opts.setUiScale(uiScale);
+            opts.setUiTheme(uiTheme);
             opts.setHasteMode(hasteMode);
             opts.setHasteModeNormalizeSpeed(hasteModeNormalizeSpeed);
             return opts;
@@ -653,6 +667,8 @@ public class Config {
             wrapper.bufferSize = opts.getBufferSize();
             wrapper.displayLag = opts.getDisplayLag();
             wrapper.audioLatency = opts.getAudioLatency();
+            wrapper.uiScale = opts.getUiScale();
+            wrapper.uiTheme = opts.getUiTheme();
             wrapper.hasteMode = opts.isHasteMode();
             wrapper.hasteModeNormalizeSpeed = opts.isHasteModeNormalizeSpeed();
             return wrapper;
