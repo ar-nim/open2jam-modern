@@ -5,9 +5,12 @@ import java.io.File;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import javax.swing.UIManager;
+import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatIntelliJLaf;
 import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.themes.FlatMacDarkLaf;
 import com.formdev.flatlaf.themes.FlatMacLightLaf;
+import com.formdev.flatlaf.util.SystemInfo;
 import org.lwjgl.glfw.GLFW;
 import org.open2jam.parsers.ChartCacheSQLite;
 import org.open2jam.gui.Interface;
@@ -85,7 +88,7 @@ public class Main implements Runnable
         Logger.global.setLevel(Level.INFO);
     }
 
-    private static void initFlatLaf()
+    public static void initFlatLaf()
     {
         try {
             // Enable HiDPI scaling specifically for FlatLaf
@@ -97,14 +100,31 @@ public class Main implements Runnable
                 System.setProperty("flatlaf.uiScale", uiScaleStr);
             }
             
-            // Choose theme based on OS (light theme for now by default)
+            // Handle UI Theme selection
+            GameOptions.UiTheme themeSetting = Config.getInstance().getGameOptions().uiTheme;
+            boolean isDark;
+            
+            if (themeSetting == GameOptions.UiTheme.Automatic) {
+                // Auto-detection for system dark mode (heuristic)
+                // For now, default to Light until native detection is added via JNA or platform calls
+                isDark = false; 
+            } else {
+                isDark = (themeSetting == GameOptions.UiTheme.Dark);
+            }
+            
+            // Choose theme based on OS and dark mode preference
             String os = getOS();
             if ("macosx".equals(os)) {
-                FlatMacLightLaf.setup();
+                if (isDark) FlatMacDarkLaf.setup();
+                else FlatMacLightLaf.setup();
             } else if ("windows".equals(os)) {
-                FlatIntelliJLaf.setup();
+                // For Windows, use IntelliJLaf for light and DarkLaf for dark
+                if (isDark) FlatDarkLaf.setup();
+                else FlatIntelliJLaf.setup();
             } else {
-                FlatLightLaf.setup();
+                // Linux/Other: use default Flat themes
+                if (isDark) FlatDarkLaf.setup();
+                else FlatLightLaf.setup();
             }
             
             // Refine UI for a more premium feel
@@ -113,6 +133,10 @@ public class Main implements Runnable
             UIManager.put("ProgressBar.arc", 6);
             UIManager.put("ScrollBar.showButtons", true);
             UIManager.put("TabbedPane.showTabSeparators", true);
+            
+            if (isDark) {
+                UIManager.put("TabbedPane.selectedBackground", 0x3d3d3d);
+            }
             
         } catch (Exception e) {
             Logger.global.log(Level.WARNING, "Failed to initialize FlatLaf, falling back to system LAF", e);

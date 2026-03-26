@@ -590,6 +590,7 @@ public class Config {
         public int displayBitsPerPixel = 32;
         public int displayFrequency = 60;
         public String uiScale = "automatic"; // "automatic" = system default, or a string number like "1.25"
+        public GameOptions.UiTheme uiTheme = GameOptions.UiTheme.Automatic;
 
         // Sound
         public int bufferSize = 512;
@@ -631,6 +632,7 @@ public class Config {
             opts.setDisplayLag(displayLag);
             opts.setAudioLatency(audioLatency);
             opts.setUiScale(uiScale);
+            opts.setUiTheme(uiTheme);
             opts.setHasteMode(hasteMode);
             opts.setHasteModeNormalizeSpeed(hasteModeNormalizeSpeed);
             return opts;
@@ -666,6 +668,7 @@ public class Config {
             wrapper.displayLag = opts.getDisplayLag();
             wrapper.audioLatency = opts.getAudioLatency();
             wrapper.uiScale = opts.getUiScale();
+            wrapper.uiTheme = opts.getUiTheme();
             wrapper.hasteMode = opts.isHasteMode();
             wrapper.hasteModeNormalizeSpeed = opts.isHasteModeNormalizeSpeed();
             return wrapper;

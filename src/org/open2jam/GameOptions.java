@@ -34,6 +34,13 @@ public class GameOptions {
     }
 
     /**
+     * UI Theme selection
+     */
+    public enum UiTheme {
+        Automatic, Light, Dark;
+    }
+
+    /**
      * FPS Limiter multiplier when VSync is OFF
      */
     public enum FpsLimiter {
@@ -104,6 +111,7 @@ public class GameOptions {
     private double displayLag = 0;
     private double audioLatency = 0;
     private String uiScale = "automatic";
+    private UiTheme uiTheme = UiTheme.Automatic;
     
     //public constructor. give default options
     public GameOptions() {
@@ -347,6 +355,14 @@ public class GameOptions {
 
     public void setUiScale(String uiScale) {
         this.uiScale = uiScale;
+    }
+
+    public UiTheme getUiTheme() {
+        return uiTheme;
+    }
+
+    public void setUiTheme(UiTheme uiTheme) {
+        this.uiTheme = uiTheme;
     }
 
     public boolean isDisplayVsync() {

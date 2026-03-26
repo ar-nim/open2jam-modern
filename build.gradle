@@ -121,6 +121,7 @@ dependencies {
 
     // FlatLaf 3.x for modern HiDPI-compliant Swing UI
     implementation 'com.formdev:flatlaf:3.7.1'
+    implementation 'com.formdev:flatlaf-extras:3.7.1'
 
     // Parsers module
     implementation project(':parsers')

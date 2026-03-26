@@ -14,7 +14,9 @@ import javax.swing.filechooser.FileFilter;
 import javax.swing.table.DefaultTableModel;
 import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.Config;
+import org.open2jam.Main;
 import org.open2jam.GameOptions;
+import com.formdev.flatlaf.extras.FlatAnimatedLafChange;
 import org.open2jam.parsers.Event;
 import org.open2jam.render.DisplayMode;
 import org.open2jam.render.lwjgl.LWJGLGameWindow;
@@ -46,6 +48,10 @@ public class Configuration extends JPanel {
     private JTextField txt_res_width;
     private JTextField txt_res_height;
     private JLabel lbl_res_x;
+
+    // GUI configuration fields
+    private JComboBox<GameOptions.UiTheme> combo_uiTheme;
+    private JPanel panel_gui;
 
     private final JButton bSave;
     private final JPanel panel_keys;
@@ -105,11 +111,16 @@ public class Configuration extends JPanel {
         // Create display configuration panel
         panel_display = createDisplayPanel();
 
-        // Create bottom panel with display
+        // Create GUI configuration panel
+        panel_gui = createGUIPanel();
+
+        // Create bottom panel with display and GUI
         JPanel bottomPanel = new JPanel();
-        bottomPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS)); // Stack display and GUI
         bottomPanel.setAlignmentX(CENTER_ALIGNMENT);
         bottomPanel.add(panel_display);
+        bottomPanel.add(Box.createVerticalStrut(10));
+        bottomPanel.add(panel_gui);
 
         add(panel_keys);
         add(Box.createVerticalStrut(10));
@@ -139,6 +150,9 @@ public class Configuration extends JPanel {
 
         // Load display settings
         loadDisplaySettings();
+        
+        // Load GUI settings
+        loadGUISettings();
     }
 
     private void bSaveActionPerformed() {
@@ -161,8 +175,17 @@ public class Configuration extends JPanel {
 
         // Save display settings
         saveDisplaySettings(op);
+        
+        // Save GUI settings
+        saveGUISettings(op);
 
         config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(op));
+
+        // Apply theme immediately without restart
+        FlatAnimatedLafChange.showSnapshot();
+        Main.initFlatLaf();
+        SwingUtilities.updateComponentTreeUI(getTopLevelAncestor());
+        FlatAnimatedLafChange.hideSnapshotWithAnimation();
 
         // Show feedback label instead of popup
         lbl_saveFeedback.setVisible(true);
@@ -361,6 +384,38 @@ public class Configuration extends JPanel {
         panel.add(Box.createVerticalStrut(5));
 
         return panel;
+    }
+
+    /**
+     * Create the GUI configuration panel.
+     */
+    private JPanel createGUIPanel() {
+        JPanel panel = new JPanel();
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "GUI Settings"));
+        panel.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        panel.setAlignmentX(LEFT_ALIGNMENT);
+
+        // UI Theme
+        panel.add(new JLabel("Theme:"));
+        combo_uiTheme = new JComboBox<>(GameOptions.UiTheme.values());
+        panel.add(combo_uiTheme);
+
+        return panel;
+    }
+
+    private void loadGUISettings() {
+        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        
+        // Set UI Theme
+        combo_uiTheme.setSelectedItem(go.getUiTheme());
+    }
+
+    private void saveGUISettings(GameOptions go) {
+        Object themeObj = combo_uiTheme.getSelectedItem();
+        if (themeObj instanceof GameOptions.UiTheme) {
+            go.setUiTheme((GameOptions.UiTheme) themeObj);
+        }
     }
 
     /**
