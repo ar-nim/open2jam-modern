@@ -668,7 +668,7 @@ public class Render implements GameWindowCallback
         double loadStartTime = SystemTimer.getTime();
         double loadDuration = 5000; // 5 seconds
         while (SystemTimer.getTime() - loadStartTime < loadDuration) {
-            // Clear screen and render cover image
+            // Clear screen ONLY when ready to re-draw to prevent black flicker
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
             // Render cover image using ModernRenderer
