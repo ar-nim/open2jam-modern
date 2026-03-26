@@ -97,8 +97,8 @@ class TextureLoader {
        return createTexture(image,
                          GL11.GL_TEXTURE_2D, // target
                          GL11.GL_RGBA,     // dst pixel format
-                         GL11.GL_LINEAR, // min filter (unused)
-                         GL11.GL_LINEAR);
+                         GL11.GL_NEAREST,  // Use NEAREST for crisp pixel-art style
+                         GL11.GL_NEAREST);
     }
     
     /**
@@ -147,9 +147,9 @@ class TextureLoader {
         }
 
         //GL11.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 1);
-        //GL11.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        //GL11.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        //GL11.glTexEnvi(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_REPLACE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
 
  
         // produce a texture from the byte buffer

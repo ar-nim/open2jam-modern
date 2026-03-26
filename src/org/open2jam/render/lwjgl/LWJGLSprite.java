@@ -113,10 +113,14 @@ public class LWJGLSprite implements Sprite {
     private void initUVs(int x, int y, int width, int height) {
         float texW = texture.getWidth();
         float texH = texture.getHeight();
-        this.u0 = x / texW;
-        this.v0 = y / texH;
-        this.u1 = (x + width) / texW;
-        this.v1 = (y + height) / texH;
+        
+        // Apply 0.5-pixel inset to UV coordinates to prevent texture bleeding/seams
+        // at high resolutions (e.g. 1600x1200) where logical pixels cross boundaries.
+        float pxInset = 0.5f;
+        this.u0 = (x + pxInset) / texW;
+        this.v0 = (y + pxInset) / texH;
+        this.u1 = (x + width - pxInset) / texW;
+        this.v1 = (y + height - pxInset) / texH;
     }
 
     /**
@@ -221,12 +225,26 @@ public class LWJGLSprite implements Sprite {
             drawVisibilityModModern(finalX, finalY, finalWidth, finalHeight);
         } else if (texture != null) {
             // Normal textured sprite
-            modernRenderer.drawSprite(
-                texture.getTextureID(),
-                finalX, finalY, finalWidth, finalHeight,
-                send_u0, send_v0, send_u1, send_v1,
-                1.0f, 1.0f, 1.0f, alpha
-            );
+            if (blend_alpha) {
+                // Restoration of legacy vibrancy: flared sprites (judgments/fever)
+                // use additive/vibrant blending instead of standard alpha overlay.
+                modernRenderer.drawSprite(
+                    texture.getTextureID(),
+                    finalX, finalY, finalWidth, finalHeight,
+                    send_u0, send_v0, send_u1, send_v1,
+                    1.0f, 1.0f, 1.0f, alpha,
+                    GL11.GL_SRC_ALPHA, GL11.GL_DST_ALPHA
+                );
+            } else {
+                // Standard UI/Note blending
+                modernRenderer.drawSprite(
+                    texture.getTextureID(),
+                    finalX, finalY, finalWidth, finalHeight,
+                    send_u0, send_v0, send_u1, send_v1,
+                    1.0f, 1.0f, 1.0f, alpha,
+                    GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA
+                );
+            }
         }
     }
 

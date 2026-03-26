@@ -27,9 +27,10 @@ public class ModernRenderer {
         "\n" +
         "void main() {\n" +
         "    vec2 scaledPos = vec2(aPos.x * uGlobalScale.x, aPos.y * uGlobalScale.y);\n" +
-        "    // Snap to nearest physical screen pixel to eliminate sub-pixel rasterization seams\n" +
-        "    vec2 snappedPos = round(scaledPos);\n" +
-        "    gl_Position = uProjection * vec4(snappedPos.x, snappedPos.y, 0.0, 1.0);\n" +
+        "    // Legacy rendering didn't snap vertices before projection. \n" +
+        "    // Snapping here causes major seams at high resolutions (e.g. 1600x1200)\n" +
+        "    // where the scale is non-integer or logical coordinates don't map 1:1.\n" +
+        "    gl_Position = uProjection * vec4(scaledPos.x, scaledPos.y, 0.0, 1.0);\n" +
         "    vUV = aUV;\n" +
         "    vColor = aColor;\n" +
         "}\n";
@@ -46,7 +47,6 @@ public class ModernRenderer {
         "\n" +
         "void main() {\n" +
         "    vec4 texColor = texture(uTexture, vUV);\n" +
-        "    if (texColor.a < 0.01) discard;\n" +
         "    fragColor = texColor * vColor;\n" +
         "}\n";
     
@@ -59,8 +59,10 @@ public class ModernRenderer {
     private float globalScaleX = 1.0f;
     private float globalScaleY = 1.0f;
     
-    // Current texture
+    // Current texture and blending state
     private int currentTextureId = 0;
+    private int currentSrcFactor = GL11.GL_SRC_ALPHA;
+    private int currentDstFactor = GL11.GL_ONE_MINUS_SRC_ALPHA;
     
     // State
     private boolean initialized = false;
@@ -144,6 +146,11 @@ public class ModernRenderer {
         GL20.glUniform1i(shader.getUniformLocation("uTexture"), 0);
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
+        // Reset blend state cache to default
+        currentSrcFactor = GL11.GL_SRC_ALPHA;
+        currentDstFactor = GL11.GL_ONE_MINUS_SRC_ALPHA;
+        GL11.glBlendFunc(currentSrcFactor, currentDstFactor);
+
         // Begin sprite batch
         spriteBatch.begin();
         batching = true;
@@ -184,18 +191,39 @@ public class ModernRenderer {
     public void drawSprite(int textureId, float x, float y, float width, float height,
                           float u0, float v0, float u1, float v1,
                           float r, float g, float b, float a) {
+        drawSprite(textureId, x, y, width, height, u0, v0, u1, v1, r, g, b, a, 
+                   GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+    }
+    
+    /**
+     * Advanced drawSprite with support for custom blending modes.
+     * Restores vibrant flare effects of legacy O2Jam.
+     */
+    public void drawSprite(int textureId, float x, float y, float width, float height,
+                          float u0, float v0, float u1, float v1,
+                          float r, float g, float b, float a,
+                          int srcFactor, int dstFactor) {
         if (!initialized || !batching) return;
         
-        // If texture changes, flush current batch and start a new one
-        if (textureId != currentTextureId) {
-            spriteBatch.render(); // Flush existing quads with old texture
+        // If texture or blending state changes, flush current batch and start a new one
+        if (textureId != currentTextureId || srcFactor != currentSrcFactor || dstFactor != currentDstFactor) {
+            spriteBatch.render(); // Flush existing quads
             spriteBatch.begin();  // Start new batch
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-            currentTextureId = textureId;
+            
+            if (textureId != currentTextureId) {
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
+                currentTextureId = textureId;
+            }
+            
+            if (srcFactor != currentSrcFactor || dstFactor != currentDstFactor) {
+                GL11.glBlendFunc(srcFactor, dstFactor);
+                currentSrcFactor = srcFactor;
+                currentDstFactor = dstFactor;
+            }
         }
         
         // Add to batch
-        // If dimensions are negative, swap UVs to handle mirroring/flipping correctly in the batcher
+        // If dimensions are negative, swap UVs to handle mirroring/flipping correctly
         float finalU0 = u0, finalV0 = v0, finalU1 = u1, finalV1 = v1;
         if (width < 0) {
             finalU0 = u1;
