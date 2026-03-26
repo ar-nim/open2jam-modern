@@ -113,7 +113,10 @@ class OJNParser
 
         byte ojm_file[] = new byte[32];
         buffer.get(ojm_file);
-        File sample_file = new File(file.getParent(), ByteHelper.toString(ojm_file));
+        // Sanitize filename to prevent path traversal attacks
+        String ojm_filename = ByteHelper.toString(ojm_file);
+        ojm_filename = new File(ojm_filename).getName(); // Strip path components
+        File sample_file = new File(file.getParent(), ojm_filename);
         easy.sample_file = sample_file;
         normal.sample_file = sample_file;
         hard.sample_file = sample_file;

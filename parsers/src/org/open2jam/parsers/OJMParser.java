@@ -30,6 +30,9 @@ class OJMParser
     /** the OJM signature, "OJM\0" in little endian */
     private static final int OJM_SIGNATURE = 0x004D4A4F;
 
+    /** Maximum allowed sample size (50MB) to prevent OOM attacks */
+    private static final int MAX_ALLOWED_SAMPLE_SIZE = 50 * 1024 * 1024;
+
     /* this is a dump from debugging notetool */
     private static final byte[] REARRANGE_TABLE = new byte[]{
     0x10, 0x0E, 0x02, 0x09, 0x04, 0x00, 0x07, 0x01,
@@ -134,9 +137,14 @@ class OJMParser
             buffer.get(byte_name);
 	    String sample_name = ByteHelper.toString(byte_name);
 	    if(sample_name.lastIndexOf(".") < 0) sample_name += ".ogg";
-	    
+
             int sample_size = buffer.getInt();
-            
+            // Validate sample_size to prevent OOM attacks
+            if (sample_size < 0 || sample_size > MAX_ALLOWED_SAMPLE_SIZE || sample_size > buffer.remaining()) {
+                Logger.global.log(Level.WARNING, "Invalid sample size ({0}) in M30 file, skipping", sample_size);
+                break;
+            }
+
             short codec_code = buffer.getShort();
             short codec_code2 = buffer.getShort();
 
@@ -197,9 +205,9 @@ class OJMParser
        int file_offset = 20;
        int sample_id = 0; // wav samples use id 0~999
 
-       // reset global variables
-       acc_keybyte = 0xFF;
-       acc_counter = 0;
+       // Initialize decryption state for this parsing session
+       int acc_keybyte = 0xFF;
+       int acc_counter = 0;
 
        while(file_offset < ogg_start) // WAV data
        {
@@ -236,7 +244,11 @@ class OJMParser
            if(decrypt)
            {
                buf = rearrange(buf);
-               buf = OMC_xor(buf);
+               int[] decryptState = new int[]{acc_keybyte, acc_counter};
+               buf = OMC_xor(buf, decryptState);
+               // Update state after XOR operation
+               acc_keybyte = decryptState[0];
+               acc_counter = decryptState[1];
            }
 
            buffer = ByteBuffer.allocateDirect(buf.length);
@@ -258,10 +270,16 @@ class OJMParser
            buffer.get(byte_name);
 	   String sample_name = ByteHelper.toString(byte_name);
 	   if(sample_name.lastIndexOf(".") < 0) sample_name += ".ogg";
-	   
+
            int sample_size = buffer.getInt();
 
            if(sample_size == 0){ sample_id++; continue; }
+           // Validate sample_size to prevent OOM attacks
+           if (sample_size < 0 || sample_size > MAX_ALLOWED_SAMPLE_SIZE) {
+               Logger.global.log(Level.WARNING, "Invalid sample size ({0}) in OGG section, skipping", sample_size);
+               sample_id++;
+               continue;
+           }
 
            buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, file_offset, sample_size);
            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
@@ -300,11 +318,12 @@ class OJMParser
         return buf_plain;
     }
 
-    /** some weird encryption */
-    private static int acc_keybyte = 0xFF;
-    private static int acc_counter = 0;
-    private static byte[] OMC_xor(byte[] buf)
+    /** some weird encryption - uses instance state passed as array for thread safety */
+    /** State array: [0] = acc_keybyte, [1] = acc_counter - passed and returned by reference */
+    private static byte[] OMC_xor(byte[] buf, int[] state)
     {
+        int acc_keybyte = state[0];
+        int acc_counter = state[1];
         int temp;
         byte this_byte;
         for(int i=0;i<buf.length;i++)
@@ -322,6 +341,9 @@ class OJMParser
                 acc_keybyte = temp;
             }
         }
+        // Return updated state via array reference
+        state[0] = acc_keybyte;
+        state[1] = acc_counter;
         return buf;
     }
 }

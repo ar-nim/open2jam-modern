@@ -456,7 +456,12 @@ public class Render implements GameWindowCallback
         // skin load
         try {
             SkinParser sb = new SkinParser(window.getResolutionWidth(), window.getResolutionHeight());
-            SAXParserFactory.newInstance().newSAXParser().parse(resources_xml.openStream(), sb);
+            // Harden SAXParser against XXE attacks
+            javax.xml.parsers.SAXParserFactory factory = SAXParserFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.newSAXParser().parse(resources_xml.openStream(), sb);
             if((skin = sb.getResult("o2jam")) == null){
                 Logger.global.log(Level.SEVERE, "Skin load error There is no o2jam skin");
             }

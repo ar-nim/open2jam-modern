@@ -13,15 +13,18 @@ import java.util.zip.Inflater;
  * @author CdK
  */
 public class Compressor {
-    
+
+    /** Maximum allowed decompressed size (50MB) to prevent zip bomb attacks */
+    private static final int MAX_DECOMPRESSED_SIZE = 50 * 1024 * 1024;
+
     /**
      * ZLIB inflate (decompress) of a ByteBuffer
      * @param in The byteBuffer
      * @return A ByteBuffer with the later decompressed
      */
     public static ByteBuffer decompress(ByteBuffer in)
-    {   
-        //bytebuffer to byte[]    
+    {
+        //bytebuffer to byte[]
         byte[] bin = new byte[in.remaining()];
         in.get(bin);
 
@@ -31,15 +34,23 @@ public class Compressor {
         ByteArrayOutputStream bos = new ByteArrayOutputStream(bin.length);
 
         byte[] buf = new byte[1024];
+        long totalOutput = 0;
 
         while(true)
         {
             try {
                 int count = decompressor.inflate(buf);
                 if(count == 0 && decompressor.finished()) break;
+                totalOutput += count;
+                if (totalOutput > MAX_DECOMPRESSED_SIZE) {
+                    Logger.global.log(Level.WARNING, "Decompressed data exceeds maximum allowed size ({0} bytes)", MAX_DECOMPRESSED_SIZE);
+                    decompressor.end();
+                    return null;
+                }
                 bos.write(buf, 0, count);
             } catch (DataFormatException ex) {
                 Logger.global.log(Level.WARNING, "FUUUUU decompress FAILED! D:");
+                decompressor.end();
                 return null;
             }
         }
@@ -52,7 +63,7 @@ public class Compressor {
             Logger.global.log(Level.WARNING, "Are you fucking kidding me?");
             return null;
         }
-        
+
         return ByteBuffer.wrap(bos.toByteArray());
     }
 }

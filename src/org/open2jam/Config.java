@@ -136,12 +136,53 @@ public class Config {
         try {
             Config config = MAPPER.readValue(CONFIG_FILE, Config.class);
             config.migrateOldKeyBindings();
+            config.validateAndSanitize();
             DebugLogger.debug("Config loaded: " + CONFIG_FILE.getAbsolutePath());
             return config;
         } catch (Exception e) {
             Logger.global.log(java.util.logging.Level.SEVERE,
                 "Failed to load config.json, creating default", e);
             return createDefault();
+        }
+    }
+
+    /**
+     * Validate and sanitize config values after deserialization to prevent
+     * resource exhaustion from crafted config files.
+     */
+    private void validateAndSanitize() {
+        // Validate display dimensions
+        if (gameOptions.displayWidth < 640 || gameOptions.displayWidth > 7680) {
+            Logger.global.warning("Invalid displayWidth (" + gameOptions.displayWidth + "), using default 1280");
+            gameOptions.displayWidth = 1280;
+        }
+        if (gameOptions.displayHeight < 480 || gameOptions.displayHeight > 4320) {
+            Logger.global.warning("Invalid displayHeight (" + gameOptions.displayHeight + "), using default 720");
+            gameOptions.displayHeight = 720;
+        }
+        // Validate volume levels (0-100)
+        gameOptions.keyVolume = Math.max(0, Math.min(100, gameOptions.keyVolume));
+        gameOptions.bgmVolume = Math.max(0, Math.min(100, gameOptions.bgmVolume));
+        gameOptions.masterVolume = Math.max(0, Math.min(100, gameOptions.masterVolume));
+        // Validate speed multiplier (0.1x - 10x)
+        if (gameOptions.speedMultiplier < 0.1 || gameOptions.speedMultiplier > 10.0) {
+            Logger.global.warning("Invalid speedMultiplier (" + gameOptions.speedMultiplier + "), using default 1.0");
+            gameOptions.speedMultiplier = 1.0;
+        }
+        // Validate buffer size (64-4096)
+        if (gameOptions.bufferSize < 64 || gameOptions.bufferSize > 4096) {
+            Logger.global.warning("Invalid bufferSize (" + gameOptions.bufferSize + "), using default 512");
+            gameOptions.bufferSize = 512;
+        }
+        // Validate display frequency (30-1024 Hz for high-refresh monitors)
+        if (gameOptions.displayFrequency < 30 || gameOptions.displayFrequency > 1024) {
+            Logger.global.warning("Invalid displayFrequency (" + gameOptions.displayFrequency + "), using default 60");
+            gameOptions.displayFrequency = 60;
+        }
+        // Validate bits per pixel (16 or 32)
+        if (gameOptions.displayBitsPerPixel != 16 && gameOptions.displayBitsPerPixel != 32) {
+            Logger.global.warning("Invalid displayBitsPerPixel (" + gameOptions.displayBitsPerPixel + "), using default 32");
+            gameOptions.displayBitsPerPixel = 32;
         }
     }
 
