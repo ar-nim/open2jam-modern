@@ -5,7 +5,9 @@ import java.io.File;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import javax.swing.UIManager;
-import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.FlatIntelliJLaf;
+import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.themes.FlatMacLightLaf;
 import org.lwjgl.glfw.GLFW;
 import org.open2jam.parsers.ChartCacheSQLite;
 import org.open2jam.gui.Interface;
@@ -87,25 +89,30 @@ public class Main implements Runnable
     {
         try {
             // Enable HiDPI scaling specifically for FlatLaf
-            // This ensures Linux environments like KDE Plasma respect scaling factors
             System.setProperty("flatlaf.uiScale.enabled", "true");
             
-            // Apply custom UI scale from config if set (1.0 = automatic)
-            double uiScale = Config.getInstance().getGameOptions().uiScale;
-            if (uiScale > 0.5 && uiScale != 1.0) {
-                System.setProperty("flatlaf.uiScale", String.valueOf(uiScale));
+            // Handle UI Scale: "automatic" (system default) or a custom number
+            String uiScaleStr = Config.getInstance().getGameOptions().uiScale;
+            if (uiScaleStr != null && !"automatic".equalsIgnoreCase(uiScaleStr)) {
+                System.setProperty("flatlaf.uiScale", uiScaleStr);
             }
             
-            // Set up the dark theme as default for modern Open2Jam
-            FlatDarkLaf.setup();
+            // Choose theme based on OS (light theme for now by default)
+            String os = getOS();
+            if ("macosx".equals(os)) {
+                FlatMacLightLaf.setup();
+            } else if ("windows".equals(os)) {
+                FlatIntelliJLaf.setup();
+            } else {
+                FlatLightLaf.setup();
+            }
             
-            // Refine some UI components for a more premium feel
+            // Refine UI for a more premium feel
             UIManager.put("Component.focusWidth", 2);
             UIManager.put("Button.arc", 6);
             UIManager.put("ProgressBar.arc", 6);
             UIManager.put("ScrollBar.showButtons", true);
             UIManager.put("TabbedPane.showTabSeparators", true);
-            UIManager.put("TabbedPane.selectedBackground", 0x3d3d3d);
             
         } catch (Exception e) {
             Logger.global.log(Level.WARNING, "Failed to initialize FlatLaf, falling back to system LAF", e);

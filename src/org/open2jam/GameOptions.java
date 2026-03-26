@@ -103,6 +103,7 @@ public class GameOptions {
     // display lag and audio latency
     private double displayLag = 0;
     private double audioLatency = 0;
+    private String uiScale = "automatic";
     
     //public constructor. give default options
     public GameOptions() {
@@ -338,6 +339,14 @@ public class GameOptions {
 
     public void setDisplayLag(double displayLag) {
         this.displayLag = displayLag;
+    }
+
+    public String getUiScale() {
+        return uiScale;
+    }
+
+    public void setUiScale(String uiScale) {
+        this.uiScale = uiScale;
     }
 
     public boolean isDisplayVsync() {
