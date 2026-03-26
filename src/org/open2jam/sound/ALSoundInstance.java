@@ -49,17 +49,20 @@ public class ALSoundInstance implements SoundInstance {
             }
 
             // Set pan (-1.0 = left, 0.0 = center, 1.0 = right)
-            // Clamp pan to valid range [-1.0, 1.0] to prevent errors
+            // Constant Power Panning (Sine Law) ensures perceived loudness remains consistent.
             float clampedPan = Math.max(-1.0f, Math.min(1.0f, pan));
+            float angle = (clampedPan + 1.0f) * (float)Math.PI / 4.0f; // 0 to PI/2
+            float xPos = (float)Math.sin(angle);
+            float zPos = -(float)Math.cos(angle); 
             
             // Cached pan set - skip if unchanged
-            if (Math.abs(soundSystem.sourceLastPanX[sourceIndex] - clampedPan) > ALSoundSystem.EPSILON ||
-                Math.abs(soundSystem.sourceLastPanY[sourceIndex] - 0.0f) > ALSoundSystem.EPSILON ||
-                Math.abs(soundSystem.sourceLastPanZ[sourceIndex] - 0.0f) > ALSoundSystem.EPSILON) {
-                AL10.alSource3f(sourceId, AL10.AL_POSITION, clampedPan, 0.0f, 0.0f);
-                soundSystem.sourceLastPanX[sourceIndex] = clampedPan;
+            if (Math.abs(soundSystem.sourceLastPanX[sourceIndex] - xPos) > ALSoundSystem.EPSILON ||
+                Math.abs(soundSystem.sourceLastPanZ[sourceIndex] - zPos) > ALSoundSystem.EPSILON) {
+                // We use X and Z for horizontal panning in OpenAL 3D space
+                AL10.alSource3f(sourceId, AL10.AL_POSITION, xPos, 0.0f, zPos);
+                soundSystem.sourceLastPanX[sourceIndex] = xPos;
                 soundSystem.sourceLastPanY[sourceIndex] = 0.0f;
-                soundSystem.sourceLastPanZ[sourceIndex] = 0.0f;
+                soundSystem.sourceLastPanZ[sourceIndex] = zPos;
             }
 
             // Set pitch based on speed
