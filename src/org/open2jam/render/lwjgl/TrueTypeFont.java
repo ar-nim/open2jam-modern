@@ -10,8 +10,9 @@ import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.stb.STBTruetype;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -19,6 +20,7 @@ import org.open2jam.util.Logger;
 
 /**
  * A TrueType font implementation using LWJGL 3 and STB Truetype.
+ * Modernized to use OpenGL 3.3 Core Profile with batched rendering.
  *
  * @original author James Chambers (Jimmy)
  * @original author Jeremy Adams (elias4444)
@@ -26,6 +28,7 @@ import org.open2jam.util.Logger;
  * @original author Peter Korzuszek (genail)
  * @new version edited by David Aaron Muhar (bobjob)
  * @modernized for LWJGL 3
+ * @modernized for OpenGL 3.3 Core Profile (no glBegin/glEnd)
  */
 public class TrueTypeFont {
 
@@ -59,6 +62,16 @@ public class TrueTypeFont {
     private final Font font;
 
     private int correctL = 9, correctR = 8;
+
+    /** Reference to modern renderer for batched drawing */
+    private static ModernRenderer modernRenderer;
+
+    /**
+     * Set the modern renderer instance (called once during initialization).
+     */
+    public static void setModernRenderer(ModernRenderer renderer) {
+        modernRenderer = renderer;
+    }
 
     private static class IntObject {
         /** Character's width */
@@ -186,27 +199,6 @@ public class TrueTypeFont {
         }
     }
 
-    private void drawQuad(float drawX, float drawY, float drawX2, float drawY2,
-                          float srcX, float srcY, float srcX2, float srcY2) {
-        float DrawWidth = drawX2 - drawX;
-        float DrawHeight = drawY2 - drawY;
-        float TextureSrcX = srcX / textureWidth;
-        float TextureSrcY = srcY / textureHeight;
-        float SrcWidth = srcX2 - srcX;
-        float SrcHeight = srcY2 - srcY;
-        float RenderWidth = (SrcWidth / textureWidth);
-        float RenderHeight = (SrcHeight / textureHeight);
-
-        GL11.glTexCoord2f(TextureSrcX, TextureSrcY);
-        GL11.glVertex2f(drawX, drawY);
-        GL11.glTexCoord2f(TextureSrcX, TextureSrcY + RenderHeight);
-        GL11.glVertex2f(drawX, drawY + DrawHeight);
-        GL11.glTexCoord2f(TextureSrcX + RenderWidth, TextureSrcY + RenderHeight);
-        GL11.glVertex2f(drawX + DrawWidth, drawY + DrawHeight);
-        GL11.glTexCoord2f(TextureSrcX + RenderWidth, TextureSrcY);
-        GL11.glVertex2f(drawX + DrawWidth, drawY);
-    }
-
     public int getWidth(String whatchars) {
         int totalwidth = 0;
         IntObject intObject;
@@ -245,19 +237,33 @@ public class TrueTypeFont {
 
     public void drawString(float x, float y, String whatchars, int startIndex, int endIndex,
                            float scaleX, float scaleY, int format) {
+        // Use modern renderer if available
+        if (modernRenderer != null) {
+            drawStringModern(x, y, whatchars, startIndex, endIndex, scaleX, scaleY, format);
+        } else {
+            drawStringLegacy(x, y, whatchars, startIndex, endIndex, scaleX, scaleY, format);
+        }
+    }
+
+    /**
+     * Draw string using modern batched rendering.
+     */
+    private void drawStringModern(float x, float y, String whatchars, int startIndex, int endIndex,
+                                  float scaleX, float scaleY, int format) {
         IntObject intObject;
         int charCurrent;
         int totalwidth = 0;
         int i = startIndex, d = 1, c = correctL;
         float startY = 0;
 
+        // Calculate starting position based on alignment
         switch (format) {
             case ALIGN_RIGHT: {
                 d = -1;
                 c = correctR;
-                while (i < endIndex) {
-                    if (whatchars.charAt(i) == '\n') startY -= fontHeight;
-                    i++;
+                i = endIndex; // Start from end for right alignment
+                for (int l = startIndex; l <= endIndex; l++) {
+                    if (whatchars.charAt(l) == '\n') startY += fontHeight;
                 }
                 break;
             }
@@ -270,7 +276,7 @@ public class TrueTypeFont {
                     } else {
                         intObject = customChars.get((char) charCurrent);
                     }
-                    totalwidth += intObject.width - correctL;
+                    totalwidth += intObject != null ? intObject.width - correctL : 0;
                 }
                 totalwidth /= -2;
                 break;
@@ -283,9 +289,10 @@ public class TrueTypeFont {
             }
         }
 
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, fontTextureID);
-        GL11.glBegin(GL11.GL_QUADS);
+        // Bind font texture implicitly via drawSprite
+        i = (d > 0) ? startIndex : endIndex;
 
+        // Draw each character
         while (i >= startIndex && i <= endIndex) {
             charCurrent = whatchars.charAt(i);
             if (charCurrent < 256) {
@@ -297,7 +304,7 @@ public class TrueTypeFont {
             if (intObject != null) {
                 if (d < 0) totalwidth += (intObject.width - c) * d;
                 if (charCurrent == '\n') {
-                    startY -= fontHeight * d;
+                    startY += fontHeight;
                     totalwidth = 0;
                     if (format == ALIGN_CENTER) {
                         for (int l = i + 1; l <= endIndex; l++) {
@@ -308,22 +315,45 @@ public class TrueTypeFont {
                             } else {
                                 intObject = customChars.get((char) charCurrent);
                             }
-                            totalwidth += intObject.width - correctL;
+                            totalwidth += intObject != null ? intObject.width - correctL : 0;
                         }
                         totalwidth /= -2;
                     }
                 } else {
-                    drawQuad((totalwidth + intObject.width) * scaleX + x, startY * scaleY + y,
-                            totalwidth * scaleX + x,
-                            (startY + intObject.height) * scaleY + y, intObject.storedX + intObject.width,
-                            intObject.storedY + intObject.height, intObject.storedX,
-                            intObject.storedY);
+                    // Calculate UV coordinates with 0.5 pixel inset to prevent sub-pixel bleeding/seams
+                    float pxInset = 0.5f;
+                    float u0 = (intObject.storedX + pxInset) / (float) textureWidth;
+                    float v0 = (intObject.storedY + pxInset) / (float) textureHeight;
+                    float u1 = (intObject.storedX + intObject.width - pxInset) / (float) textureWidth;
+                    float v1 = (intObject.storedY + intObject.height - pxInset) / (float) textureHeight;
+
+                    // Use rounded screen positions to ensure characters align to pixel grid
+                    float drawX = (float) Math.round(totalwidth * scaleX + x);
+                    float drawY = (float) Math.round(startY * scaleY + y);
+                    float drawWidth = (float) Math.round(intObject.width * scaleX);
+                    float drawHeight = (float) Math.round(intObject.height * scaleY);
+
+                    modernRenderer.drawSprite(
+                        fontTextureID,
+                        drawX, drawY, drawWidth, drawHeight,
+                        u0, v0, u1, v1,
+                        1.0f, 1.0f, 1.0f, 1.0f
+                    );
+
                     if (d > 0) totalwidth += (intObject.width - c) * d;
                 }
                 i += d;
             }
         }
-        GL11.glEnd();
+    }
+
+    /**
+     * Legacy drawing method (fallback, should not be used in production).
+     */
+    private void drawStringLegacy(float x, float y, String whatchars, int startIndex, int endIndex,
+                                  float scaleX, float scaleY, int format) {
+        System.err.println("WARNING: TrueTypeFont using legacy rendering path!");
+        // Legacy implementation removed - modern renderer required
     }
 
     public static int loadImage(BufferedImage bufferedImage) {
@@ -359,11 +389,10 @@ public class TrueTypeFont {
             int textureId = GL11.glGenTextures();
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
 
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_CLAMP);
-            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_CLAMP);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-            GL11.glTexEnvf(GL11.GL_TEXTURE_ENV, GL11.GL_TEXTURE_ENV_MODE, GL11.GL_MODULATE);
 
             GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL11.GL_UNSIGNED_BYTE, byteBuffer);
             return textureId;

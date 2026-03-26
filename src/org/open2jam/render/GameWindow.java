@@ -73,4 +73,12 @@ public interface GameWindow {
 
         /** Signal the render thread to stop gracefully */
         public void stopRendering();
+        
+        /**
+         * Get the ModernRenderer instance for batched rendering.
+         * Returns null if not available (implementation-dependent).
+         */
+        default org.open2jam.render.lwjgl.ModernRenderer getModernRenderer() {
+            return null;
+        }
 }

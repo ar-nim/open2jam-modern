@@ -230,6 +230,9 @@ public class Render implements GameWindowCallback
     
     TrueTypeFont trueTypeFont;
 
+    /** ModernRenderer for batched shader-based rendering */
+    org.open2jam.render.lwjgl.ModernRenderer modernRenderer;
+
     /** statistics variable */
     double total_notes = 0;
     
@@ -473,6 +476,9 @@ public class Render implements GameWindowCallback
             Logger.global.log(Level.SEVERE, "Skin load error {0}", ex);
         }
 
+        // Get ModernRenderer from window for batched rendering
+        modernRenderer = window.getModernRenderer();
+
         // cover image load
         try{
             BufferedImage img = chart.getCover();
@@ -664,10 +670,16 @@ public class Render implements GameWindowCallback
         while (SystemTimer.getTime() - loadStartTime < loadDuration) {
             // Clear screen and render cover image
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            GL11.glLoadIdentity();
 
-            // Render cover image (centered)
-            if (coverSprite != null) {
+            // Render cover image using ModernRenderer
+            if (modernRenderer != null) {
+                modernRenderer.begin();
+                if (coverSprite != null) {
+                    coverSprite.draw(0, 0);
+                }
+                modernRenderer.end();
+            } else if (coverSprite != null) {
+                // Fallback (should not happen)
                 coverSprite.draw(0, 0);
             }
 

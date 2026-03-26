@@ -66,4 +66,13 @@ public class Texture {
         return width;
     }
 
+    /**
+     * Get the OpenGL texture ID
+     *
+     * @return The texture ID
+     */
+    public int getTextureID() {
+        return textureID;
+    }
+
 }

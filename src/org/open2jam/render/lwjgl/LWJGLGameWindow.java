@@ -69,6 +69,9 @@ public class LWJGLGameWindow implements GameWindow {
 
     // Available display modes
     private List<DisplayMode> displayModes = new ArrayList<>();
+    
+    // Modern OpenGL renderer (shaders + batched rendering)
+    private ModernRenderer modernRenderer;
 
     public LWJGLGameWindow() {
         detectWayland();
@@ -211,15 +214,16 @@ public class LWJGLGameWindow implements GameWindow {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        // Configure GLFW - use legacy OpenGL compatibility
+        // Configure GLFW - use OpenGL 3.3 Core Profile (modern rendering only)
+        // All legacy code (LWJGLSprite, TrueTypeFont) has been ported to ModernRenderer
         GLFW.glfwDefaultWindowHints();
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GLFW.GLFW_FALSE);
-        // Request OpenGL 3.0 without any specific profile - gets compatibility context
+        // Request OpenGL 3.3 Core Profile (no legacy features)
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
-        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 0);
-        // Explicitly do NOT set CLIENT_API or OPENGL_PROFILE hints
-        // This allows the driver to provide a compatibility context
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
+        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
+        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GLFW.GLFW_TRUE); // Required for macOS
 
         // Create window
         // PURE LETTERBOXING APPROACH:
@@ -288,6 +292,13 @@ public class LWJGLGameWindow implements GameWindow {
         DebugLogger.debug("Renderer: " + GL11.glGetString(GL11.GL_RENDERER));
         DebugLogger.debug("Vendor: " + GL11.glGetString(GL11.GL_VENDOR));
 
+        // Create modern renderer (shaders + batched rendering)
+        modernRenderer = new ModernRenderer();
+        
+        // Set modern renderer in sprite and font classes
+        LWJGLSprite.setModernRenderer(modernRenderer);
+        TrueTypeFont.setModernRenderer(modernRenderer);
+
         // Get physical framebuffer size (for viewport/scissor)
         // Note: width/height are already set to user's selected resolution (logical)
         try (MemoryStack stack = MemoryStack.stackPush()) {
@@ -325,8 +336,8 @@ public class LWJGLGameWindow implements GameWindow {
         // Set clear color
         GL11.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-        // Enable alpha blending
-        GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        // Enable alpha blending (standard non-premultiplied)
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glEnable(GL11.GL_BLEND);
 
         // Calculate HiDPI scale factor (physical / logical)
@@ -350,16 +361,11 @@ public class LWJGLGameWindow implements GameWindow {
         GL11.glEnable(GL11.GL_SCISSOR_TEST);
         GL11.glScissor(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
 
-        // Setup projection matrix using user's LOGICAL resolution (correct for game coordinates)
-        DebugLogger.debug("Calling glMatrixMode(GL_PROJECTION)...");
-        GL11.glMatrixMode(GL11.GL_PROJECTION);
-        DebugLogger.debug("Done glMatrixMode");
-        GL11.glLoadIdentity();
-        GL11.glOrtho(0, width, height, 0, -1, 1);
-        DebugLogger.debug("Calling glMatrixMode(GL_MODELVIEW)...");
-        GL11.glMatrixMode(GL11.GL_MODELVIEW);
-        DebugLogger.debug("Done glMatrixMode");
-        GL11.glLoadIdentity();
+        // Setup ModernRenderer projection matrix (shader-based, includes scale)
+        // Initialize ModernRenderer with identity projection (1:1 mapping)
+        modernRenderer.setProjection(width, height, 1.0f, 1.0f);
+        modernRenderer.setGlobalScale(1.0f, 1.0f); // Default to unscaled for loading
+        DebugLogger.debug("ModernRenderer initialized for logical size: " + width + "x" + height);
 
         // Initialize texture loader
         textureLoader = new TextureLoader();
@@ -397,16 +403,21 @@ public class LWJGLGameWindow implements GameWindow {
                 // Recalculate HiDPI scale
                 float hidpiScaleX = (float) newPhysicalW / windowWidth;
                 float hidpiScaleY = (float) newPhysicalH / windowHeight;
-                
+
                 // Recalculate letterboxed viewport
                 int viewportPhysicalX = (int) (viewportX * hidpiScaleX);
                 int viewportPhysicalY = (int) (viewportY * hidpiScaleY);
                 int viewportPhysicalW = (int) (width * hidpiScaleX);
                 int viewportPhysicalH = (int) (height * hidpiScaleY);
-                
+
                 // Set viewport with letterboxing
                 GL11.glViewport(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
                 GL11.glScissor(viewportPhysicalX, viewportPhysicalY, viewportPhysicalW, viewportPhysicalH);
+                
+                // Update projection matrix (modern renderer only)
+                if (modernRenderer != null) {
+                    modernRenderer.setProjection(width, height, scaleX, scaleY);
+                }
             }
         });
 
@@ -415,12 +426,12 @@ public class LWJGLGameWindow implements GameWindow {
             // Update window dimensions
             windowWidth = newLogicalW;
             windowHeight = newLogicalH;
-            
+
             // For fullscreen, recalculate letterbox offset (user resolution unchanged)
             if (fullscreen) {
                 viewportX = (windowWidth - width) / 2;
                 viewportY = (windowHeight - height) / 2;
-                DebugLogger.debug("Window resize: " + newLogicalW + "x" + newLogicalH + 
+                DebugLogger.debug("Window resize: " + newLogicalW + "x" + newLogicalH +
                                  ", Viewport offset=(" + viewportX + ", " + viewportY + ")");
             } else {
                 // Windowed mode: window size = user resolution
@@ -431,13 +442,11 @@ public class LWJGLGameWindow implements GameWindow {
                 DebugLogger.debug("Window resize: " + newLogicalW + "x" + newLogicalH);
             }
 
-            // Only update OpenGL state if we have a current context
             if (capabilities != null) {
-                // Update projection matrix using user's logical dimensions
-                GL11.glMatrixMode(GL11.GL_PROJECTION);
-                GL11.glLoadIdentity();
-                GL11.glOrtho(0, width, height, 0, -1, 1);
-                GL11.glMatrixMode(GL11.GL_MODELVIEW);
+                // Update ModernRenderer projection matrix
+                if (modernRenderer != null) {
+                    modernRenderer.setProjection(width, height, scaleX, scaleY);
+                }
             }
         });
 
@@ -660,6 +669,8 @@ public class LWJGLGameWindow implements GameWindow {
     public void initScales(double w, double h) {
         scaleX = (float) (width / w);
         scaleY = (float) (height / h);
+        
+        DebugLogger.debug("initScales: Scales updated to (" + scaleX + ", " + scaleY + ") for skin size " + w + "x" + h);
     }
 
     private void gameLoop() {
@@ -689,13 +700,19 @@ public class LWJGLGameWindow implements GameWindow {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glEnable(GL11.GL_SCISSOR_TEST);
 
-            GL11.glLoadIdentity();
+            // Begin batched rendering (mirror glLoadIdentity() + glScalef() from legacy)
+            if (modernRenderer != null) {
+                modernRenderer.setGlobalScale(scaleX, scaleY);
+                modernRenderer.begin();
+            }
 
-            // Apply scale
-            GL11.glScalef(scaleX, scaleY, 1);
-
-            // Render frame
+            // Render frame using modern batched rendering
             callback.frameRendering();
+
+            // End batched rendering (flushes all quads in single draw call)
+            if (modernRenderer != null) {
+                modernRenderer.end();
+            }
 
             // Update window (swap buffers and poll events)
             update();
@@ -772,6 +789,12 @@ public class LWJGLGameWindow implements GameWindow {
         shouldStop = true;
 
         // Cleanup OpenGL resources before destroying window
+        if (modernRenderer != null) {
+            DebugLogger.debug("Deleting ModernRenderer...");
+            modernRenderer.delete();
+            modernRenderer = null;
+        }
+        
         if (callback != null) {
             DebugLogger.debug("Calling callback.windowClosed()");
             callback.windowClosed();
@@ -848,5 +871,10 @@ public class LWJGLGameWindow implements GameWindow {
      */
     TextureLoader getTextureLoader() {
         return textureLoader;
+    }
+
+    @Override
+    public org.open2jam.render.lwjgl.ModernRenderer getModernRenderer() {
+        return modernRenderer;
     }
 }
