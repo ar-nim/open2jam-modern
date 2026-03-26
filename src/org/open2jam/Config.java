@@ -184,6 +184,11 @@ public class Config {
             Logger.global.warning("Invalid displayBitsPerPixel (" + gameOptions.displayBitsPerPixel + "), using default 32");
             gameOptions.displayBitsPerPixel = 32;
         }
+        // Validate UI scale (0.5x - 4x)
+        if (gameOptions.uiScale < 0.5 || gameOptions.uiScale > 4.0) {
+            Logger.global.warning("Invalid uiScale (" + gameOptions.uiScale + "), using default 1.0");
+            gameOptions.uiScale = 1.0;
+        }
     }
 
     /**
@@ -579,6 +584,7 @@ public class Config {
         public int displayHeight = 720;
         public int displayBitsPerPixel = 32;
         public int displayFrequency = 60;
+        public double uiScale = 1.0; // 1.0 = system default, e.g. 1.25 for 125%
 
         // Sound
         public int bufferSize = 512;
