@@ -37,7 +37,7 @@ public class ALSoundSystem implements SoundSystem {
     private long context;
 
     // Source pool management - O(1) free-list stack
-    private static final int MAX_SOURCES = 200;
+    private static final int MAX_SOURCES = 256;
     final int[] sourcePool = new int[MAX_SOURCES];
     final int[] sourceTickets = new int[MAX_SOURCES];
     private int nextTicket = 0;
