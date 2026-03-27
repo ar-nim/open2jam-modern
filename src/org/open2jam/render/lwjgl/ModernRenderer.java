@@ -46,7 +46,20 @@ public class ModernRenderer {
         "out vec4 fragColor;\n" +
         "\n" +
         "void main() {\n" +
-        "    vec4 texColor = texture(uTexture, vUV);\n" +
+        "    // Sharp Bilinear Filtering\n" +
+        "    vec2 texSize = vec2(textureSize(uTexture, 0));\n" +
+        "    vec2 pixel = vUV * texSize;\n" +
+        "    // fwidth tells us how much the texture coordinate changes per screen pixel\n" +
+        "    vec2 fw = max(fwidth(pixel), vec2(0.0001));\n" +
+        "    // Snap to pixel centers, but use linear interpolation at the very edges\n" +
+        "    // This prevents sub-pixel shimmering while preserving sharpness\n" +
+        "    vec2 fl = floor(pixel + 0.5);\n" +
+        "    vec2 fr = fract(pixel + 0.5);\n" +
+        "    vec2 aa = clamp((fr - 0.5) / fw + 0.5, 0.0, 1.0);\n" +
+        "    vec2 sharpUV = fl - 0.5 + aa;\n" +
+        "    \n" +
+        "    vec4 texColor = texture(uTexture, sharpUV / texSize);\n" +
+        "    \n" +
         "    fragColor = texColor * vColor;\n" +
         "}\n";
     
