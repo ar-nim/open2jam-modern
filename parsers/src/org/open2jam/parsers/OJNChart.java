@@ -9,7 +9,9 @@ import java.nio.channels.FileChannel;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.logging.Level;
+
 import javax.imageio.ImageIO;
+
 import org.open2jam.parsers.utils.ByteBufferInputStream;
 import org.open2jam.parsers.utils.Logger;
 import org.open2jam.parsers.utils.SampleData;
@@ -61,11 +63,11 @@ public class OJNChart extends Chart {
     public Map<Integer, SampleData> getSamples() {
 	return OJMParser.parseFile(sample_file);
     }
-    
+
     public Map<Integer, String> getSampleIndex() {
-	if(sample_index.isEmpty()) {
+	if(sampleIndex.isEmpty()) {
 	    for(Entry<Integer, SampleData> entry : getSamples().entrySet()) {
-		    sample_index.put(entry.getKey(), entry.getValue().getName());
+		    sampleIndex.put(entry.getKey(), entry.getValue().getName());
 		try {
 		    entry.getValue().dispose();
 		} catch (IOException ex) {
@@ -73,7 +75,7 @@ public class OJNChart extends Chart {
 		}
 	    }
 	}
-	return sample_index;
+	return sampleIndex;
     }
     
     public double getBPM() {

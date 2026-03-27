@@ -1,8 +1,5 @@
 package org.open2jam.parsers;
 
-import org.open2jam.parsers.utils.Logger;
-
-import javax.imageio.ImageIO;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -10,11 +7,24 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.*;
-import java.util.*;
-import java.util.concurrent.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
+
+import javax.imageio.ImageIO;
+
+import org.open2jam.parsers.utils.Logger;
 
 /**
  * SQLite-based chart metadata cache with root-relative path model.
@@ -645,7 +655,7 @@ public class ChartCacheSQLite {
                 stmt.setString(paramIndex++, chartListHash);
                 stmt.setLong(paramIndex++, fileSize);
                 stmt.setLong(paramIndex++, fileModified);
-                stmt.setString(paramIndex++, chart.type.name());
+                stmt.setString(paramIndex++, chart.getType().name());
                 stmt.setInt(paramIndex++, i);  // chart_index
                 stmt.setString(paramIndex++, chart.getTitle());
                 stmt.setString(paramIndex++, chart.getArtist());
