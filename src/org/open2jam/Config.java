@@ -65,9 +65,21 @@ public class Config {
     
     private static final File CONFIG_FILE = new File("save/config.json");
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    
+
     // Writer for indented output (Jackson 3.x)
     private static final ObjectWriter INDENTED_WRITER = MAPPER.writerWithDefaultPrettyPrinter();
+
+    // ===== Constants for Validation and Key Bindings =====
+    private static final String UI_SCALE_AUTOMATIC = "automatic";
+    private static final String NOTE_1 = "NOTE_1";
+    private static final String NOTE_2 = "NOTE_2";
+    private static final String NOTE_3 = "NOTE_3";
+    private static final String NOTE_4 = "NOTE_4";
+    private static final String NOTE_5 = "NOTE_5";
+    private static final String NOTE_6 = "NOTE_6";
+    private static final String NOTE_7 = "NOTE_7";
+    private static final String NOTE_8 = "NOTE_8";
+    private static final String NOTE_SC = "NOTE_SC";
 
     private static Config instance;
     
@@ -122,10 +134,8 @@ public class Config {
     private static Config load() {
         // Ensure save directory exists
         File saveDir = new File("save");
-        if (!saveDir.exists()) {
-            if (!saveDir.mkdirs()) {
-                Logger.global.severe("Failed to create save directory: " + saveDir.getAbsolutePath());
-            }
+        if (!saveDir.exists() && !saveDir.mkdirs()) {
+            Logger.global.severe("Failed to create save directory: " + saveDir.getAbsolutePath());
         }
 
         if (!CONFIG_FILE.exists()) {
@@ -152,46 +162,116 @@ public class Config {
      */
     private void validateAndSanitize() {
         // Validate display dimensions
-        if (gameOptions.displayWidth < 640 || gameOptions.displayWidth > 7680) {
-            Logger.global.warning("Invalid displayWidth (" + gameOptions.displayWidth + "), using default 1280");
-            gameOptions.displayWidth = 1280;
-        }
-        if (gameOptions.displayHeight < 480 || gameOptions.displayHeight > 4320) {
-            Logger.global.warning("Invalid displayHeight (" + gameOptions.displayHeight + "), using default 720");
-            gameOptions.displayHeight = 720;
-        }
+        validateIntRange("displayWidth", gameOptions.displayWidth, 640, 7680, 1280,
+            w -> gameOptions.displayWidth = w);
+        validateIntRange("displayHeight", gameOptions.displayHeight, 480, 4320, 720,
+            h -> gameOptions.displayHeight = h);
+        
         // Validate volume levels (0-100)
-        gameOptions.keyVolume = Math.max(0, Math.min(100, gameOptions.keyVolume));
-        gameOptions.bgmVolume = Math.max(0, Math.min(100, gameOptions.bgmVolume));
-        gameOptions.masterVolume = Math.max(0, Math.min(100, gameOptions.masterVolume));
+        validateFloatRange("keyVolume", gameOptions.keyVolume, 0, 100);
+        validateFloatRange("bgmVolume", gameOptions.bgmVolume, 0, 100);
+        validateFloatRange("masterVolume", gameOptions.masterVolume, 0, 100);
+        
         // Validate speed multiplier (0.1x - 10x)
-        if (gameOptions.speedMultiplier < 0.1 || gameOptions.speedMultiplier > 10.0) {
-            Logger.global.warning("Invalid speedMultiplier (" + gameOptions.speedMultiplier + "), using default 1.0");
-            gameOptions.speedMultiplier = 1.0;
-        }
+        validateDoubleRange("speedMultiplier", gameOptions.speedMultiplier, 0.1, 10.0, 1.0,
+            v -> gameOptions.speedMultiplier = v);
+        
         // Validate buffer size (64-4096)
-        if (gameOptions.bufferSize < 64 || gameOptions.bufferSize > 4096) {
-            Logger.global.warning("Invalid bufferSize (" + gameOptions.bufferSize + "), using default 512");
-            gameOptions.bufferSize = 512;
-        }
+        validateIntRange("bufferSize", gameOptions.bufferSize, 64, 4096, 512,
+            s -> gameOptions.bufferSize = s);
+        
         // Validate display frequency (30-1024 Hz for high-refresh monitors)
-        if (gameOptions.displayFrequency < 30 || gameOptions.displayFrequency > 1024) {
-            Logger.global.warning("Invalid displayFrequency (" + gameOptions.displayFrequency + "), using default 60");
-            gameOptions.displayFrequency = 60;
-        }
+        validateIntRange("displayFrequency", gameOptions.displayFrequency, 30, 1024, 60,
+            f -> gameOptions.displayFrequency = f);
+        
         // Validate bits per pixel (16 or 32)
-        if (gameOptions.displayBitsPerPixel != 16 && gameOptions.displayBitsPerPixel != 32) {
-            Logger.global.warning("Invalid displayBitsPerPixel (" + gameOptions.displayBitsPerPixel + "), using default 32");
-            gameOptions.displayBitsPerPixel = 32;
+        validateIntValues("displayBitsPerPixel", gameOptions.displayBitsPerPixel, new int[]{16, 32}, 32,
+            b -> gameOptions.displayBitsPerPixel = b);
+        
+        // Validate UI scale
+        validateUiScale();
+    }
+
+    /**
+     * Validate integer range and set to default if out of range.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param min Minimum allowed value
+     * @param max Maximum allowed value
+     * @param defaultValue Default value if out of range
+     * @param setter Consumer to set the value
+     */
+    private void validateIntRange(String name, int value, int min, int max, int defaultValue,
+                                   java.util.function.IntConsumer setter) {
+        if (value < min || value > max) {
+            Logger.global.warning("Invalid " + name + " (" + value + "), using default " + defaultValue);
+            setter.accept(defaultValue);
         }
-        // Validate UI scale ("automatic" or numeric original 0.5-4.0)
-        if (!"automatic".equalsIgnoreCase(gameOptions.uiScale)) {
+    }
+
+    /**
+     * Validate float range and clamp if out of range.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param min Minimum allowed value
+     * @param max Maximum allowed value
+     */
+    private void validateFloatRange(String name, float value, float min, float max) {
+        float clamped = Math.max(min, Math.min(max, value));
+        if (clamped != value) {
+            Logger.global.warning("Invalid " + name + " (" + value + "), clamped to " + clamped);
+        }
+    }
+
+    /**
+     * Validate double range and set to default if out of range.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param min Minimum allowed value
+     * @param max Maximum allowed value
+     * @param defaultValue Default value if out of range
+     * @param setter Consumer to set the value
+     */
+    private void validateDoubleRange(String name, double value, double min, double max, double defaultValue,
+                                      java.util.function.DoubleConsumer setter) {
+        if (value < min || value > max) {
+            Logger.global.warning("Invalid " + name + " (" + value + "), using default " + defaultValue);
+            setter.accept(defaultValue);
+        }
+    }
+
+    /**
+     * Validate integer is one of allowed values.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param allowedValues Array of allowed values
+     * @param defaultValue Default value if not in allowed values
+     * @param setter Consumer to set the value
+     */
+    private void validateIntValues(String name, int value, int[] allowedValues, int defaultValue,
+                                    java.util.function.IntConsumer setter) {
+        boolean valid = Arrays.stream(allowedValues).anyMatch(v -> v == value);
+        if (!valid) {
+            Logger.global.warning("Invalid " + name + " (" + value + "), using default " + defaultValue);
+            setter.accept(defaultValue);
+        }
+    }
+
+    /**
+     * Validate UI scale format and range.
+     */
+    private void validateUiScale() {
+        if (!UI_SCALE_AUTOMATIC.equalsIgnoreCase(gameOptions.uiScale)) {
             try {
                 double val = Double.parseDouble(gameOptions.uiScale);
                 if (val < 0.5 || val > 4.0) throw new NumberFormatException();
             } catch (NumberFormatException e) {
                 Logger.global.warning("Invalid uiScale (" + gameOptions.uiScale + "), using default 'automatic'");
-                gameOptions.uiScale = "automatic";
+                gameOptions.uiScale = UI_SCALE_AUTOMATIC;
             }
         }
     }
@@ -237,49 +317,49 @@ public class Config {
         kb.misc.put("BGM_VOL_DOWN", org.open2jam.render.lwjgl.Keyboard.KEY_5);
 
         // K4
-        kb.keyboard.k4.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k4.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k4.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k4.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k4.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k4.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k4.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k4.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k4.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k4.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K5
-        kb.keyboard.k5.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k5.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k5.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
-        kb.keyboard.k5.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k5.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k5.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k5.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k5.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k5.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
+        kb.keyboard.k5.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k5.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k5.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K6
-        kb.keyboard.k6.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_S);
-        kb.keyboard.k6.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k6.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k6.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k6.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k6.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_L);
-        kb.keyboard.k6.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k6.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k6.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k6.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k6.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k6.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k6.put(NOTE_6, org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k6.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K7
-        kb.keyboard.k7.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_S);
-        kb.keyboard.k7.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k7.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k7.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
-        kb.keyboard.k7.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k7.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k7.put("NOTE_7", org.open2jam.render.lwjgl.Keyboard.KEY_L);
-        kb.keyboard.k7.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k7.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k7.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k7.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k7.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
+        kb.keyboard.k7.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k7.put(NOTE_6, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k7.put(NOTE_7, org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k7.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K8
-        kb.keyboard.k8.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_A);
-        kb.keyboard.k8.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_S);
-        kb.keyboard.k8.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k8.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k8.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_H);
-        kb.keyboard.k8.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k8.put("NOTE_7", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k8.put("NOTE_8", org.open2jam.render.lwjgl.Keyboard.KEY_L);
-        kb.keyboard.k8.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k8.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_A);
+        kb.keyboard.k8.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k8.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k8.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k8.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_H);
+        kb.keyboard.k8.put(NOTE_6, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k8.put(NOTE_7, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k8.put(NOTE_8, org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k8.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_L);
 
         return kb;
     }

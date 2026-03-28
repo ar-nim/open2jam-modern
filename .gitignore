@@ -76,3 +76,6 @@ test-reports/
 *.bak
 *.swp
 *~
+
+# Local documentation (personal notes, not for repository)
+localdocs/
