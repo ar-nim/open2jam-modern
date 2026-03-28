@@ -603,12 +603,22 @@ public class ChartCacheSQLite {
         private final PreparedStatement stmt;
         private int batchSize = 0;
         private static final int BATCH_THRESHOLD = 1000;  // Execute batch every 1000 rows
-        
+
         /**
          * ThreadLocal MessageDigest for SHA-1 hashing.
          * Reused across batch operations to avoid object creation overhead.
          * Thread-safe via ThreadLocal isolation.
+         *
+         * <p>Note: ThreadLocal.remove() is intentionally NOT called because:
+         * <ul>
+         *   <li>The ThreadLocal is static and lives for the application lifetime</li>
+         *   <li>Reusing MessageDigest instances is a performance optimization</li>
+         *   <li>Memory is only reclaimed when threads terminate</li>
+         *   <li>This is acceptable for long-running server threads</li>
+         * </ul>
+         * </p>
          */
+        @SuppressWarnings("java:S5164")  // Intentional: ThreadLocal reuse for performance
         private static final ThreadLocal<MessageDigest> SHA1_DIGEST = ThreadLocal.withInitial(() -> {
             try {
                 return MessageDigest.getInstance("SHA-1");
