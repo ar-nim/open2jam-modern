@@ -7,18 +7,24 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.logging.Level;
+
 import org.open2jam.parsers.utils.ByteBufferInputStream;
 import org.open2jam.parsers.utils.ByteHelper;
 import org.open2jam.parsers.utils.Logger;
 import org.open2jam.parsers.utils.SampleData;
 
 
-class OJMParser
+/**
+ * Parser for OJM/M30/OMC audio file formats.
+ * This class provides utility methods for parsing encrypted audio files used in O2Jam.
+ */
+public class OJMParser
 {
     /** the xor mask used in the M30 format */
-    private static final byte[] mask_nami = new byte[]{0x6E, 0x61, 0x6D, 0x69}; // nami
-    private static final byte[] mask_0412 = new byte[]{0x30, 0x34, 0x31, 0x32}; // 0412
+    private static final byte[] MASK_NAMI = new byte[]{0x6E, 0x61, 0x6D, 0x69}; // nami
+    private static final byte[] MASK_0412 = new byte[]{0x30, 0x34, 0x31, 0x32}; // 0412
 
 
     /** the M30 signature, "M30\0" in little endian */
@@ -73,13 +79,18 @@ class OJMParser
     0x08, 0x0C, 0x09, 0x06, 0x0F, 0x10, 0x05, 0x0A,
     0x04, 0x00};
 
-    public static HashMap<Integer, SampleData> parseFile(File file)
+    /**
+     * Private constructor to prevent instantiation of this utility class.
+     */
+    private OJMParser() {
+        throw new UnsupportedOperationException("OJMParser is a utility class and cannot be instantiated");
+    }
+
+    public static Map<Integer, SampleData> parseFile(File file)
     {
-        RandomAccessFile f;
-        HashMap<Integer, SampleData> ret;
-        try{
-            f = new RandomAccessFile(file,"r");
-            ByteBuffer buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, 4);
+        Map<Integer, SampleData> ret;
+        try (RandomAccessFile f = new RandomAccessFile(file, "r")) {
+            ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, 4);
             buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
             int signature = buffer.getInt();
 
@@ -89,154 +100,154 @@ class OJMParser
                     ret = parseM30(f, file);
                     break;
 
-                case OMC_SIGNATURE:           
-                    ret = parseOMC(f, true);
+                case OMC_SIGNATURE:
+                    ret = parseOmc(f, true);
                     break;
                 case OJM_SIGNATURE:
-                    ret = parseOMC(f, false);
+                    ret = parseOmc(f, false);
                     break;
 
                 default:
                     Logger.global.warning("Unknown OJM signature !!");
-                    ret = new HashMap<Integer, SampleData>();
+                    ret = new HashMap<>();
             }
-            f.close();
-        }catch(IOException e) {
+        } catch(IOException e) {
             Logger.global.log(Level.WARNING, "IO exception on file {0} : {1}", new Object[]{file.getName(), e.getMessage()});
-            ret = new HashMap<Integer, SampleData>();
+            ret = new HashMap<>();
         }
         return ret;
     }
 
-    private static HashMap<Integer, SampleData> parseM30(RandomAccessFile f, File file) throws IOException
+    @SuppressWarnings("java:S135") // Legitimate guard clauses for binary stream parsing - break on EOF/invalid data
+    private static Map<Integer, SampleData> parseM30(RandomAccessFile f, File file) throws IOException
     {
         ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, 4, 28);
         buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
 
-        // header
-        int file_format_version = buffer.getInt();
-        int encryption_flag = buffer.getInt();
-        int sample_count = buffer.getInt();
-        int sample_offset = buffer.getInt();
-        int payload_size = buffer.getInt();
-        int padding = buffer.getInt();
+        // header - read and discard unused fields
+        buffer.getInt(); // file_format_version (unused)
+        int encryptionFlag = buffer.getInt();
+        int sampleCount = buffer.getInt();
+        buffer.position(buffer.position() + 12); // skip sample_offset, payload_size, padding (12 bytes)
 
         buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, 28, f.getChannel().size()-28);
         buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
 
-        HashMap<Integer, SampleData> samples = new HashMap<Integer, SampleData>();
+        Map<Integer, SampleData> samples = new HashMap<>();
 
-        for(int i=0; i<sample_count; i++)
+        for(int i = 0; i < sampleCount; i++)
         {
             // reached the end of the file before the samples_count
             if(buffer.remaining() < 52){
                 Logger.global.log(Level.INFO, "Wrong number of samples on OJM header : {0}", file.getName());
                 break;
             }
-            byte[] byte_name = new byte[32];
-            buffer.get(byte_name);
-	    String sample_name = ByteHelper.toString(byte_name);
-	    if(sample_name.lastIndexOf(".") < 0) sample_name += ".ogg";
+            byte[] byteName = new byte[32];
+            buffer.get(byteName);
+            String sampleName = ByteHelper.toString(byteName);
+            if(sampleName.lastIndexOf(".") < 0) sampleName += ".ogg";
 
-            int sample_size = buffer.getInt();
+            int sampleSize = buffer.getInt();
             // Validate sample_size to prevent OOM attacks
-            if (sample_size < 0 || sample_size > MAX_ALLOWED_SAMPLE_SIZE || sample_size > buffer.remaining()) {
-                Logger.global.log(Level.WARNING, "Invalid sample size ({0}) in M30 file, skipping", sample_size);
+            if (sampleSize < 0 || sampleSize > MAX_ALLOWED_SAMPLE_SIZE || sampleSize > buffer.remaining()) {
+                Logger.global.log(Level.WARNING, "Invalid sample size ({0}) in M30 file, skipping", sampleSize);
                 break;
             }
 
-            short codec_code = buffer.getShort();
-            short codec_code2 = buffer.getShort();
-
-            int music_flag = buffer.getInt();
+            short codecCode = buffer.getShort();
+            buffer.getShort(); // codec_code2 (unused)
+            buffer.getInt();   // music_flag (unused)
             short ref = buffer.getShort();
-            short unk_zero = buffer.getShort();
-            int pcm_samples = buffer.getInt();
+            buffer.getShort(); // unk_zero (unused)
+            buffer.getInt();   // pcm_samples (unused)
 
-            byte[] sample_data = new byte[sample_size];
-            buffer.get(sample_data);
+            byte[] sampleData = new byte[sampleSize];
+            buffer.get(sampleData);
 
-	    switch(encryption_flag)
-	    {
-		case 0:  break; //Let it pass
-		case 16: M30_xor(sample_data, mask_nami); break;
-		case 32: M30_xor(sample_data, mask_0412); break;
-		default: Logger.global.log(Level.WARNING, "Unknown encryption flag({0}) !", encryption_flag);
-	    }
+            switch(encryptionFlag)
+            {
+                case 0:  break; //Let it pass
+                case 16: xorWithMask(sampleData, MASK_NAMI); break;
+                case 32: xorWithMask(sampleData, MASK_0412); break;
+                default: Logger.global.log(Level.WARNING, "Unknown encryption flag({0}) !", encryptionFlag);
+            }
 
-            SampleData audioData = new SampleData(new ByteArrayInputStream(sample_data), SampleData.Type.OGG, sample_name);
+            SampleData audioData = new SampleData(new ByteArrayInputStream(sampleData), SampleData.Type.OGG, sampleName);
             int value = ref;
-            if(codec_code == 0){
+            if(codecCode == 0){
                 value = 1000 + ref;
             }
-            else if(codec_code != 5){
-               Logger.global.log(Level.WARNING, "Unknown codec code [{0}] on OJM : {1}", new Object[]{codec_code, file.getName()});
+            else if(codecCode != 5){
+               Logger.global.log(Level.WARNING, "Unknown codec code [{0}] on OJM : {1}", new Object[]{codecCode, file.getName()});
             }
             samples.put(value, audioData);
         }
-        f.close();
         return samples;
     }
 
-    private static void M30_xor(byte[] array, byte[] mask)
+    private static void xorWithMask(byte[] array, byte[] mask)
     {
-        for(int i=0;i+3<array.length;i+=4)
+        for(int i = 0; i + 3 < array.length; i += 4)
         {
-            array[i+0] ^= mask[0];
-            array[i+1] ^= mask[1];
-            array[i+2] ^= mask[2];
-            array[i+3] ^= mask[3];
+            array[i + 0] ^= mask[0];
+            array[i + 1] ^= mask[1];
+            array[i + 2] ^= mask[2];
+            array[i + 3] ^= mask[3];
         }
     }
 
-    private static HashMap<Integer, SampleData> parseOMC(RandomAccessFile f, boolean decrypt) throws IOException
+    @SuppressWarnings("java:S135") // Legitimate guard clauses for binary stream parsing - continue on empty/invalid chunks
+    private static Map<Integer, SampleData> parseOmc(RandomAccessFile f, boolean decrypt) throws IOException
     {
-       HashMap<Integer, SampleData> samples =  new HashMap<Integer, SampleData>();
-       
-       ByteBuffer buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 4, 16);
+       Map<Integer, SampleData> samples =  new HashMap<>();
+
+       ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, 4, 16);
        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
 
-       short unk1 = buffer.getShort();
-       short unk2 = buffer.getShort();
-       int wav_start = buffer.getInt();
-       int ogg_start = buffer.getInt();
+       buffer.getShort(); // unk1 (unused)
+       buffer.getShort(); // unk2 (unused)
+       buffer.getInt();   // wav_start (unused)
+       int oggStart = buffer.getInt();
        int filesize = buffer.getInt();
 
-       int file_offset = 20;
-       int sample_id = 0; // wav samples use id 0~999
+       int fileOffset = 20;
+       int sampleId = 0; // wav samples use id 0~999
 
        // Initialize decryption state for this parsing session
-       int acc_keybyte = 0xFF;
-       int acc_counter = 0;
+       int accKeybyte = 0xFF;
+       int accCounter = 0;
 
-       while(file_offset < ogg_start) // WAV data
+       while(fileOffset < oggStart) // WAV data
        {
-           buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, file_offset, 56);
+           buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, fileOffset, 56);
            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-           file_offset += 56;
+           fileOffset += 56;
 
-           byte[] byte_name = new byte[32];
-           buffer.get(byte_name);
-	   String sample_name = ByteHelper.toString(byte_name);
-	   if(sample_name.lastIndexOf(".") < 0) sample_name += ".wav";
+           byte[] byteName = new byte[32];
+           buffer.get(byteName);
+           String sampleName = ByteHelper.toString(byteName);
+           if(sampleName.lastIndexOf(".") < 0) sampleName += ".wav";
 
-           short audio_format = buffer.getShort();
-           short num_channels = buffer.getShort();
-           int sample_rate = buffer.getInt();
-           int bit_rate = buffer.getInt();
-           short block_align = buffer.getShort();
-           short bits_per_sample = buffer.getShort();
+           short audioFormat = buffer.getShort();
+           short numChannels = buffer.getShort();
+           int sampleRate = buffer.getInt();
+           int bitRate = buffer.getInt();
+           short blockAlign = buffer.getShort();
+           short bitsPerSample = buffer.getShort();
            int data = buffer.getInt();
-           int chunk_size = buffer.getInt();
+           int chunkSize = buffer.getInt();
 
-           if(chunk_size == 0){ sample_id++; continue; }
-	   
-	   SampleData.WAVHeader header = 
-		   new SampleData.WAVHeader(audio_format, num_channels, sample_rate, bit_rate, block_align, bits_per_sample, data, chunk_size);
+           if(chunkSize == 0){
+               sampleId++;
+               continue;
+           }
 
-           buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, file_offset, chunk_size);
+           SampleData.WAVHeader header =
+                   new SampleData.WAVHeader(audioFormat, numChannels, sampleRate, bitRate, blockAlign, bitsPerSample, data, chunkSize);
+
+           buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, fileOffset, chunkSize);
            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-           file_offset += chunk_size;
+           fileOffset += chunkSize;
 
            byte[] buf = new byte[buffer.remaining()];
            buffer.get(buf);
@@ -244,106 +255,107 @@ class OJMParser
            if(decrypt)
            {
                buf = rearrange(buf);
-               int[] decryptState = new int[]{acc_keybyte, acc_counter};
-               buf = OMC_xor(buf, decryptState);
+               int[] decryptState = new int[]{accKeybyte, accCounter};
+               buf = xorWithState(buf, decryptState);
                // Update state after XOR operation
-               acc_keybyte = decryptState[0];
-               acc_counter = decryptState[1];
+               accKeybyte = decryptState[0];
+               accCounter = decryptState[1];
            }
 
            buffer = ByteBuffer.allocateDirect(buf.length);
            buffer.put(buf);
            buffer.flip();
 
-           SampleData audioData = new SampleData(new ByteBufferInputStream(buffer), header, sample_name);
-           samples.put(sample_id, audioData);
-           sample_id++;
+           SampleData audioData = new SampleData(new ByteBufferInputStream(buffer), header, sampleName);
+           samples.put(sampleId, audioData);
+           sampleId++;
        }
-       sample_id = 1000; // ogg samples use id 1000~?
-       while(file_offset < filesize) // OGG data
+       sampleId = 1000; // ogg samples use id 1000~?
+       while(fileOffset < filesize) // OGG data
        {
-           buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, file_offset, 36);
+           buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, fileOffset, 36);
            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-           file_offset += 36;
+           fileOffset += 36;
 
-           byte[] byte_name = new byte[32];
-           buffer.get(byte_name);
-	   String sample_name = ByteHelper.toString(byte_name);
-	   if(sample_name.lastIndexOf(".") < 0) sample_name += ".ogg";
+           byte[] byteName = new byte[32];
+           buffer.get(byteName);
+           String sampleName = ByteHelper.toString(byteName);
+           if(sampleName.lastIndexOf(".") < 0) sampleName += ".ogg";
 
-           int sample_size = buffer.getInt();
+           int sampleSize = buffer.getInt();
 
-           if(sample_size == 0){ sample_id++; continue; }
+           if(sampleSize == 0){
+               sampleId++;
+               continue;
+           }
            // Validate sample_size to prevent OOM attacks
-           if (sample_size < 0 || sample_size > MAX_ALLOWED_SAMPLE_SIZE) {
-               Logger.global.log(Level.WARNING, "Invalid sample size ({0}) in OGG section, skipping", sample_size);
-               sample_id++;
+           if (sampleSize < 0 || sampleSize > MAX_ALLOWED_SAMPLE_SIZE) {
+               Logger.global.log(Level.WARNING, "Invalid sample size ({0}) in OGG section, skipping", sampleSize);
+               sampleId++;
                continue;
            }
 
-           buffer = f.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, file_offset, sample_size);
+           buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, fileOffset, sampleSize);
            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-           file_offset += sample_size;
+           fileOffset += sampleSize;
 
-           SampleData audioData = new SampleData(new ByteBufferInputStream(buffer), SampleData.Type.OGG, sample_name);
-           samples.put(sample_id, audioData);
-           sample_id++;
+           SampleData audioData = new SampleData(new ByteBufferInputStream(buffer), SampleData.Type.OGG, sampleName);
+           samples.put(sampleId, audioData);
+           sampleId++;
        }
 
        return samples;
     }
 
-    /**
-     * fuck the person who invented this, FUCK YOU!... but with love =$
-     */
-    private static byte[] rearrange(byte[] buf_encoded)
+    /** fuck the person who invented this, FUCK YOU!... but with love =$ */
+    private static byte[] rearrange(byte[] bufEncoded)
     {
-        int length = buf_encoded.length;
+        int length = bufEncoded.length;
         int key = ((length % 17) << 4) + (length % 17);
 
-        int block_size = length / 17;
+        int blockSize = length / 17;
 
         // Let's fill the buffer
-        byte[] buf_plain = new byte[length];
-        System.arraycopy(buf_encoded, 0, buf_plain, 0, length);
+        byte[] bufPlain = new byte[length];
+        System.arraycopy(bufEncoded, 0, bufPlain, 0, length);
 
-        for(int block=0;block<17;block++) // loopy loop
+        for(int block = 0; block < 17; block++) // loopy loop
         {
-            int block_start_encoded = block_size * block;	// Where is the start of the enconded block
-            int block_start_plain = block_size * REARRANGE_TABLE[key];	// Where the final plain block will be
-            System.arraycopy(buf_encoded, block_start_encoded, buf_plain, block_start_plain, block_size);
+            int blockStartEncoded = blockSize * block;
+            int blockStartPlain = blockSize * REARRANGE_TABLE[key];
+            System.arraycopy(bufEncoded, blockStartEncoded, bufPlain, blockStartPlain, blockSize);
 
             key++;
         }
-        return buf_plain;
+        return bufPlain;
     }
 
     /** some weird encryption - uses instance state passed as array for thread safety */
     /** State array: [0] = acc_keybyte, [1] = acc_counter - passed and returned by reference */
-    private static byte[] OMC_xor(byte[] buf, int[] state)
+    private static byte[] xorWithState(byte[] buf, int[] state)
     {
-        int acc_keybyte = state[0];
-        int acc_counter = state[1];
+        int accKeybyte = state[0];
+        int accCounter = state[1];
         int temp;
-        byte this_byte;
-        for(int i=0;i<buf.length;i++)
+        byte thisByte;
+        for(int i = 0; i < buf.length; i++)
         {
-            temp = this_byte = buf[i];
+            temp = thisByte = buf[i];
 
-            if(((acc_keybyte << acc_counter) & 0x80)!=0){
-                this_byte = (byte) ~this_byte;
+            if(((accKeybyte << accCounter) & 0x80) != 0){
+                thisByte = (byte) ~thisByte;
             }
 
-            buf[i] = this_byte;
-            acc_counter++;
-            if(acc_counter > 7){
-                acc_counter = 0;
-                acc_keybyte = temp;
+            buf[i] = thisByte;
+            accCounter++;
+            if(accCounter > 7){
+                accCounter = 0;
+                accKeybyte = temp;
             }
         }
         // Return updated state via array reference
-        state[0] = acc_keybyte;
-        state[1] = acc_counter;
+        state[0] = accKeybyte;
+        state[1] = accCounter;
         return buf;
     }
 }
