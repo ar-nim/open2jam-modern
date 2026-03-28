@@ -1,5 +1,6 @@
 package org.open2jam.gui.parts;
 
+import org.open2jam.AppContext;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.util.DebugLogger;
@@ -20,6 +21,7 @@ import java.awt.event.FocusEvent;
  */
 public class AdvancedOptions extends JPanel {
 
+    private final AppContext context;  // NEW: Store AppContext
     private final JCheckBox hasteModeCheckbox;
     private final JTextField bufferSize;
     private final JLabel jLabel1;
@@ -27,8 +29,9 @@ public class AdvancedOptions extends JPanel {
     private final GameOptions go;
     private final Config config;
 
-    public AdvancedOptions() {
-        config = Config.getInstance();
+    public AdvancedOptions(AppContext context) {  // UPDATED: Accept AppContext
+        this.context = context;
+        this.config = context.config;
         go = config.getGameOptions().toGameOptions();
 
         hasteModeCheckbox = new JCheckBox("Haste Mode");
@@ -110,15 +113,15 @@ public class AdvancedOptions extends JPanel {
     private void saveSettings() {
         // Update Config's GameOptionsWrapper with current values
         Config.GameOptionsWrapper wrapper = config.getGameOptions();
-        wrapper.hasteMode = go.isHasteMode();
-        wrapper.hasteModeNormalizeSpeed = go.isHasteModeNormalizeSpeed();
-        wrapper.bufferSize = go.getBufferSize();
-        
+        wrapper.setHasteMode(go.isHasteMode());
+        wrapper.setHasteModeNormalizeSpeed(go.isHasteModeNormalizeSpeed());
+        wrapper.setBufferSize(go.getBufferSize());
+
         // Trigger debounced save to persist to disk
         config.scheduleSave();
-        
-        DebugLogger.debug("AdvancedOptions saved: hasteMode=" + go.isHasteMode() 
-            + ", normalizeSpeed=" + go.isHasteModeNormalizeSpeed() 
+
+        DebugLogger.debug("AdvancedOptions saved: hasteMode=" + go.isHasteMode()
+            + ", normalizeSpeed=" + go.isHasteModeNormalizeSpeed()
             + ", bufferSize=" + go.getBufferSize());
     }
 

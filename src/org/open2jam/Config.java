@@ -1,6 +1,7 @@
 package org.open2jam;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectWriter;
 import org.open2jam.parsers.Event;
@@ -65,12 +66,24 @@ public class Config {
     
     private static final File CONFIG_FILE = new File("save/config.json");
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    
+
     // Writer for indented output (Jackson 3.x)
     private static final ObjectWriter INDENTED_WRITER = MAPPER.writerWithDefaultPrettyPrinter();
 
-    private static Config instance;
-    
+    // ===== Constants for Validation and Key Bindings =====
+    private static final String UI_SCALE_AUTOMATIC = "automatic";
+    private static final String INVALID_PREFIX = "Invalid ";
+    private static final String USING_DEFAULT_SUFFIX = "), using default ";
+    private static final String NOTE_1 = "NOTE_1";
+    private static final String NOTE_2 = "NOTE_2";
+    private static final String NOTE_3 = "NOTE_3";
+    private static final String NOTE_4 = "NOTE_4";
+    private static final String NOTE_5 = "NOTE_5";
+    private static final String NOTE_6 = "NOTE_6";
+    private static final String NOTE_7 = "NOTE_7";
+    private static final String NOTE_8 = "NOTE_8";
+    private static final String NOTE_SC = "NOTE_SC";
+
     // ===== Debounced Save =====
     private static final ScheduledExecutorService saveExecutor = new ScheduledThreadPoolExecutor(1, r -> {
         Thread t = new Thread(r, "Config-Saver");
@@ -80,52 +93,30 @@ public class Config {
     private static final AtomicBoolean savePending = new AtomicBoolean(false);
     private static final long SAVE_DELAY_MS = 500;  // Debounce delay
 
-    // ===== Config Fields =====
-    public KeyBindings keyBindings = new KeyBindings();
-    public GameOptionsWrapper gameOptions = new GameOptionsWrapper();
-    
-    // ===== UI State (persisted for convenience) =====
-    /**
-     * Last opened library ID from SQLite libraries table.
-     * Used to restore the last selected directory on startup.
-     * Ignored if library doesn't exist or database is empty.
-     */
-    public Integer lastOpenedLibraryId = null;
+    // ===== Config Fields (private for encapsulation) =====
+    @JsonProperty("keyBindings")
+    private KeyBindings keyBindings = new KeyBindings();
 
-    // ===== Initialization =====
+    @JsonProperty("gameOptions")
+    private GameOptionsWrapper gameOptions = new GameOptionsWrapper();
 
-    /**
-     * Get singleton Config instance.
-     * 
-     * <p>Thread-safe lazy initialization. Loads from disk on first access if file exists.</p>
-     * 
-     * @return Singleton Config instance
-     */
-    public static Config getInstance() {
-        if (instance == null) {
-            synchronized (Config.class) {
-                if (instance == null) {
-                    instance = load();
-                }
-            }
-        }
-        return instance;
-    }
+    @JsonProperty("lastOpenedLibraryId")
+    private Integer lastOpenedLibraryId = null;
+
+    // REMOVED: getInstance() method (singleton pattern removed)
 
     /**
      * Load configuration from disk.
-     * 
+     *
      * <p>Creates default config if file doesn't exist or is corrupted.</p>
-     * 
+     *
      * @return Loaded or default Config instance
      */
-    private static Config load() {
+    public static Config load() {  // Changed from private to public
         // Ensure save directory exists
         File saveDir = new File("save");
-        if (!saveDir.exists()) {
-            if (!saveDir.mkdirs()) {
-                Logger.global.severe("Failed to create save directory: " + saveDir.getAbsolutePath());
-            }
+        if (!saveDir.exists() && !saveDir.mkdirs()) {
+            Logger.global.severe("Failed to create save directory: " + saveDir.getAbsolutePath());
         }
 
         if (!CONFIG_FILE.exists()) {
@@ -152,59 +143,135 @@ public class Config {
      */
     private void validateAndSanitize() {
         // Validate display dimensions
-        if (gameOptions.displayWidth < 640 || gameOptions.displayWidth > 7680) {
-            Logger.global.warning("Invalid displayWidth (" + gameOptions.displayWidth + "), using default 1280");
-            gameOptions.displayWidth = 1280;
-        }
-        if (gameOptions.displayHeight < 480 || gameOptions.displayHeight > 4320) {
-            Logger.global.warning("Invalid displayHeight (" + gameOptions.displayHeight + "), using default 720");
-            gameOptions.displayHeight = 720;
-        }
+        validateIntRange("displayWidth", gameOptions.getDisplayWidth(), 640, 7680, 1280,
+            w -> gameOptions.setDisplayWidth(w));
+        validateIntRange("displayHeight", gameOptions.getDisplayHeight(), 480, 4320, 720,
+            h -> gameOptions.setDisplayHeight(h));
+
         // Validate volume levels (0-100)
-        gameOptions.keyVolume = Math.max(0, Math.min(100, gameOptions.keyVolume));
-        gameOptions.bgmVolume = Math.max(0, Math.min(100, gameOptions.bgmVolume));
-        gameOptions.masterVolume = Math.max(0, Math.min(100, gameOptions.masterVolume));
+        validateFloatRange("keyVolume", gameOptions.getKeyVolume(), 0, 100,
+            v -> gameOptions.setKeyVolume(v));
+        validateFloatRange("bgmVolume", gameOptions.getBgmVolume(), 0, 100,
+            v -> gameOptions.setBgmVolume(v));
+        validateFloatRange("masterVolume", gameOptions.getMasterVolume(), 0, 100,
+            v -> gameOptions.setMasterVolume(v));
+
         // Validate speed multiplier (0.1x - 10x)
-        if (gameOptions.speedMultiplier < 0.1 || gameOptions.speedMultiplier > 10.0) {
-            Logger.global.warning("Invalid speedMultiplier (" + gameOptions.speedMultiplier + "), using default 1.0");
-            gameOptions.speedMultiplier = 1.0;
-        }
+        validateDoubleRange("speedMultiplier", gameOptions.getSpeedMultiplier(), 0.1, 10.0, 1.0,
+            v -> gameOptions.setSpeedMultiplier(v));
+
         // Validate buffer size (64-4096)
-        if (gameOptions.bufferSize < 64 || gameOptions.bufferSize > 4096) {
-            Logger.global.warning("Invalid bufferSize (" + gameOptions.bufferSize + "), using default 512");
-            gameOptions.bufferSize = 512;
-        }
+        validateIntRange("bufferSize", gameOptions.getBufferSize(), 64, 4096, 512,
+            s -> gameOptions.setBufferSize(s));
+
         // Validate display frequency (30-1024 Hz for high-refresh monitors)
-        if (gameOptions.displayFrequency < 30 || gameOptions.displayFrequency > 1024) {
-            Logger.global.warning("Invalid displayFrequency (" + gameOptions.displayFrequency + "), using default 60");
-            gameOptions.displayFrequency = 60;
-        }
+        validateIntRange("displayFrequency", gameOptions.getDisplayFrequency(), 30, 1024, 60,
+            f -> gameOptions.setDisplayFrequency(f));
+
         // Validate bits per pixel (16 or 32)
-        if (gameOptions.displayBitsPerPixel != 16 && gameOptions.displayBitsPerPixel != 32) {
-            Logger.global.warning("Invalid displayBitsPerPixel (" + gameOptions.displayBitsPerPixel + "), using default 32");
-            gameOptions.displayBitsPerPixel = 32;
+        validateIntValues("displayBitsPerPixel", gameOptions.getDisplayBitsPerPixel(), new int[]{16, 32}, 32,
+            b -> gameOptions.setDisplayBitsPerPixel(b));
+
+        // Validate UI scale
+        validateUiScale();
+    }
+
+    /**
+     * Validate integer range and set to default if out of range.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param min Minimum allowed value
+     * @param max Maximum allowed value
+     * @param defaultValue Default value if out of range
+     * @param setter Consumer to set the value
+     */
+    private void validateIntRange(String name, int value, int min, int max, int defaultValue,
+                                   java.util.function.IntConsumer setter) {
+        if (value < min || value > max) {
+            Logger.global.warning(INVALID_PREFIX + name + " (" + value + ")" + USING_DEFAULT_SUFFIX + defaultValue);
+            setter.accept(defaultValue);
         }
-        // Validate UI scale ("automatic" or numeric original 0.5-4.0)
-        if (!"automatic".equalsIgnoreCase(gameOptions.uiScale)) {
+    }
+
+    /**
+     * Validate float range and clamp if out of range.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param min Minimum allowed value
+     * @param max Maximum allowed value
+     * @param setter Consumer to set the clamped value
+     */
+    private void validateFloatRange(String name, float value, float min, float max,
+                                    java.util.function.Consumer<Float> setter) {
+        float clamped = Math.max(min, Math.min(max, value));
+        if (clamped != value) {
+            Logger.global.warning(INVALID_PREFIX + name + " (" + value + ")" + USING_DEFAULT_SUFFIX + "clamped to " + clamped);
+            setter.accept(clamped);
+        }
+    }
+
+    /**
+     * Validate double range and set to default if out of range.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param min Minimum allowed value
+     * @param max Maximum allowed value
+     * @param defaultValue Default value if out of range
+     * @param setter Consumer to set the value
+     */
+    private void validateDoubleRange(String name, double value, double min, double max, double defaultValue,
+                                      java.util.function.DoubleConsumer setter) {
+        if (value < min || value > max) {
+            Logger.global.warning(INVALID_PREFIX + name + " (" + value + ")" + USING_DEFAULT_SUFFIX + defaultValue);
+            setter.accept(defaultValue);
+        }
+    }
+
+    /**
+     * Validate integer is one of allowed values.
+     *
+     * @param name Field name for logging
+     * @param value Current value
+     * @param allowedValues Array of allowed values
+     * @param defaultValue Default value if not in allowed values
+     * @param setter Consumer to set the value
+     */
+    private void validateIntValues(String name, int value, int[] allowedValues, int defaultValue,
+                                    java.util.function.IntConsumer setter) {
+        boolean valid = Arrays.stream(allowedValues).anyMatch(v -> v == value);
+        if (!valid) {
+            Logger.global.warning(INVALID_PREFIX + name + " (" + value + ")" + USING_DEFAULT_SUFFIX + defaultValue);
+            setter.accept(defaultValue);
+        }
+    }
+
+    /**
+     * Validate UI scale format and range.
+     */
+    private void validateUiScale() {
+        if (!UI_SCALE_AUTOMATIC.equalsIgnoreCase(gameOptions.getUiScale())) {
             try {
-                double val = Double.parseDouble(gameOptions.uiScale);
+                double val = Double.parseDouble(gameOptions.getUiScale());
                 if (val < 0.5 || val > 4.0) throw new NumberFormatException();
             } catch (NumberFormatException e) {
-                Logger.global.warning("Invalid uiScale (" + gameOptions.uiScale + "), using default 'automatic'");
-                gameOptions.uiScale = "automatic";
+                Logger.global.warning(INVALID_PREFIX + "uiScale (" + gameOptions.getUiScale() + ")" + USING_DEFAULT_SUFFIX + "'automatic'");
+                gameOptions.setUiScale(UI_SCALE_AUTOMATIC);
             }
         }
     }
 
     /**
      * Create default configuration.
-     * 
+     *
      * @return Config with default key bindings and game options
      */
     private static Config createDefault() {
         Config config = new Config();
-        config.keyBindings = createDefaultKeyBindings();
-        config.gameOptions = createDefaultGameOptions();
+        config.setKeyBindings(createDefaultKeyBindings());
+        config.setGameOptions(createDefaultGameOptions());
         config.save();
         return config;
     }
@@ -237,83 +304,83 @@ public class Config {
         kb.misc.put("BGM_VOL_DOWN", org.open2jam.render.lwjgl.Keyboard.KEY_5);
 
         // K4
-        kb.keyboard.k4.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k4.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k4.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k4.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k4.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k4.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k4.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k4.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k4.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k4.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K5
-        kb.keyboard.k5.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k5.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k5.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
-        kb.keyboard.k5.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k5.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k5.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k5.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k5.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k5.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
+        kb.keyboard.k5.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k5.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k5.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K6
-        kb.keyboard.k6.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_S);
-        kb.keyboard.k6.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k6.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k6.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k6.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k6.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_L);
-        kb.keyboard.k6.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k6.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k6.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k6.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k6.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k6.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k6.put(NOTE_6, org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k6.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K7
-        kb.keyboard.k7.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_S);
-        kb.keyboard.k7.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k7.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k7.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
-        kb.keyboard.k7.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k7.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k7.put("NOTE_7", org.open2jam.render.lwjgl.Keyboard.KEY_L);
-        kb.keyboard.k7.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
+        kb.keyboard.k7.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k7.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k7.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k7.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_SPACE);
+        kb.keyboard.k7.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k7.put(NOTE_6, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k7.put(NOTE_7, org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k7.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_LSHIFT);
 
         // K8
-        kb.keyboard.k8.put("NOTE_1", org.open2jam.render.lwjgl.Keyboard.KEY_A);
-        kb.keyboard.k8.put("NOTE_2", org.open2jam.render.lwjgl.Keyboard.KEY_S);
-        kb.keyboard.k8.put("NOTE_3", org.open2jam.render.lwjgl.Keyboard.KEY_D);
-        kb.keyboard.k8.put("NOTE_4", org.open2jam.render.lwjgl.Keyboard.KEY_F);
-        kb.keyboard.k8.put("NOTE_5", org.open2jam.render.lwjgl.Keyboard.KEY_H);
-        kb.keyboard.k8.put("NOTE_6", org.open2jam.render.lwjgl.Keyboard.KEY_J);
-        kb.keyboard.k8.put("NOTE_7", org.open2jam.render.lwjgl.Keyboard.KEY_K);
-        kb.keyboard.k8.put("NOTE_8", org.open2jam.render.lwjgl.Keyboard.KEY_L);
-        kb.keyboard.k8.put("NOTE_SC", org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k8.put(NOTE_1, org.open2jam.render.lwjgl.Keyboard.KEY_A);
+        kb.keyboard.k8.put(NOTE_2, org.open2jam.render.lwjgl.Keyboard.KEY_S);
+        kb.keyboard.k8.put(NOTE_3, org.open2jam.render.lwjgl.Keyboard.KEY_D);
+        kb.keyboard.k8.put(NOTE_4, org.open2jam.render.lwjgl.Keyboard.KEY_F);
+        kb.keyboard.k8.put(NOTE_5, org.open2jam.render.lwjgl.Keyboard.KEY_H);
+        kb.keyboard.k8.put(NOTE_6, org.open2jam.render.lwjgl.Keyboard.KEY_J);
+        kb.keyboard.k8.put(NOTE_7, org.open2jam.render.lwjgl.Keyboard.KEY_K);
+        kb.keyboard.k8.put(NOTE_8, org.open2jam.render.lwjgl.Keyboard.KEY_L);
+        kb.keyboard.k8.put(NOTE_SC, org.open2jam.render.lwjgl.Keyboard.KEY_L);
 
         return kb;
     }
 
     /**
      * Create default game options wrapper.
-     * 
+     *
      * @return GameOptionsWrapper with default values
      */
     private static GameOptionsWrapper createDefaultGameOptions() {
         GameOptionsWrapper opts = new GameOptionsWrapper();
-        opts.speedMultiplier = 1.0;
-        opts.speedType = GameOptions.SpeedType.HiSpeed;
-        opts.visibilityModifier = GameOptions.VisibilityMod.None;
-        opts.channelModifier = GameOptions.ChannelMod.None;
-        opts.judgmentType = GameOptions.JudgmentType.BeatJudgment;
-        opts.keyVolume = 1.0f;
-        opts.bgmVolume = 1.0f;
-        opts.masterVolume = 1.0f;
-        opts.autoplay = false;
-        opts.autosound = false;
-        opts.autoplayChannels = Arrays.asList(false, false, false, false, false, false, false);
-        opts.displayFullscreen = false;
-        opts.displayVsync = true;
-        opts.fpsLimiter = GameOptions.FpsLimiter.x1;
-        opts.displayWidth = 1280;
-        opts.displayHeight = 720;
-        opts.displayBitsPerPixel = 32;
-        opts.displayFrequency = 60;
-        opts.bufferSize = 512;
-        opts.displayLag = 0.0;
-        opts.audioLatency = 0.0;
-        opts.hasteMode = false;
-        opts.hasteModeNormalizeSpeed = true;
+        opts.setSpeedMultiplier(1.0);
+        opts.setSpeedType(GameOptions.SpeedType.HI_SPEED);
+        opts.setVisibilityModifier(GameOptions.VisibilityMod.NONE);
+        opts.setChannelModifier(GameOptions.ChannelMod.NONE);
+        opts.setJudgmentType(GameOptions.JudgmentType.BEAT_JUDGMENT);
+        opts.setKeyVolume(1.0f);
+        opts.setBgmVolume(1.0f);
+        opts.setMasterVolume(1.0f);
+        opts.setAutoplay(false);
+        opts.setAutosound(false);
+        opts.setAutoplayChannels(Arrays.asList(false, false, false, false, false, false, false));
+        opts.setDisplayFullscreen(false);
+        opts.setDisplayVsync(true);
+        opts.setFpsLimiter(GameOptions.FpsLimiter.X1);
+        opts.setDisplayWidth(1280);
+        opts.setDisplayHeight(720);
+        opts.setDisplayBitsPerPixel(32);
+        opts.setDisplayFrequency(60);
+        opts.setBufferSize(512);
+        opts.setDisplayLag(0.0);
+        opts.setAudioLatency(0.0);
+        opts.setHasteMode(false);
+        opts.setHasteModeNormalizeSpeed(true);
         return opts;
     }
 
@@ -446,13 +513,37 @@ public class Config {
         scheduleSave();  // Debounced save for rapid changes
     }
 
+    // ===== Key Bindings =====
+
+    /**
+     * Get key bindings.
+     *
+     * @return KeyBindings with all key mappings
+     */
+    @JsonProperty("keyBindings")
+    public KeyBindings getKeyBindings() {
+        return keyBindings;
+    }
+
+    /**
+     * Set key bindings.
+     *
+     * @param keyBindings New key bindings (will be saved immediately)
+     */
+    @JsonProperty("keyBindings")
+    public void setKeyBindings(KeyBindings keyBindings) {
+        this.keyBindings = keyBindings;
+        scheduleSave();
+    }
+
     // ===== Game Options =====
 
     /**
      * Get game options.
-     * 
+     *
      * @return GameOptionsWrapper with all game settings
      */
+    @JsonProperty("gameOptions")
     public GameOptionsWrapper getGameOptions() {
         return gameOptions;
     }
@@ -462,6 +553,7 @@ public class Config {
      *
      * @param options New game options (will be saved immediately)
      */
+    @JsonProperty("gameOptions")
     public void setGameOptions(GameOptionsWrapper options) {
         this.gameOptions = options;
         scheduleSave();
@@ -474,6 +566,7 @@ public class Config {
      *
      * @return Library ID from SQLite, or null if not set
      */
+    @JsonProperty("lastOpenedLibraryId")
     public Integer getLastOpenedLibraryId() {
         return lastOpenedLibraryId;
     }
@@ -483,6 +576,7 @@ public class Config {
      *
      * @param libraryId Library ID from SQLite libraries table
      */
+    @JsonProperty("lastOpenedLibraryId")
     public void setLastOpenedLibraryId(Integer libraryId) {
         this.lastOpenedLibraryId = libraryId;
         scheduleSave();
@@ -502,42 +596,80 @@ public class Config {
 
     /**
      * Key bindings container.
-     * 
+     *
      * <p>Thread Safety: Uses ConcurrentHashMap for all maps to prevent ConcurrentModificationException.</p>
      */
     public static class KeyBindings {
-        public Map<String, Integer> misc = new ConcurrentHashMap<>();
-        public KeyboardMaps keyboard = new KeyboardMaps();
+        @JsonProperty("misc")
+        private Map<String, Integer> misc = new ConcurrentHashMap<>();
+        
+        @JsonProperty("keyboard")
+        private KeyboardMaps keyboard = new KeyboardMaps();
 
         // Getters/setters for Jackson
+        @JsonProperty("misc")
         public Map<String, Integer> getMisc() { return misc; }
+        
+        @JsonProperty("misc")
         public void setMisc(Map<String, Integer> misc) { this.misc = new ConcurrentHashMap<>(misc); }
+        
+        @JsonProperty("keyboard")
         public KeyboardMaps getKeyboard() { return keyboard; }
+        
+        @JsonProperty("keyboard")
         public void setKeyboard(KeyboardMaps keyboard) { this.keyboard = keyboard; }
     }
 
     /**
      * Keyboard maps container.
-     * 
+     *
      * <p>Thread Safety: Uses ConcurrentHashMap for all maps to prevent ConcurrentModificationException.</p>
      */
     public static class KeyboardMaps {
-        public Map<String, Integer> k4 = new ConcurrentHashMap<>();
-        public Map<String, Integer> k5 = new ConcurrentHashMap<>();
-        public Map<String, Integer> k6 = new ConcurrentHashMap<>();
-        public Map<String, Integer> k7 = new ConcurrentHashMap<>();
-        public Map<String, Integer> k8 = new ConcurrentHashMap<>();
+        @JsonProperty("k4")
+        private Map<String, Integer> k4 = new ConcurrentHashMap<>();
+        
+        @JsonProperty("k5")
+        private Map<String, Integer> k5 = new ConcurrentHashMap<>();
+        
+        @JsonProperty("k6")
+        private Map<String, Integer> k6 = new ConcurrentHashMap<>();
+        
+        @JsonProperty("k7")
+        private Map<String, Integer> k7 = new ConcurrentHashMap<>();
+        
+        @JsonProperty("k8")
+        private Map<String, Integer> k8 = new ConcurrentHashMap<>();
 
         // Getters/setters for Jackson
+        @JsonProperty("k4")
         public Map<String, Integer> getK4() { return k4; }
+        
+        @JsonProperty("k4")
         public void setK4(Map<String, Integer> k4) { this.k4 = new ConcurrentHashMap<>(k4); }
+        
+        @JsonProperty("k5")
         public Map<String, Integer> getK5() { return k5; }
+        
+        @JsonProperty("k5")
         public void setK5(Map<String, Integer> k5) { this.k5 = new ConcurrentHashMap<>(k5); }
+        
+        @JsonProperty("k6")
         public Map<String, Integer> getK6() { return k6; }
+        
+        @JsonProperty("k6")
         public void setK6(Map<String, Integer> k6) { this.k6 = new ConcurrentHashMap<>(k6); }
+        
+        @JsonProperty("k7")
         public Map<String, Integer> getK7() { return k7; }
+        
+        @JsonProperty("k7")
         public void setK7(Map<String, Integer> k7) { this.k7 = new ConcurrentHashMap<>(k7); }
+        
+        @JsonProperty("k8")
         public Map<String, Integer> getK8() { return k8; }
+        
+        @JsonProperty("k8")
         public void setK8(Map<String, Integer> k8) { this.k8 = new ConcurrentHashMap<>(k8); }
     }
 
@@ -565,43 +697,238 @@ public class Config {
      */
     public static class GameOptionsWrapper {
         // Gameplay
-        public double speedMultiplier = 1.0;
-        public GameOptions.SpeedType speedType = GameOptions.SpeedType.HiSpeed;
-        public GameOptions.VisibilityMod visibilityModifier = GameOptions.VisibilityMod.None;
-        public GameOptions.ChannelMod channelModifier = GameOptions.ChannelMod.None;
-        public GameOptions.JudgmentType judgmentType = GameOptions.JudgmentType.BeatJudgment;
+        @JsonProperty("speedMultiplier")
+        private double speedMultiplier = 1.0;
+        
+        @JsonProperty("speedType")
+        private GameOptions.SpeedType speedType = GameOptions.SpeedType.HI_SPEED;
+        
+        @JsonProperty("visibilityModifier")
+        private GameOptions.VisibilityMod visibilityModifier = GameOptions.VisibilityMod.NONE;
+        
+        @JsonProperty("channelModifier")
+        private GameOptions.ChannelMod channelModifier = GameOptions.ChannelMod.NONE;
+        
+        @JsonProperty("judgmentType")
+        private GameOptions.JudgmentType judgmentType = GameOptions.JudgmentType.BEAT_JUDGMENT;
 
         // Audio
-        public float keyVolume = 1.0f;
-        public float bgmVolume = 1.0f;
-        public float masterVolume = 1.0f;
+        @JsonProperty("keyVolume")
+        private float keyVolume = 1.0f;
+        
+        @JsonProperty("bgmVolume")
+        private float bgmVolume = 1.0f;
+        
+        @JsonProperty("masterVolume")
+        private float masterVolume = 1.0f;
 
         // Autoplay
-        public boolean autoplay = false;
-        public boolean autosound = false;
-        public java.util.List<Boolean> autoplayChannels = Arrays.asList(false, false, false, false, false, false, false);
+        @JsonProperty("autoplay")
+        private boolean autoplay = false;
+        
+        @JsonProperty("autosound")
+        private boolean autosound = false;
+        
+        @JsonProperty("autoplayChannels")
+        private java.util.List<Boolean> autoplayChannels = Arrays.asList(false, false, false, false, false, false, false);
 
         // Display
-        public boolean displayFullscreen = false;
-        public boolean displayVsync = true;
-        public GameOptions.FpsLimiter fpsLimiter = GameOptions.FpsLimiter.x1;
-        public int displayWidth = 1280;
-        public int displayHeight = 720;
-        public int displayBitsPerPixel = 32;
-        public int displayFrequency = 60;
-        public String uiScale = "automatic"; // "automatic" = system default, or a string number like "1.25"
-        public GameOptions.UiTheme uiTheme = GameOptions.UiTheme.Automatic;
+        @JsonProperty("displayFullscreen")
+        private boolean displayFullscreen = false;
+        
+        @JsonProperty("displayVsync")
+        private boolean displayVsync = true;
+        
+        @JsonProperty("fpsLimiter")
+        private GameOptions.FpsLimiter fpsLimiter = GameOptions.FpsLimiter.X1;
+        
+        @JsonProperty("displayWidth")
+        private int displayWidth = 1280;
+        
+        @JsonProperty("displayHeight")
+        private int displayHeight = 720;
+        
+        @JsonProperty("displayBitsPerPixel")
+        private int displayBitsPerPixel = 32;
+        
+        @JsonProperty("displayFrequency")
+        private int displayFrequency = 60;
+        
+        @JsonProperty("uiScale")
+        private String uiScale = UI_SCALE_AUTOMATIC; // "automatic" = system default, or a string number like "1.25"
+        
+        @JsonProperty("uiTheme")
+        private GameOptions.UiTheme uiTheme = GameOptions.UiTheme.AUTOMATIC;
 
         // Sound
-        public int bufferSize = 512;
+        @JsonProperty("bufferSize")
+        private int bufferSize = 512;
 
         // Timing
-        public double displayLag = 0.0;
-        public double audioLatency = 0.0;
+        @JsonProperty("displayLag")
+        private double displayLag = 0.0;
+        
+        @JsonProperty("audioLatency")
+        private double audioLatency = 0.0;
 
         // Haste mode
-        public boolean hasteMode = false;
-        public boolean hasteModeNormalizeSpeed = true;
+        @JsonProperty("hasteMode")
+        private boolean hasteMode = false;
+        
+        @JsonProperty("hasteModeNormalizeSpeed")
+        private boolean hasteModeNormalizeSpeed = true;
+
+        // ===== Getters and Setters =====
+        
+        @JsonProperty("speedMultiplier")
+        public double getSpeedMultiplier() { return speedMultiplier; }
+        
+        @JsonProperty("speedMultiplier")
+        public void setSpeedMultiplier(double speedMultiplier) { this.speedMultiplier = speedMultiplier; }
+        
+        @JsonProperty("speedType")
+        public GameOptions.SpeedType getSpeedType() { return speedType; }
+        
+        @JsonProperty("speedType")
+        public void setSpeedType(GameOptions.SpeedType speedType) { this.speedType = speedType; }
+        
+        @JsonProperty("visibilityModifier")
+        public GameOptions.VisibilityMod getVisibilityModifier() { return visibilityModifier; }
+        
+        @JsonProperty("visibilityModifier")
+        public void setVisibilityModifier(GameOptions.VisibilityMod visibilityModifier) { this.visibilityModifier = visibilityModifier; }
+        
+        @JsonProperty("channelModifier")
+        public GameOptions.ChannelMod getChannelModifier() { return channelModifier; }
+        
+        @JsonProperty("channelModifier")
+        public void setChannelModifier(GameOptions.ChannelMod channelModifier) { this.channelModifier = channelModifier; }
+        
+        @JsonProperty("judgmentType")
+        public GameOptions.JudgmentType getJudgmentType() { return judgmentType; }
+        
+        @JsonProperty("judgmentType")
+        public void setJudgmentType(GameOptions.JudgmentType judgmentType) { this.judgmentType = judgmentType; }
+        
+        @JsonProperty("keyVolume")
+        public float getKeyVolume() { return keyVolume; }
+        
+        @JsonProperty("keyVolume")
+        public void setKeyVolume(float keyVolume) { this.keyVolume = keyVolume; }
+        
+        @JsonProperty("bgmVolume")
+        public float getBgmVolume() { return bgmVolume; }
+        
+        @JsonProperty("bgmVolume")
+        public void setBgmVolume(float bgmVolume) { this.bgmVolume = bgmVolume; }
+        
+        @JsonProperty("masterVolume")
+        public float getMasterVolume() { return masterVolume; }
+        
+        @JsonProperty("masterVolume")
+        public void setMasterVolume(float masterVolume) { this.masterVolume = masterVolume; }
+        
+        @JsonProperty("autoplay")
+        public boolean isAutoplay() { return autoplay; }
+        
+        @JsonProperty("autoplay")
+        public void setAutoplay(boolean autoplay) { this.autoplay = autoplay; }
+        
+        @JsonProperty("autosound")
+        public boolean isAutosound() { return autosound; }
+        
+        @JsonProperty("autosound")
+        public void setAutosound(boolean autosound) { this.autosound = autosound; }
+        
+        @JsonProperty("autoplayChannels")
+        public java.util.List<Boolean> getAutoplayChannels() { return autoplayChannels; }
+        
+        @JsonProperty("autoplayChannels")
+        public void setAutoplayChannels(java.util.List<Boolean> autoplayChannels) { this.autoplayChannels = autoplayChannels; }
+        
+        @JsonProperty("displayFullscreen")
+        public boolean isDisplayFullscreen() { return displayFullscreen; }
+        
+        @JsonProperty("displayFullscreen")
+        public void setDisplayFullscreen(boolean displayFullscreen) { this.displayFullscreen = displayFullscreen; }
+        
+        @JsonProperty("displayVsync")
+        public boolean isDisplayVsync() { return displayVsync; }
+        
+        @JsonProperty("displayVsync")
+        public void setDisplayVsync(boolean displayVsync) { this.displayVsync = displayVsync; }
+        
+        @JsonProperty("fpsLimiter")
+        public GameOptions.FpsLimiter getFpsLimiter() { return fpsLimiter; }
+        
+        @JsonProperty("fpsLimiter")
+        public void setFpsLimiter(GameOptions.FpsLimiter fpsLimiter) { this.fpsLimiter = fpsLimiter; }
+        
+        @JsonProperty("displayWidth")
+        public int getDisplayWidth() { return displayWidth; }
+        
+        @JsonProperty("displayWidth")
+        public void setDisplayWidth(int displayWidth) { this.displayWidth = displayWidth; }
+        
+        @JsonProperty("displayHeight")
+        public int getDisplayHeight() { return displayHeight; }
+        
+        @JsonProperty("displayHeight")
+        public void setDisplayHeight(int displayHeight) { this.displayHeight = displayHeight; }
+        
+        @JsonProperty("displayBitsPerPixel")
+        public int getDisplayBitsPerPixel() { return displayBitsPerPixel; }
+        
+        @JsonProperty("displayBitsPerPixel")
+        public void setDisplayBitsPerPixel(int displayBitsPerPixel) { this.displayBitsPerPixel = displayBitsPerPixel; }
+        
+        @JsonProperty("displayFrequency")
+        public int getDisplayFrequency() { return displayFrequency; }
+        
+        @JsonProperty("displayFrequency")
+        public void setDisplayFrequency(int displayFrequency) { this.displayFrequency = displayFrequency; }
+        
+        @JsonProperty("uiScale")
+        public String getUiScale() { return uiScale; }
+        
+        @JsonProperty("uiScale")
+        public void setUiScale(String uiScale) { this.uiScale = uiScale; }
+        
+        @JsonProperty("uiTheme")
+        public GameOptions.UiTheme getUiTheme() { return uiTheme; }
+        
+        @JsonProperty("uiTheme")
+        public void setUiTheme(GameOptions.UiTheme uiTheme) { this.uiTheme = uiTheme; }
+        
+        @JsonProperty("bufferSize")
+        public int getBufferSize() { return bufferSize; }
+        
+        @JsonProperty("bufferSize")
+        public void setBufferSize(int bufferSize) { this.bufferSize = bufferSize; }
+        
+        @JsonProperty("displayLag")
+        public double getDisplayLag() { return displayLag; }
+        
+        @JsonProperty("displayLag")
+        public void setDisplayLag(double displayLag) { this.displayLag = displayLag; }
+        
+        @JsonProperty("audioLatency")
+        public double getAudioLatency() { return audioLatency; }
+        
+        @JsonProperty("audioLatency")
+        public void setAudioLatency(double audioLatency) { this.audioLatency = audioLatency; }
+        
+        @JsonProperty("hasteMode")
+        public boolean isHasteMode() { return hasteMode; }
+        
+        @JsonProperty("hasteMode")
+        public void setHasteMode(boolean hasteMode) { this.hasteMode = hasteMode; }
+        
+        @JsonProperty("hasteModeNormalizeSpeed")
+        public boolean isHasteModeNormalizeSpeed() { return hasteModeNormalizeSpeed; }
+        
+        @JsonProperty("hasteModeNormalizeSpeed")
+        public void setHasteModeNormalizeSpeed(boolean hasteModeNormalizeSpeed) { this.hasteModeNormalizeSpeed = hasteModeNormalizeSpeed; }
 
         /**
          * Convert to GameOptions object.
@@ -610,67 +937,67 @@ public class Config {
          */
         public GameOptions toGameOptions() {
             GameOptions opts = new GameOptions();
-            opts.setSpeedMultiplier(speedMultiplier);
-            opts.setSpeedType(speedType);
-            opts.setVisibilityModifier(visibilityModifier);
-            opts.setChannelModifier(channelModifier);
-            opts.setJudgmentType(judgmentType);
-            opts.setKeyVolume(keyVolume);
-            opts.setBGMVolume(bgmVolume);
-            opts.setMasterVolume(masterVolume);
-            opts.setAutoplay(autoplay);
-            opts.setAutosound(autosound);
-            opts.setAutoplayChannels(autoplayChannels);
-            opts.setDisplayFullscreen(displayFullscreen);
-            opts.setDisplayVsync(displayVsync);
-            opts.setFpsLimiter(fpsLimiter);
-            opts.setDisplayWidth(displayWidth);
-            opts.setDisplayHeight(displayHeight);
-            opts.setDisplayBitsPerPixel(displayBitsPerPixel);
-            opts.setDisplayFrequency(displayFrequency);
-            opts.setBufferSize(bufferSize);
-            opts.setDisplayLag(displayLag);
-            opts.setAudioLatency(audioLatency);
-            opts.setUiScale(uiScale);
-            opts.setUiTheme(uiTheme);
-            opts.setHasteMode(hasteMode);
-            opts.setHasteModeNormalizeSpeed(hasteModeNormalizeSpeed);
+            opts.setSpeedMultiplier(getSpeedMultiplier());
+            opts.setSpeedType(getSpeedType());
+            opts.setVisibilityModifier(getVisibilityModifier());
+            opts.setChannelModifier(getChannelModifier());
+            opts.setJudgmentType(getJudgmentType());
+            opts.setKeyVolume(getKeyVolume());
+            opts.setBGMVolume(getBgmVolume());
+            opts.setMasterVolume(getMasterVolume());
+            opts.setAutoplay(isAutoplay());
+            opts.setAutosound(isAutosound());
+            opts.setAutoplayChannels(getAutoplayChannels());
+            opts.setDisplayFullscreen(isDisplayFullscreen());
+            opts.setDisplayVsync(isDisplayVsync());
+            opts.setFpsLimiter(getFpsLimiter());
+            opts.setDisplayWidth(getDisplayWidth());
+            opts.setDisplayHeight(getDisplayHeight());
+            opts.setDisplayBitsPerPixel(getDisplayBitsPerPixel());
+            opts.setDisplayFrequency(getDisplayFrequency());
+            opts.setBufferSize(getBufferSize());
+            opts.setDisplayLag(getDisplayLag());
+            opts.setAudioLatency(getAudioLatency());
+            opts.setUiScale(getUiScale());
+            opts.setUiTheme(getUiTheme());
+            opts.setHasteMode(isHasteMode());
+            opts.setHasteModeNormalizeSpeed(isHasteModeNormalizeSpeed());
             return opts;
         }
 
         /**
          * Create from existing GameOptions.
-         * 
+         *
          * @param opts GameOptions to wrap
          * @return GameOptionsWrapper with same settings
          */
         public static GameOptionsWrapper fromGameOptions(GameOptions opts) {
             GameOptionsWrapper wrapper = new GameOptionsWrapper();
-            wrapper.speedMultiplier = opts.getSpeedMultiplier();
-            wrapper.speedType = opts.getSpeedType();
-            wrapper.visibilityModifier = opts.getVisibilityModifier();
-            wrapper.channelModifier = opts.getChannelModifier();
-            wrapper.judgmentType = opts.getJudgmentType();
-            wrapper.keyVolume = opts.getKeyVolume();
-            wrapper.bgmVolume = opts.getBGMVolume();
-            wrapper.masterVolume = opts.getMasterVolume();
-            wrapper.autoplay = opts.isAutoplay();
-            wrapper.autosound = opts.isAutosound();
-            wrapper.autoplayChannels = opts.getAutoplayChannels();
-            wrapper.displayFullscreen = opts.isDisplayFullscreen();
-            wrapper.displayVsync = opts.isDisplayVsync();
-            wrapper.fpsLimiter = opts.getFpsLimiter();
-            wrapper.displayWidth = opts.getDisplayWidth();
-            wrapper.displayHeight = opts.getDisplayHeight();
-            wrapper.displayBitsPerPixel = opts.getDisplayBitsPerPixel();
-            wrapper.displayFrequency = opts.getDisplayFrequency();
-            wrapper.bufferSize = opts.getBufferSize();
-            wrapper.displayLag = opts.getDisplayLag();
-            wrapper.audioLatency = opts.getAudioLatency();
-            wrapper.uiScale = opts.getUiScale();
-            wrapper.uiTheme = opts.getUiTheme();
-            wrapper.hasteMode = opts.isHasteMode();
-            wrapper.hasteModeNormalizeSpeed = opts.isHasteModeNormalizeSpeed();
+            wrapper.setSpeedMultiplier(opts.getSpeedMultiplier());
+            wrapper.setSpeedType(opts.getSpeedType());
+            wrapper.setVisibilityModifier(opts.getVisibilityModifier());
+            wrapper.setChannelModifier(opts.getChannelModifier());
+            wrapper.setJudgmentType(opts.getJudgmentType());
+            wrapper.setKeyVolume(opts.getKeyVolume());
+            wrapper.setBgmVolume(opts.getBGMVolume());
+            wrapper.setMasterVolume(opts.getMasterVolume());
+            wrapper.setAutoplay(opts.isAutoplay());
+            wrapper.setAutosound(opts.isAutosound());
+            wrapper.setAutoplayChannels(opts.getAutoplayChannels());
+            wrapper.setDisplayFullscreen(opts.isDisplayFullscreen());
+            wrapper.setDisplayVsync(opts.isDisplayVsync());
+            wrapper.setFpsLimiter(opts.getFpsLimiter());
+            wrapper.setDisplayWidth(opts.getDisplayWidth());
+            wrapper.setDisplayHeight(opts.getDisplayHeight());
+            wrapper.setDisplayBitsPerPixel(opts.getDisplayBitsPerPixel());
+            wrapper.setDisplayFrequency(opts.getDisplayFrequency());
+            wrapper.setBufferSize(opts.getBufferSize());
+            wrapper.setDisplayLag(opts.getDisplayLag());
+            wrapper.setAudioLatency(opts.getAudioLatency());
+            wrapper.setUiScale(opts.getUiScale());
+            wrapper.setUiTheme(opts.getUiTheme());
+            wrapper.setHasteMode(opts.isHasteMode());
+            wrapper.setHasteModeNormalizeSpeed(opts.isHasteModeNormalizeSpeed());
             return wrapper;
         }
     }

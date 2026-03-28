@@ -256,7 +256,7 @@ public class LWJGLSprite implements Sprite {
         float split = height / 4f;
 
         switch (visibilityMod) {
-            case Hidden:
+            case HIDDEN:
                 // Gradient from transparent (middle) to black (bottom)
                 // Top part: transparent (don't draw)
                 // Middle gradient: transparent to black
@@ -273,7 +273,7 @@ public class LWJGLSprite implements Sprite {
                 );
                 break;
 
-            case Sudden:
+            case SUDDEN:
                 // Black at bottom, gradient to transparent (middle)
                 // Bottom black
                 modernRenderer.drawSprite(
@@ -289,7 +289,7 @@ public class LWJGLSprite implements Sprite {
                 );
                 break;
 
-            case Dark:
+            case DARK:
                 // Black at bottom and top, two transparent gaps in middle
                 // Bottom black
                 modernRenderer.drawSprite(

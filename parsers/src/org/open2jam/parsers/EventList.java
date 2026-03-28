@@ -1,7 +1,16 @@
 package org.open2jam.parsers;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.logging.Level;
+
 import org.open2jam.parsers.Event.Channel;
 import org.open2jam.parsers.utils.Logger;
 
@@ -9,131 +18,146 @@ import org.open2jam.parsers.utils.Logger;
  * It's just an ArrayList<Event> extended to be able to make some funny things with it
  * @author CdK
  */
+@SuppressWarnings("java:S2160")  // Collection wrapper - equality based on list contents
 public class EventList extends ArrayList<Event> {
-    
-    public int playableNotes = 0;
 
-    public enum FixMethod {NONE, O2JAM, OPEN2JAM};
+    private int playableNotes = 0;
+
+    public enum FixMethod {NONE, O2JAM, OPEN2JAM}
+
+    public int getPlayableNotes() {
+        return playableNotes;
+    }
     
     /**
      * WARNING, USING THIS CAN CHANGE THE CHART
-     * 
+     *
      * Use this only if you don't want to deal with broken longnotes or longnotes in the autoplay channel
      * If you want to write a Editor with this lib, don't use it because it changes a lot of things in the events
      */
-    public void fixEventList(FixMethod method, boolean fix_autoplay_longnotes) {
-	
-	if(!fix_autoplay_longnotes && method == FixMethod.NONE)
-	    return;
-	
-        EnumSet<Event.Channel> note_channels_set = EnumSet.of(Event.Channel.NOTE_1, Event.Channel.NOTE_2, Event.Channel.NOTE_3,
-            Event.Channel.NOTE_4, Event.Channel.NOTE_5, Event.Channel.NOTE_6, Event.Channel.NOTE_7);
-	
-	Map<Event.Channel, Event> lnchan = new EnumMap<Event.Channel, Event>(Event.Channel.class);
+    public void fixEventList(FixMethod method, boolean fixAutoplayLongnotes) {
 
-	ListIterator<Event> it = this.listIterator();
-	while(it.hasNext()) {
-	    Event e = it.next();
-	    
-	    if(note_channels_set.contains(e.getChannel())) {
-		switch(method) {
-		    case OPEN2JAM:
-			fixOPEN2JAM(it, e, lnchan);
-		    break;
-		    case O2JAM:
-			fixO2JAM(it, e, lnchan);
-		    break;
-		    default:
-			playableNotes++;
-		    break;    
-		}
-	    }
-	    
-	    if(fix_autoplay_longnotes && e.getChannel() == Event.Channel.AUTO_PLAY) {
-		if(e.getFlag() == Event.Flag.RELEASE) {
-		    it.remove();
-		    continue;
-		}
-		e.flag = Event.Flag.NONE;
-	    }
-	}
-	
-	Logger.global.log(Level.INFO, "Total playable notes: {0}", playableNotes);
+        if (!fixAutoplayLongnotes && method == FixMethod.NONE)
+            return;
+
+        EnumSet<Event.Channel> noteChannelsSet = EnumSet.of(
+            Event.Channel.NOTE_1, Event.Channel.NOTE_2, Event.Channel.NOTE_3,
+            Event.Channel.NOTE_4, Event.Channel.NOTE_5, Event.Channel.NOTE_6, Event.Channel.NOTE_7
+        );
+
+        Map<Event.Channel, Event> lnchan = new EnumMap<>(Event.Channel.class);
+
+        ListIterator<Event> it = this.listIterator();
+        while (it.hasNext()) {
+            Event e = it.next();
+
+            if (noteChannelsSet.contains(e.getChannel())) {
+                switch (method) {
+                    case OPEN2JAM:
+                        fixOPEN2JAM(it, e, lnchan);
+                        break;
+                    case O2JAM:
+                        fixO2JAM(it, e, lnchan);
+                        break;
+                    default:
+                        playableNotes++;
+                        break;
+                }
+            }
+
+            if (fixAutoplayLongnotes && e.getChannel() == Event.Channel.AUTO_PLAY) {
+                if (e.getFlag() == Event.Flag.RELEASE) {
+                    it.remove();
+                    continue;
+                }
+                e.flag = Event.Flag.NONE;
+            }
+        }
+
+        Logger.global.log(Level.INFO, "Total playable notes: {0}", playableNotes);
     }
     
     
     private void fixOPEN2JAM(ListIterator<Event> it, Event e, Map<Event.Channel, Event> lnchan) {
-	    Event.Channel c = e.getChannel();
-	    switch(e.getFlag()){
-		case NONE:
-		    if(lnchan.containsKey(c)) {
-			fixHoldNote(it, e, lnchan.get(c));
-			lnchan.remove(c);
-		    }
-		    playableNotes++;
-		break;
-		case HOLD:
-		    if(lnchan.containsKey(c)) {
-			//it will convert the broken hold to a none
-			Event evt = lnchan.get(c);
-			System.out.println("Broken HOLD event! @ "+evt.getTotalPosition()+" ("+evt.getValue()+"): ");
-			System.out.println("\tBut converted to NONE because the next event is another HOLD :/");
-			evt.flag = Event.Flag.NONE;
-		    } 
-		    playableNotes++;
-		    //So we still need to add it to the lnchan because it won't do anything to this event
-		    lnchan.put(c, e);
-		break;  
-		case RELEASE:
-		    if(!lnchan.containsKey(c)) {
-			fixReleaseNote(it, e);
-		    } else {
-			playableNotes++;
-		    }
-		    lnchan.remove(c);
-		break;
-	    }	
+        Event.Channel c = e.getChannel();
+        switch (e.getFlag()) {
+            case NONE:
+                if (lnchan.containsKey(c)) {
+                    fixHoldNote(it, e, lnchan.get(c));
+                    lnchan.remove(c);
+                }
+                playableNotes++;
+                break;
+            case HOLD:
+                if (lnchan.containsKey(c)) {
+                    Event evt = lnchan.get(c);
+                    Logger.global.log(Level.WARNING,
+                        "Broken HOLD event! @ {0} ({1}): But converted to NONE because the next event is another HOLD :/",
+                        new Object[] {evt.getTotalPosition(), evt.getValue()}
+                    );
+                    evt.flag = Event.Flag.NONE;
+                }
+                playableNotes++;
+                lnchan.put(c, e);
+                break;
+            case RELEASE:
+                if (!lnchan.containsKey(c)) {
+                    fixReleaseNote(it, e);
+                } else {
+                    playableNotes++;
+                }
+                lnchan.remove(c);
+                break;
+            default:
+                playableNotes++;
+                break;
+        }
     }
     
     
     /* sanity check
-    * now we need to check the events to see if its consistent,
-    * I identified 3 types of inconsistence so far:
-    *
-    * 1. tap note on top of an on-going long note
-    * 2. starting a long note on an on-going long note
-    * 3. end long note without an on-going long note
-    *
-    * as far as I have tested o2mania simply ignore these 3 cases
-    */
+     * now we need to check the events to see if its consistent,
+     * I identified 3 types of inconsistence so far:
+     *
+     * 1. tap note on top of an on-going long note
+     * 2. starting a long note on an on-going long note
+     * 3. end long note without an on-going long note
+     *
+     * as far as I have tested o2mania simply ignore these 3 cases
+     */
     private void fixO2JAM(ListIterator<Event> it, Event e, Map<Event.Channel, Event> lnchan) {
-	Event.Channel c = e.getChannel();
-	switch(e.getFlag()) {
-	    case NONE:
-		if(lnchan.containsKey(c)) // problem 1
-		    e.setChannel(Event.Channel.AUTO_PLAY);
-		else
-		    playableNotes++;
-		break;
+        Event.Channel c = e.getChannel();
+        switch (e.getFlag()) {
+            case NONE:
+                if (lnchan.containsKey(c)) {
+                    e.setChannel(Event.Channel.AUTO_PLAY);
+                } else {
+                    playableNotes++;
+                }
+                break;
 
-	    case HOLD:
-		if(lnchan.containsKey(c)) // problem 2
-		    e.setChannel(Event.Channel.AUTO_PLAY);
-		else {
-		    lnchan.put(c,null);
-		    playableNotes++;
-		}
-		break;
+            case HOLD:
+                if (lnchan.containsKey(c)) {
+                    e.setChannel(Event.Channel.AUTO_PLAY);
+                } else {
+                    lnchan.put(c, null);
+                    playableNotes++;
+                }
+                break;
 
-	    case RELEASE:
-		if(!lnchan.containsKey(c)) // problem 3
-		    it.remove();
-		else {
-		    lnchan.remove(c);
-		    playableNotes++;
-		}
-		break;
-	}	
+            case RELEASE:
+                if (!lnchan.containsKey(c)) {
+                    it.remove();
+                } else {
+                    lnchan.remove(c);
+                    playableNotes++;
+                }
+                break;
+
+            default:
+                playableNotes++;
+                break;
+        }
     }
     
     /**
@@ -159,75 +183,80 @@ public class EventList extends ArrayList<Event> {
      * </li>
      * </ol>
      */
-    private void fixHoldNote(ListIterator<Event> it, Event e, Event e_hold) {
-	Event.Channel c = e_hold.getChannel();
-	double value = e_hold.getValue();
-	//seems that we found a broken hold event without a release
-	System.out.println("Broken HOLD event! @ "+e_hold.getTotalPosition()+" ("+value+"): ");
-	EventList toAutoplay = new EventList();
-	toAutoplay.add(e);
-	boolean found = false;
-	//look ahead and try to get a event with the same value
-	ListIterator<Event> it2 = this.listIterator(it.nextIndex());
-	Event last_evt = e;
-	while(it2.hasNext()) {
-	    Event evt = it2.next();
-	    //not the same channel, skip it
-	    if(c != evt.getChannel())
-		continue;
-	    	
-	    //well... A hold event it's on our way... let's look the last event 
-	    if(evt.flag == Event.Flag.HOLD) {
-		System.out.print("\tThere is a HOLD in the way, converting to last known "+last_evt.flag+"... ");
-		//Ok, a none event, cool it can be fixed
-		if(last_evt.flag == Event.Flag.NONE) {
-		    System.out.println(" @ "+last_evt.getTotalPosition()+" OK");
-		    last_evt.flag = Event.Flag.RELEASE;
-		    //Need to remove it from the toAutoplay
-		    if(toAutoplay.contains(last_evt)) {
-			System.out.println("\tRemoving from autoplay "+last_evt.getTotalPosition());
-			toAutoplay.remove(last_evt);
-		    }
-		    found = true;
-		}
-		else {
-		    //Well, it wasn't a none event..
-		    System.out.println(" @ "+last_evt.getTotalPosition()+" "+last_evt.flag+" FAILED");
-		    found = false;
-		}
+    private void fixHoldNote(ListIterator<Event> it, Event e, Event eHold) {
+        Event.Channel c = eHold.getChannel();
+        double value = eHold.getValue();
+        Logger.global.log(Level.WARNING, "Broken HOLD event! @ {0} ({1}): ",
+            new Object[] {eHold.getTotalPosition(), value});
 
-		break;
-	    } else {
-		//So not a hold...
-		if(value == evt.getValue()) {
-		    //Fixed with the same value, cool
-		    System.out.println("\tFixed with same value @ "+evt.getTotalPosition()+" ("+value+") It's a "+evt.flag);
-		    evt.flag = Event.Flag.RELEASE;
-		    found = true;
-		    break;
-		} else {
-		    //Not the same value, add it to toAutoplay
-		    toAutoplay.add(evt);
-		    System.out.println("\tto Autoplay ("+evt.getValue()+"): "+evt.flag+" "+evt.getTotalPosition());
-		}
-	    }
-	    
-	    last_evt = evt;    
-	}
-	
-	//we found it, nice
-	if(found) {
-	    //moving all the events in the toAutoplay list to the autoplay channel
-	    for(Event evt : toAutoplay) {
-		evt.setChannel(Event.Channel.AUTO_PLAY);
-		System.out.println("\tMoving to autoplay "+evt.getTotalPosition());
-		playableNotes--;
-	    }
-	} else {
-	    //not found :( we will use the caller of this method as a release event
-	    toAutoplay.clear();
-	    e.flag = Event.Flag.RELEASE;
-	}
+        EventList toAutoplay = new EventList();
+        toAutoplay.add(e);
+
+        ListIterator<Event> it2 = this.listIterator(it.nextIndex());
+        Event lastEvt = e;
+        boolean found = false;
+
+        while (!found && it2.hasNext()) {
+            Event evt = it2.next();
+            found = processHoldEvent(evt, c, value, toAutoplay, lastEvt);
+            lastEvt = evt;
+        }
+
+        if (found) {
+            moveEventsToAutoplay(toAutoplay);
+        } else {
+            toAutoplay.clear();
+            e.flag = Event.Flag.RELEASE;
+        }
+    }
+
+    /**
+     * Process a single event during hold note fixing.
+     * @return true if the hold note has been fixed, false otherwise
+     */
+    private boolean processHoldEvent(Event evt, Event.Channel c, double value,
+                                     EventList toAutoplay, Event lastEvt) {
+        if (c != evt.getChannel()) {
+            return false;
+        }
+
+        if (evt.flag == Event.Flag.HOLD) {
+            handleHoldInWay(lastEvt, toAutoplay);
+            return (lastEvt.flag == Event.Flag.NONE);
+        } else if (value == evt.getValue()) {
+            evt.flag = Event.Flag.RELEASE;
+            Logger.global.log(Level.INFO, "Fixed with same value @ {0} ({1}) It''s a {2}",
+                new Object[] {evt.getTotalPosition(), value, evt.flag});
+            return true;
+        } else {
+            toAutoplay.add(evt);
+            Logger.global.log(Level.INFO, "to Autoplay ({0}): {1} {2}",
+                new Object[] {evt.getValue(), evt.flag, evt.getTotalPosition()});
+            return false;
+        }
+    }
+
+    private void handleHoldInWay(Event lastEvt, EventList toAutoplay) {
+        if (lastEvt.flag == Event.Flag.NONE) {
+            lastEvt.flag = Event.Flag.RELEASE;
+            Logger.global.log(Level.INFO, "There is a HOLD in the way, converting to last known {0}... @ {1} OK",
+                new Object[] {lastEvt.flag, lastEvt.getTotalPosition()});
+            if (toAutoplay.contains(lastEvt)) {
+                Logger.global.log(Level.INFO, "Removing from autoplay {0}", lastEvt.getTotalPosition());
+                toAutoplay.remove(lastEvt);
+            }
+        } else {
+            Logger.global.log(Level.INFO, "There is a HOLD in the way, converting to last known {0}... @ {1} {2} FAILED",
+                new Object[] {lastEvt.flag, lastEvt.getTotalPosition(), lastEvt.flag});
+        }
+    }
+
+    private void moveEventsToAutoplay(EventList toAutoplay) {
+        for (Event evt : toAutoplay) {
+            evt.setChannel(Event.Channel.AUTO_PLAY);
+            Logger.global.log(Level.INFO, "Moving to autoplay {0}", evt.getTotalPosition());
+            playableNotes--;
+        }
     }
  
     /**
@@ -259,119 +288,123 @@ public class EventList extends ArrayList<Event> {
      * </ol>
      */
     private void fixReleaseNote(ListIterator<Event> it, Event e) {
-	Event.Channel c = e.getChannel();
-	double value = e.getValue();
-	System.out.println("Broken RELEASE event! @ "+e.getTotalPosition()+" ("+value+"): ");
-	EventList toAutoplay = new EventList();
-	boolean found = false;
-	ListIterator<Event> it2 = this.listIterator(it.previousIndex());
-	while(it2.hasPrevious()) {
-	    Event evt = it2.previous();
-	    //Different channels, skipping
-	    if(c != evt.getChannel())
-		continue;
-	    
-	    if(evt.getValue() == value) {
-		System.out.print("\tCandidate is a "+evt.flag+", ");
-		if(evt.flag != Event.Flag.RELEASE) {
-		    evt.flag = Event.Flag.HOLD;
-		    found = true;
-		} else {
-		    found = false;
-		}
-		
-		break;
-	    } else {
-		if(evt.flag == Event.Flag.HOLD) {
-		    //we found a hold and I don't care if it has the same value or not, use it
-		    System.out.print("\tFound a HOLD with different value ");
-		    found = true;
-		    break;
-		} else {
-		    toAutoplay.add(evt);
-		    System.out.println("\tto Autoplay ("+evt.getValue()+"): "+evt.flag+" "+evt.getTotalPosition());
-		}
-	    }
-	}
+        Event.Channel c = e.getChannel();
+        double value = e.getValue();
+        Logger.global.log(Level.WARNING, "Broken RELEASE event! @ {0} ({1}): ",
+            new Object[] {e.getTotalPosition(), value});
 
-	if(found) {
-	    System.out.println("fixed :D");
-	    playableNotes++;
-	    for(Event evt : toAutoplay) {
-		evt.setChannel(Event.Channel.AUTO_PLAY);
-		System.out.println("\tMoving to autoplay "+evt.getTotalPosition());
-		playableNotes--;
-	    }
-	} else {
-	    System.out.println("Not fixed :(");
-	    it.remove();
-	    playableNotes--;
-	}
+        EventList toAutoplay = new EventList();
+        ListIterator<Event> it2 = this.listIterator(it.previousIndex());
+        boolean found = false;
+
+        while (!found && it2.hasPrevious()) {
+            Event evt = it2.previous();
+            found = processReleaseEvent(evt, c, value, toAutoplay);
+        }
+
+        if (found) {
+            playableNotes++;
+            moveEventsToAutoplay(toAutoplay);
+        } else {
+            Logger.global.log(Level.INFO, "Not fixed :(");
+            it.remove();
+            playableNotes--;
+        }
+    }
+
+    /**
+     * Process a single event during release note fixing.
+     * @return true if the release note has been fixed, false otherwise
+     */
+    private boolean processReleaseEvent(Event evt, Event.Channel c, double value,
+                                        EventList toAutoplay) {
+        if (c != evt.getChannel()) {
+            return false;
+        }
+
+        if (evt.getValue() == value) {
+            if (evt.flag != Event.Flag.RELEASE) {
+                evt.flag = Event.Flag.HOLD;
+                Logger.global.log(Level.INFO, "Candidate is a {0}, fixed :D", evt.flag);
+                return true;
+            } else {
+                Logger.global.log(Level.INFO, "Candidate is a {0}, not fixed :(", evt.flag);
+                return false;
+            }
+        } else if (evt.flag == Event.Flag.HOLD) {
+            Logger.global.log(Level.INFO, "Found a HOLD with different value, fixed :D");
+            return true;
+        } else {
+            toAutoplay.add(evt);
+            Logger.global.log(Level.INFO, "to Autoplay ({0}): {1} {2}",
+                new Object[] {evt.getValue(), evt.flag, evt.getTotalPosition()});
+            return false;
+        }
     }
     
-    /** 
+    /**
      * This method will return a map ordered by measures and a list of events for each measure
      * @return A map with ordered measures => list of events
      */
     public Map<Integer, EventList> getEventsPerMeasure() {
-	Map<Integer, EventList> epm = new TreeMap<Integer, EventList>();
-	
-	for(Event e : this) {	    
-	    if(!epm.containsKey(e.getMeasure()))
-		epm.put(e.getMeasure(), new EventList());
-	    
-	    epm.get(e.getMeasure()).add(e);
-	}
-	
-	return epm;
+        Map<Integer, EventList> epm = new TreeMap<>();
+
+        for (Event e : this) {
+            if (!epm.containsKey(e.getMeasure()))
+                epm.put(e.getMeasure(), new EventList());
+
+            epm.get(e.getMeasure()).add(e);
+        }
+
+        return epm;
     }
-    
-    /** 
+
+    /**
      * This method will return a map with channels and a list of events for each channel
      * @return A map with channels => list of events
      */
     public Map<Event.Channel, EventList> getEventsPerChannel() {
-	Map<Event.Channel, EventList> epc = new EnumMap<Event.Channel, EventList>(Event.Channel.class);
-	
-	for(Event e : this) {
-	    if(!epc.containsKey(e.getChannel()))
-		epc.put(e.getChannel(), new EventList());
-	    epc.get(e.getChannel()).add(e);
-	}
-	
-	return epc;
+        Map<Event.Channel, EventList> epc = new EnumMap<>(Event.Channel.class);
+
+        for (Event e : this) {
+            if (!epc.containsKey(e.getChannel()))
+                epc.put(e.getChannel(), new EventList());
+            epc.get(e.getChannel()).add(e);
+        }
+
+        return epc;
     }
-    
+
     /**
      * This method will return only the normal notes
      * @return A list with all the normal notes
      */
     public EventList getOnlyNormalNotes() {
-	EventList nn = new EventList();
-	
-	for(Event e : this) {
-	    if(e.getFlag().equals(Event.Flag.NONE))
-		nn.add(e);
-	}
-	
-	return nn;
+        EventList nn = new EventList();
+
+        for (Event e : this) {
+            if (e.getFlag().equals(Event.Flag.NONE))
+                nn.add(e);
+        }
+
+        return nn;
     }
-    
+
     /**
      * This method will return only the long notes
      * @return A list with all the long notes
      */
     public EventList getOnlyLongNotes() {
-	EventList ln = new EventList();
-	
-	for(Event e : this) {
-	    if(e.getFlag().equals(Event.Flag.HOLD) || e.getFlag().equals(Event.Flag.RELEASE))
-		ln.add(e);
-	}
-	
-	return ln;
+        EventList ln = new EventList();
+
+        for (Event e : this) {
+            if (e.getFlag().equals(Event.Flag.HOLD) || e.getFlag().equals(Event.Flag.RELEASE))
+                ln.add(e);
+        }
+
+        return ln;
     }
-    
+
     /**
      * This method will return all the events on the selected channel
      * @param channel The selected channel
@@ -379,57 +412,51 @@ public class EventList extends ArrayList<Event> {
      */
     public EventList getEventsFromThisChannel(Channel channel) {
         EventList eftc = new EventList();
-        
-        for(Event e : this) {
-            if(e.getChannel().equals(channel))
+
+        for (Event e : this) {
+            if (e.getChannel().equals(channel))
                 eftc.add(e);
         }
-        
+
         return eftc;
     }
-    
-    
-    /**
-    * This method will mirrorize the notes in the EventList
-    * TODO ADD P2 SUPPORT
-    */
-    public void channelMirror()
-    {
-	Iterator<Event> it = this.iterator();
 
-	while(it.hasNext())
-	{
-	    Event e = it.next();
-	    e.setChannel(Event.Channel.mirrorChannel(e.getChannel()));
-	}
+    /**
+     * This method will mirrorize the notes in the EventList
+     * TODO ADD P2 SUPPORT
+     */
+    public void channelMirror() {
+        Iterator<Event> it = this.iterator();
+
+        while (it.hasNext()) {
+            Event e = it.next();
+            e.setChannel(Event.Channel.mirrorChannel(e.getChannel()));
+        }
     }
 
     /**
      * This method will shuffle the notes in the EventList
      * TODO ADD P2 SUPPORT
      */
-    public void channelShuffle()
-    {
-        List<Event.Channel> channelSwap = new ArrayList<Event.Channel>();
-	
-	Collections.addAll(channelSwap, Event.Channel.playableChannels());
+    public void channelShuffle() {
+        List<Event.Channel> channelSwap = new ArrayList<>();
 
+        Collections.addAll(channelSwap, Event.Channel.playableChannels());
         Collections.shuffle(channelSwap);
 
-	Iterator<Event> it = this.iterator();
-	
-        while(it.hasNext())
-        {
+        Iterator<Event> it = this.iterator();
+
+        while (it.hasNext()) {
             Event e = it.next();
-            switch(e.getChannel())
-            {
-            case NOTE_1: e.setChannel(channelSwap.get(0)); break;
-            case NOTE_2: e.setChannel(channelSwap.get(1)); break;
-            case NOTE_3: e.setChannel(channelSwap.get(2)); break;
-            case NOTE_4: e.setChannel(channelSwap.get(3)); break;
-            case NOTE_5: e.setChannel(channelSwap.get(4)); break;
-            case NOTE_6: e.setChannel(channelSwap.get(5)); break;
-            case NOTE_7: e.setChannel(channelSwap.get(6)); break;
+            switch (e.getChannel()) {
+                case NOTE_1: e.setChannel(channelSwap.get(0)); break;
+                case NOTE_2: e.setChannel(channelSwap.get(1)); break;
+                case NOTE_3: e.setChannel(channelSwap.get(2)); break;
+                case NOTE_4: e.setChannel(channelSwap.get(3)); break;
+                case NOTE_5: e.setChannel(channelSwap.get(4)); break;
+                case NOTE_6: e.setChannel(channelSwap.get(5)); break;
+                case NOTE_7: e.setChannel(channelSwap.get(6)); break;
+                default: break;
             }
         }
     }
@@ -439,73 +466,67 @@ public class EventList extends ArrayList<Event> {
      * o2jam randomize the pattern each measure unless a longnote is in between measures
      * This implementation keeps the randomization of the previous measure if that happens
      */
-    public void channelRandom()
-    {
-        List<Event.Channel> channelSwap = new ArrayList<Event.Channel>();
+    public void channelRandom() {
+        List<Event.Channel> channelSwap = new ArrayList<>();
 
-	Collections.addAll(channelSwap, Event.Channel.playableChannels());
+        Collections.addAll(channelSwap, Event.Channel.playableChannels());
+        Collections.shuffle(channelSwap);
 
-	Collections.shuffle(channelSwap);
+        EnumMap<Event.Channel, Event.Channel> lnMap = new EnumMap<>(Event.Channel.class);
 
-	EnumMap<Event.Channel, Event.Channel> lnMap = new EnumMap<Event.Channel, Event.Channel>(Event.Channel.class);
+        int lastMeasure = -1;
 
-	int last_measure = -1;
-	
-	Iterator<Event> it = this.iterator();
-        while(it.hasNext())
-        {
+        Iterator<Event> it = this.iterator();
+        while (it.hasNext()) {
             Event e = it.next();
 
-                if(e.getMeasure() > last_measure)
-                {
-                    if(lnMap.isEmpty())
-                        Collections.shuffle(channelSwap);
-                    last_measure = e.getMeasure();
-                }
+            if (e.getMeasure() > lastMeasure) {
+                if (lnMap.isEmpty())
+                    Collections.shuffle(channelSwap);
+                lastMeasure = e.getMeasure();
+            }
 
-            switch(e.getChannel())
-            {
-		case NOTE_1:
-		    setRandomChannel(e, lnMap, channelSwap.get(0));
-		    break;
-		case NOTE_2:
-		    setRandomChannel(e, lnMap, channelSwap.get(1));
-		    break;
-		case NOTE_3:
-		    setRandomChannel(e, lnMap, channelSwap.get(2));
-		    break;
-		case NOTE_4:
-		    setRandomChannel(e, lnMap, channelSwap.get(3));
-		    break;
-		case NOTE_5:
-		    setRandomChannel(e, lnMap, channelSwap.get(4));
-		    break;
-		case NOTE_6:
-		    setRandomChannel(e, lnMap, channelSwap.get(5));
-		    break;
-		case NOTE_7:
-		    setRandomChannel(e, lnMap, channelSwap.get(6));
-		    break;
+            switch (e.getChannel()) {
+                case NOTE_1:
+                    setRandomChannel(e, lnMap, channelSwap.get(0));
+                    break;
+                case NOTE_2:
+                    setRandomChannel(e, lnMap, channelSwap.get(1));
+                    break;
+                case NOTE_3:
+                    setRandomChannel(e, lnMap, channelSwap.get(2));
+                    break;
+                case NOTE_4:
+                    setRandomChannel(e, lnMap, channelSwap.get(3));
+                    break;
+                case NOTE_5:
+                    setRandomChannel(e, lnMap, channelSwap.get(4));
+                    break;
+                case NOTE_6:
+                    setRandomChannel(e, lnMap, channelSwap.get(5));
+                    break;
+                case NOTE_7:
+                    setRandomChannel(e, lnMap, channelSwap.get(6));
+                    break;
+                default:
+                    break;
             }
         }
     }
 
-    private void setRandomChannel(Event e, EnumMap<Event.Channel, Event.Channel> lnMap, Event.Channel random)
-    {
+    private void setRandomChannel(Event e, EnumMap<Event.Channel, Event.Channel> lnMap, Event.Channel random) {
         Event.Channel c = random;
 
-        if(e.getFlag() == Event.Flag.HOLD || e.getFlag() == Event.Flag.RELEASE)
-        {
-            if(!lnMap.containsKey(e.getChannel()))
+        if (e.getFlag() == Event.Flag.HOLD || e.getFlag() == Event.Flag.RELEASE) {
+            if (!lnMap.containsKey(e.getChannel()))
                 lnMap.put(e.getChannel(), c);
             else
                 c = lnMap.remove(e.getChannel());
-        }
-        else if(e.getFlag() == Event.Flag.NONE)
+        } else if (e.getFlag() == Event.Flag.NONE) {
             c = lnMap.containsValue(c) ? Event.Channel.NONE : c;
+        }
 
-        if(c == null)
-        {
+        if (c == null) {
             Logger.global.log(Level.WARNING, "FUCK THIS RANDOMNESS! I mean... channel null :/");
             c = random;
         }

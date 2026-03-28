@@ -166,7 +166,7 @@ public class LWJGLGameWindow implements GameWindow {
         this.width = dm.getWidth();
         this.height = dm.getHeight();
         this.vsync = vsync;
-        this.fpsLimiter = GameOptions.FpsLimiter.x1;  // Default to x1 if not specified
+        this.fpsLimiter = GameOptions.FpsLimiter.X1;  // Default to x1 if not specified
         this.fullscreen = fullscreen;
         // Use dynamically detected monitor refresh rate, fallback to DisplayMode frequency
         this.refreshRate = getPrimaryMonitorRefreshRate();
@@ -183,7 +183,7 @@ public class LWJGLGameWindow implements GameWindow {
         this.width = dm.getWidth();
         this.height = dm.getHeight();
         this.vsync = vsync;
-        this.fpsLimiter = fpsLimiter != null ? fpsLimiter : GameOptions.FpsLimiter.x1;
+        this.fpsLimiter = fpsLimiter != null ? fpsLimiter : GameOptions.FpsLimiter.X1;
         this.fullscreen = fullscreen;
         // Use dynamically detected monitor refresh rate, fallback to DisplayMode frequency
         this.refreshRate = getPrimaryMonitorRefreshRate();
@@ -718,7 +718,7 @@ public class LWJGLGameWindow implements GameWindow {
             update();
 
             // FPS limiter - Hybrid spin-wait approach (only when VSync is OFF)
-            if (!vsync && fpsLimiter != null && fpsLimiter != GameOptions.FpsLimiter.Unlimited) {
+            if (!vsync && fpsLimiter != null && fpsLimiter != GameOptions.FpsLimiter.UNLIMITED) {
                 long now;
                 
                 // 1. Sleep while we have more than 1ms remaining (saves CPU)

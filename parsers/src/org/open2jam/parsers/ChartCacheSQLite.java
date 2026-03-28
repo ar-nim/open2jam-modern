@@ -1,8 +1,5 @@
 package org.open2jam.parsers;
 
-import org.open2jam.parsers.utils.Logger;
-
-import javax.imageio.ImageIO;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -10,11 +7,24 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.*;
-import java.util.*;
-import java.util.concurrent.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
+
+import javax.imageio.ImageIO;
+
+import org.open2jam.parsers.utils.Logger;
 
 /**
  * SQLite-based chart metadata cache with root-relative path model.
@@ -72,6 +82,14 @@ public class ChartCacheSQLite {
         return t;
     });
     private static volatile boolean shuttingDown = false;
+
+    /**
+     * Private constructor to prevent instantiation.
+     * This class is a utility class with only static methods.
+     */
+    private ChartCacheSQLite() {
+        // Utility class - no instances
+    }
 
     // ===== Helper Methods =====
 
@@ -183,10 +201,10 @@ public class ChartCacheSQLite {
         "INSERT OR IGNORE INTO libraries (root_path, name, added_at, is_active) VALUES (?, ?, ?, 1)";
     
     private static final String GET_LIBRARY_BY_ID_SQL =
-        "SELECT * FROM libraries WHERE id = ?";
-    
+        "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries WHERE id = ?";
+
     private static final String GET_ALL_LIBRARIES_SQL =
-        "SELECT * FROM libraries ORDER BY name";
+        "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries ORDER BY name";
     
     private static final String UPDATE_LIBRARY_ROOT_SQL =
         "UPDATE libraries SET root_path = ? WHERE id = ?";
@@ -218,7 +236,12 @@ public class ChartCacheSQLite {
         """;
     
     private static final String GET_DIFFICULTIES_FOR_SONG_SQL = """
-        SELECT * FROM chart_cache
+        SELECT id, library_id, relative_path, song_group_id, chart_list_hash,
+               source_file_size, source_file_modified, chart_type, chart_index,
+               sha256_hash, title, artist, genre, noter, level, keys, players, bpm,
+               notes, duration, cover_offset, cover_size, note_data_offset, note_data_size,
+               cover_data, cover_external_path, cached_at
+        FROM chart_cache
         WHERE song_group_id = ?
         ORDER BY chart_index
         """;
@@ -250,29 +273,24 @@ public class ChartCacheSQLite {
     public static void initialize() {
         // Ensure save directory exists
         File saveDir = new File("save");
-        if (!saveDir.exists()) {
-            if (!saveDir.mkdirs()) {
-                throw new RuntimeException("Failed to create save directory: " + saveDir.getAbsolutePath());
-            }
+        if (!saveDir.exists() && !saveDir.mkdirs()) {
+            throw new IllegalStateException("Failed to create save directory: " + saveDir.getAbsolutePath());
         }
 
         try {
             File dbFile = new File(DB_PATH);
-            
+
             // Create dedicated writer connection
             writerConnection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-            
+
             // Enable foreign keys on writer connection
             try (Statement stmt = writerConnection.createStatement()) {
                 stmt.execute("PRAGMA foreign_keys = ON");
                 stmt.executeUpdate(CREATE_TABLES_SQL);
             }
 
-            // Silent initialization
-            
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Failed to initialize ChartCacheSQLite", e);
-            throw new RuntimeException("ChartCacheSQLite initialization failed", e);
+            throw new IllegalStateException("ChartCacheSQLite initialization failed", e);
         }
     }
 
@@ -475,8 +493,8 @@ public class ChartCacheSQLite {
     private static Library getLibraryByPath(String rootPath) throws SQLException {
         try (Connection conn = createReadConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT * FROM libraries WHERE root_path = ?")) {
-            
+                    "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries WHERE root_path = ?")) {
+
             stmt.setString(1, rootPath);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -584,8 +602,31 @@ public class ChartCacheSQLite {
         private static final int BATCH_THRESHOLD = 1000;  // Execute batch every 1000 rows
 
         /**
+         * ThreadLocal MessageDigest for SHA-1 hashing.
+         * Reused across batch operations to avoid object creation overhead.
+         * Thread-safe via ThreadLocal isolation.
+         *
+         * <p>Note: ThreadLocal.remove() is intentionally NOT called because:
+         * <ul>
+         *   <li>The ThreadLocal is static and lives for the application lifetime</li>
+         *   <li>Reusing MessageDigest instances is a performance optimization</li>
+         *   <li>Memory is only reclaimed when threads terminate</li>
+         *   <li>This is acceptable for long-running server threads</li>
+         * </ul>
+         * </p>
+         */
+        @SuppressWarnings("java:S5164")  // Intentional: ThreadLocal reuse for performance
+        private static final ThreadLocal<MessageDigest> SHA1_DIGEST = ThreadLocal.withInitial(() -> {
+            try {
+                return MessageDigest.getInstance("SHA-1");
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException("SHA-1 algorithm not available (required by Java spec)", e);
+            }
+        });
+
+        /**
          * Create batch inserter.
-         * 
+         *
          * <p>Caller must hold writeLock (call between beginBulkInsert and commitBulkInsert).</p>
          *
          * @throws SQLException if statement cannot be prepared
@@ -629,12 +670,11 @@ public class ChartCacheSQLite {
                 Integer noteOffset = null;
                 Integer noteSize = null;
 
-                if (chart instanceof OJNChart) {
-                    OJNChart ojn = (OJNChart) chart;
-                    coverOffset = ojn.cover_offset;
-                    coverSize = ojn.cover_size;
-                    noteOffset = ojn.note_offset;
-                    noteSize = ojn.note_offset_end - ojn.note_offset;
+                if (chart instanceof OJNChart ojn) {
+                    coverOffset = ojn.coverOffset;
+                    coverSize = ojn.coverSize;
+                    noteOffset = ojn.noteOffset;
+                    noteSize = ojn.noteOffsetEnd - ojn.noteOffset;
                 }
 
                 // Set parameters
@@ -645,7 +685,7 @@ public class ChartCacheSQLite {
                 stmt.setString(paramIndex++, chartListHash);
                 stmt.setLong(paramIndex++, fileSize);
                 stmt.setLong(paramIndex++, fileModified);
-                stmt.setString(paramIndex++, chart.type.name());
+                stmt.setString(paramIndex++, chart.getType() != null ? chart.getType().name() : "NONE");
                 stmt.setInt(paramIndex++, i);  // chart_index
                 stmt.setString(paramIndex++, chart.getTitle());
                 stmt.setString(paramIndex++, chart.getArtist());
@@ -661,7 +701,7 @@ public class ChartCacheSQLite {
                 stmt.setObject(paramIndex++, coverSize);
                 stmt.setObject(paramIndex++, noteOffset);
                 stmt.setObject(paramIndex++, noteSize);
-                stmt.setLong(paramIndex++, System.currentTimeMillis());
+                stmt.setLong(paramIndex, System.currentTimeMillis());  // ← LAST parameter (23), no ++
 
                 stmt.addBatch();
                 batchSize++;
@@ -690,6 +730,49 @@ public class ChartCacheSQLite {
         public void close() throws SQLException {
             stmt.close();
         }
+
+        /**
+         * Generate song group ID (SHA-1 hash of library_id:relative_path).
+         * Groups all difficulties from the same OJN file.
+         *
+         * <p>Uses ThreadLocal MessageDigest for performance - avoids creating new instance per call.</p>
+         *
+         * @param libraryId Library row ID
+         * @param relativePath Relative path to chart file
+         * @return 40-character hex string
+         */
+        private String generateSongGroupId(int libraryId, String relativePath) {
+            String input = libraryId + ":" + relativePath;
+            MessageDigest md = SHA1_DIGEST.get();
+            md.reset();  // Reset state before computing new hash
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash);
+        }
+
+        /**
+         * Generate chart list hash (for cache invalidation).
+         *
+         * @param relativePath Relative path to chart file
+         * @param modified File modification timestamp
+         * @return Short hash string
+         */
+        private String generateChartListHash(String relativePath, long modified) {
+            return Integer.toHexString((relativePath + modified).hashCode());
+        }
+
+        /**
+         * Convert byte array to hexadecimal string.
+         *
+         * @param bytes Bytes to convert
+         * @return Hex string (lowercase, 2 chars per byte)
+         */
+        private static String bytesToHex(byte[] bytes) {
+            StringBuilder hex = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        }
     }
 
     /**
@@ -709,17 +792,16 @@ public class ChartCacheSQLite {
             
             stmt.setInt(1, libraryId);
             List<ChartMetadata> results = new ArrayList<>();
-            
+
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     ChartMetadata m = extractMetadata(rs);
-                    m.libraryRootPath = rs.getString("library_root_path");
                     results.add(m);
                 }
                 return results;
             }
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Cache read error for library " + libraryId, e);
+            Logger.global.log(Level.SEVERE, e, () -> "Cache read error for library " + libraryId);
             return Collections.emptyList();
         }
     }
@@ -755,7 +837,7 @@ public class ChartCacheSQLite {
                 return groups;
             }
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Failed to get song groups for library " + libraryId, e);
+            Logger.global.log(Level.SEVERE, e, () -> "Failed to get song groups for library " + libraryId);
             return Collections.emptyList();
         }
     }
@@ -785,7 +867,7 @@ public class ChartCacheSQLite {
                 return diffs;
             }
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Failed to get difficulties for song " + songGroupId, e);
+            Logger.global.log(Level.SEVERE, e, () -> "Failed to get difficulties for song " + songGroupId);
             return Collections.emptyList();
         }
     }
@@ -794,12 +876,12 @@ public class ChartCacheSQLite {
 
     /**
      * Load chart for gameplay with lazy validation.
-     * 
+     *
      * <p>Validates file existence and modification time. If file has changed,
      * re-parses and re-caches the chart automatically.</p>
-     * 
+     *
      * <p>This is the ONLY point where file system validation occurs - NOT on startup.</p>
-     * 
+     *
      * @param cached Cached metadata from getCachedCharts()
      * @return Parsed Chart, or null if file missing/error
      */
@@ -809,57 +891,82 @@ public class ChartCacheSQLite {
 
         // File missing - invalidate cache entry
         if (!sourceFile.exists()) {
-            Logger.global.warning("Chart file missing: " + fullPath + " - invalidating cache");
-            invalidateCache(cached.id);
+            Logger.global.warning(() -> String.format("Chart file missing: %s - invalidating cache", fullPath));
+            invalidateCache(cached.getId());
             return null;
         }
 
         // File modified - re-parse and re-cache (Fix #6)
         long currentModified = sourceFile.lastModified();
-        if (currentModified != cached.sourceFileModified) {
-            // Chart modified - re-parsing
-
-            // Invalidate old cache entry
-            invalidateCache(cached.id);
-
-            // Re-parse file
-            ChartList newList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-
-            if (newList != null) {
-                // Re-cache with new metadata
-                try {
-                    Library lib = getLibraryById(cached.libraryId);
-                    if (lib != null) {
-                        try (BatchInserter batch = new BatchInserter()) {
-                            batch.addChartList(lib, newList);
-                            batch.flush();
-                        }
-                    }
-                } catch (SQLException e) {
-                    Logger.global.log(Level.WARNING, "Failed to re-cache modified chart", e);
-                }
-
-                // Return requested difficulty
-                if (cached.chartIndex >= 0 && cached.chartIndex < newList.size()) {
-                    return newList.get(cached.chartIndex);
-                }
-                return newList.size() > 0 ? newList.get(0) : null;
-            }
-
-            return null;
+        if (currentModified != cached.getSourceFileModified()) {
+            return handleModifiedChart(cached, sourceFile);
         }
 
         // Cache valid - parse and return
-        ChartList chartList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-        if (chartList == null || chartList.isEmpty()) {
+        return parseAndReturnChart(sourceFile, cached.getChartIndex());
+    }
+
+    /**
+     * Handle modified chart file - invalidate cache, re-parse, and re-cache.
+     *
+     * @param cached Cached metadata
+     * @param sourceFile Chart source file
+     * @return Parsed Chart, or null if error
+     */
+    private static Chart handleModifiedChart(ChartMetadata cached, File sourceFile) {
+        // Invalidate old cache entry
+        invalidateCache(cached.getId());
+
+        // Re-parse file
+        ChartList newList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
+        if (newList.isEmpty()) {
             return null;
         }
-        
-        // Return requested difficulty
-        if (cached.chartIndex >= 0 && cached.chartIndex < chartList.size()) {
-            return chartList.get(cached.chartIndex);
+
+        // Re-cache with new metadata
+        try {
+            Library lib = getLibraryById(cached.getLibraryId());
+            if (lib != null) {
+                try (BatchInserter batch = new BatchInserter()) {
+                    batch.addChartList(lib, newList);
+                    batch.flush();
+                }
+            }
+        } catch (SQLException e) {
+            Logger.global.log(Level.WARNING, "Failed to re-cache modified chart", e);
         }
-        return chartList.size() > 0 ? chartList.get(0) : null;
+
+        // Return requested difficulty
+        return getChartByIndex(newList, cached.getChartIndex());
+    }
+
+    /**
+     * Parse chart file and return chart by index.
+     *
+     * @param sourceFile Chart source file
+     * @param chartIndex Requested difficulty index
+     * @return Parsed Chart, or null if error
+     */
+    private static Chart parseAndReturnChart(File sourceFile, int chartIndex) {
+        ChartList chartList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
+        if (chartList.isEmpty()) {
+            return null;
+        }
+        return getChartByIndex(chartList, chartIndex);
+    }
+
+    /**
+     * Extract chart from list by index.
+     *
+     * @param chartList List of charts
+     * @param chartIndex Requested difficulty index
+     * @return Chart at index, first chart if index out of bounds, or null if empty
+     */
+    private static Chart getChartByIndex(ChartList chartList, int chartIndex) {
+        if (chartIndex >= 0 && chartIndex < chartList.size()) {
+            return chartList.get(chartIndex);
+        }
+        return !chartList.isEmpty() ? chartList.get(0) : null;
     }
 
     // ===== Binary Offset Extraction (Fix #4, Standard I/O) =====
@@ -882,9 +989,9 @@ public class ChartCacheSQLite {
      */
     public static java.awt.image.BufferedImage getCoverFromCache(ChartMetadata cached) {
         // Option 1: Cached BLOB thumbnail
-        if (cached.coverData != null && cached.coverData.length > 0) {
+        if (cached.getCoverData() != null && cached.getCoverData().length > 0) {
             try {
-                return ImageIO.read(new ByteArrayInputStream(cached.coverData));
+                return ImageIO.read(new ByteArrayInputStream(cached.getCoverData()));
             } catch (IOException e) {
                 // Fall through to next option
             }
@@ -892,12 +999,12 @@ public class ChartCacheSQLite {
 
         // Option 2: OJN embedded cover (using cached offsets, standard I/O)
         if (cached.hasEmbeddedCover()) {
-            Integer coverOffset = cached.coverOffset;
-            Integer coverSize = cached.coverSize;
-            
+            Integer coverOffset = cached.getCoverOffset();
+            Integer coverSize = cached.getCoverSize();
+
             // Security: Validate cover size (prevent DoS via malicious OJN)
             if (coverSize <= 0 || coverSize > 10_000_000) {
-                Logger.global.warning("Invalid cover size for " + cached.relativePath + ": " + coverSize);
+                Logger.global.warning(() -> String.format("Invalid cover size for %s: %d", cached.getRelativePath(), coverSize));
                 return null;
             }
 
@@ -907,16 +1014,16 @@ public class ChartCacheSQLite {
                 f.readFully(coverBytes);
                 return ImageIO.read(new ByteArrayInputStream(coverBytes));
             } catch (IOException e) {
-                Logger.global.log(Level.WARNING, "Failed to read embedded cover from " + cached.relativePath, e);
+                Logger.global.log(Level.WARNING, e, () -> "Failed to read embedded cover from " + cached.getRelativePath());
             }
         }
 
         // Option 3: External cover file (BMS, SM)
-        if (cached.coverExternalPath != null && !cached.coverExternalPath.isEmpty()) {
+        if (cached.getCoverExternalPath() != null && !cached.getCoverExternalPath().isEmpty()) {
             try {
-                return ImageIO.read(new File(cached.coverExternalPath));
+                return ImageIO.read(new File(cached.getCoverExternalPath()));
             } catch (IOException e) {
-                Logger.global.log(Level.WARNING, "Failed to read external cover " + cached.coverExternalPath, e);
+                Logger.global.log(Level.WARNING, e, () -> "Failed to read external cover " + cached.getCoverExternalPath());
             }
         }
 
@@ -938,8 +1045,8 @@ public class ChartCacheSQLite {
      */
     public static String getOrCalculateHash(ChartMetadata cached) {
         // Return existing hash if available
-        if (cached.sha256Hash != null) {
-            return cached.sha256Hash;
+        if (cached.getSha256Hash() != null) {
+            return cached.getSha256Hash();
         }
 
         // Calculate hash asynchronously (don't block UI)
@@ -958,8 +1065,8 @@ public class ChartCacheSQLite {
      */
     public static String getHashForScore(ChartMetadata cached) {
         // If hash exists, return immediately
-        if (cached.sha256Hash != null) {
-            return cached.sha256Hash;
+        if (cached.getSha256Hash() != null) {
+            return cached.getSha256Hash();
         }
 
         // Calculate synchronously (block until ready)
@@ -967,17 +1074,17 @@ public class ChartCacheSQLite {
             new File(cached.getFullPath())
         );
 
-        if (chartList == null || chartList.isEmpty()) {
+        if (chartList.isEmpty()) {
             return null;
         }
 
         // Get the specific difficulty chart
-        Chart chart = (cached.chartIndex >= 0 && cached.chartIndex < chartList.size())
-            ? chartList.get(cached.chartIndex)
+        Chart chart = (cached.getChartIndex() >= 0 && cached.getChartIndex() < chartList.size())
+            ? chartList.get(cached.getChartIndex())
             : chartList.get(0);
 
         String hash = SHA256Util.hashChart(chart);
-        updateHash(cached.id, hash);
+        updateHash(cached.getId(), hash);
         return hash;
     }
 
@@ -995,35 +1102,35 @@ public class ChartCacheSQLite {
         if (shuttingDown) {
             return;
         }
-        
+
         // Submit to single-threaded executor
         hashExecutor.submit(() -> {
             // Check for shutdown again
             if (shuttingDown) {
                 return;
             }
-            
+
             try {
                 // Parse chart (expensive operation)
                 ChartList chartList = ChartParser.parseFile(
                     new File(cached.getFullPath())
                 );
 
-                if (chartList == null || chartList.isEmpty()) {
+                if (chartList.isEmpty()) {
                     return;
                 }
 
                 // Get the specific difficulty chart
-                Chart chart = (cached.chartIndex >= 0 && cached.chartIndex < chartList.size())
-                    ? chartList.get(cached.chartIndex)
+                Chart chart = (cached.getChartIndex() >= 0 && cached.getChartIndex() < chartList.size())
+                    ? chartList.get(cached.getChartIndex())
                     : chartList.get(0);
 
                 String hash = SHA256Util.hashChart(chart);
                 if (hash != null) {
-                    updateHash(cached.id, hash);
+                    updateHash(cached.getId(), hash);
                 }
             } catch (Exception e) {
-                Logger.global.log(Level.WARNING, "Failed to calculate hash for " + cached.relativePath, e);
+                Logger.global.log(Level.WARNING, e, () -> "Failed to calculate hash for " + cached.getRelativePath());
             }
         });
     }
@@ -1043,7 +1150,7 @@ public class ChartCacheSQLite {
             stmt.setInt(2, chartId);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            Logger.global.log(Level.WARNING, "Failed to update SHA-256 hash for chart " + chartId, e);
+            Logger.global.log(Level.WARNING, e, () -> "Failed to update SHA-256 hash for chart " + chartId);
         } finally {
             writeLock.unlock();
         }
@@ -1066,52 +1173,6 @@ public class ChartCacheSQLite {
             normalized += "/";
         }
         return normalized;
-    }
-
-    /**
-     * Generate song group ID (MD5 hash of library_id:relative_path).
-     * 
-     * <p>Groups all difficulties from the same OJN file.</p>
-     * 
-     * @param libraryId Library row ID
-     * @param relativePath Relative path to chart file
-     * @return 32-character hex string
-     */
-    private static String generateSongGroupId(int libraryId, String relativePath) {
-        try {
-            String input = libraryId + ":" + relativePath;
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            // MD5 is guaranteed to exist per Java spec
-            throw new RuntimeException("MD5 algorithm not available", e);
-        }
-    }
-
-    /**
-     * Generate chart list hash (for cache invalidation).
-     * 
-     * @param relativePath Relative path to chart file
-     * @param modified File modification timestamp
-     * @return Short hash string
-     */
-    private static String generateChartListHash(String relativePath, long modified) {
-        return Integer.toHexString((relativePath + modified).hashCode());
-    }
-
-    /**
-     * Convert byte array to hexadecimal string.
-     * 
-     * @param bytes Bytes to convert
-     * @return Hex string (lowercase, 2 chars per byte)
-     */
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
     }
 
     /**
@@ -1145,33 +1206,34 @@ public class ChartCacheSQLite {
      */
     private static ChartMetadata extractMetadata(ResultSet rs) throws SQLException {
         ChartMetadata m = new ChartMetadata();
-        m.id = rs.getInt("id");
-        m.libraryId = rs.getInt("library_id");
-        m.relativePath = rs.getString("relative_path");
-        m.songGroupId = rs.getString("song_group_id");
-        m.chartListHash = rs.getString("chart_list_hash");
-        m.sourceFileSize = rs.getLong("source_file_size");
-        m.sourceFileModified = rs.getLong("source_file_modified");
-        m.chartType = rs.getString("chart_type");
-        m.chartIndex = rs.getInt("chart_index");
-        m.sha256Hash = rs.getString("sha256_hash");
-        m.title = rs.getString("title");
-        m.artist = rs.getString("artist");
-        m.genre = rs.getString("genre");
-        m.noter = rs.getString("noter");
-        m.level = rs.getInt("level");
-        m.keys = rs.getInt("keys");
-        m.players = rs.getInt("players");
-        m.bpm = rs.getDouble("bpm");
-        m.notes = rs.getInt("notes");
-        m.duration = rs.getInt("duration");
-        m.coverOffset = rs.getObject("cover_offset", Integer.class);
-        m.coverSize = rs.getObject("cover_size", Integer.class);
-        m.coverData = rs.getBytes("cover_data");
-        m.coverExternalPath = rs.getString("cover_external_path");
-        m.noteDataOffset = rs.getObject("note_data_offset", Integer.class);
-        m.noteDataSize = rs.getObject("note_data_size", Integer.class);
-        m.cachedAt = rs.getLong("cached_at");
+        m.setId(rs.getInt("id"));
+        m.setLibraryId(rs.getInt("library_id"));
+        m.setRelativePath(rs.getString("relative_path"));
+        m.setSongGroupId(rs.getString("song_group_id"));
+        m.setChartListHash(rs.getString("chart_list_hash"));
+        m.setSourceFileSize(rs.getLong("source_file_size"));
+        m.setSourceFileModified(rs.getLong("source_file_modified"));
+        m.setChartType(rs.getString("chart_type"));
+        m.setChartIndex(rs.getInt("chart_index"));
+        m.setSha256Hash(rs.getString("sha256_hash"));
+        m.setTitle(rs.getString("title"));
+        m.setArtist(rs.getString("artist"));
+        m.setGenre(rs.getString("genre"));
+        m.setNoter(rs.getString("noter"));
+        m.setLevel(rs.getInt("level"));
+        m.setKeys(rs.getInt("keys"));
+        m.setPlayers(rs.getInt("players"));
+        m.setBpm(rs.getDouble("bpm"));
+        m.setNotes(rs.getInt("notes"));
+        m.setDuration(rs.getInt("duration"));
+        m.setCoverOffset(rs.getObject("cover_offset", Integer.class));
+        m.setCoverSize(rs.getObject("cover_size", Integer.class));
+        m.setCoverData(rs.getBytes("cover_data"));
+        m.setCoverExternalPath(rs.getString("cover_external_path"));
+        m.setNoteDataOffset(rs.getObject("note_data_offset", Integer.class));
+        m.setNoteDataSize(rs.getObject("note_data_size", Integer.class));
+        m.setCachedAt(rs.getLong("cached_at"));
+        m.setLibraryRootPath(rs.getString("library_root_path"));
         return m;
     }
 
@@ -1190,7 +1252,7 @@ public class ChartCacheSQLite {
             stmt.setInt(1, chartId);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            Logger.global.log(Level.WARNING, "Failed to invalidate cache for chart " + chartId, e);
+            Logger.global.log(Level.WARNING, e, () -> "Failed to invalidate cache for chart " + chartId);
         } finally {
             writeLock.unlock();
         }

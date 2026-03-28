@@ -1,51 +1,71 @@
 
 package org.open2jam.render;
 
-import org.open2jam.sound.SoundInstance;
-import org.open2jam.game.TimingData;
-import org.open2jam.game.Latency;
-import com.github.dtinth.partytime.Client;
-import com.github.dtinth.partytime.server.Connection;
-import com.github.dtinth.partytime.server.Server;
-import org.open2jam.sound.ALSoundSystem;
-import org.open2jam.sound.ALSound;
 import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
-import java.util.*;
 import java.util.logging.Level;
+
 import javax.imageio.ImageIO;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
-import org.open2jam.render.lwjgl.Keyboard;
+
+import org.lwjgl.opengl.GL11;
+import org.open2jam.AppContext;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
-import org.open2jam.game.speed.SpeedMultiplier;
-import org.open2jam.game.speed.Speed;
-import org.open2jam.game.position.WSpeed;
-import org.open2jam.parsers.Chart;
-import org.open2jam.parsers.Event;
-import org.open2jam.parsers.EventList;
-import org.open2jam.parsers.utils.SampleData;
-import org.open2jam.render.entities.*;
+import org.open2jam.game.Latency;
+import org.open2jam.game.TimingData;
 import org.open2jam.game.judgment.JudgmentResult;
 import org.open2jam.game.judgment.JudgmentStrategy;
 import org.open2jam.game.position.HiSpeed;
 import org.open2jam.game.position.NoteDistanceCalculator;
 import org.open2jam.game.position.RegulSpeed;
+import org.open2jam.game.position.WSpeed;
 import org.open2jam.game.position.XRSpeed;
+import org.open2jam.game.speed.Speed;
+import org.open2jam.game.speed.SpeedMultiplier;
+import org.open2jam.parsers.Chart;
+import org.open2jam.parsers.Event;
+import org.open2jam.parsers.EventList;
+import org.open2jam.parsers.utils.SampleData;
+import org.open2jam.render.entities.BarEntity;
+import org.open2jam.render.entities.BgaEntity;
+import org.open2jam.render.entities.ComboCounterEntity;
+import org.open2jam.render.entities.CompositeEntity;
+import org.open2jam.render.entities.Entity;
+import org.open2jam.render.entities.LongNoteEntity;
+import org.open2jam.render.entities.MeasureEntity;
+import org.open2jam.render.entities.NoteEntity;
+import org.open2jam.render.entities.NumberEntity;
+import org.open2jam.render.entities.SampleEntity;
+import org.open2jam.render.entities.SoundEntity;
+import org.open2jam.render.entities.TimeEntity;
+import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.render.lwjgl.TrueTypeFont;
+import org.open2jam.sound.ALSoundSystem;
 import org.open2jam.sound.Sound;
 import org.open2jam.sound.SoundChannel;
+import org.open2jam.sound.SoundInstance;
 import org.open2jam.sound.SoundSystem;
 import org.open2jam.sound.SoundSystemException;
-import org.open2jam.util.*;
-import org.lwjgl.opengl.GL11;
+import org.open2jam.util.DebugLogger;
+import org.open2jam.util.Logger;
+import org.open2jam.util.SystemTimer;
+
+import com.github.dtinth.partytime.Client;
+import com.github.dtinth.partytime.server.Connection;
+import com.github.dtinth.partytime.server.Server;
 
 
 /**
@@ -54,6 +74,7 @@ import org.lwjgl.opengl.GL11;
  */
 public class Render implements GameWindowCallback
 {
+    private final AppContext context;  // NEW: Store AppContext
     private String localMatchingServer = "";
     private int rank;
     private final boolean normalizeSpeed;
@@ -306,11 +327,13 @@ public class Render implements GameWindowCallback
     protected final boolean AUTOSOUND;
     boolean disableAutoSound = false;
 
-    public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm) throws SoundSystemException
+    public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm, AppContext context) throws SoundSystemException  // UPDATED: Accept AppContext
     {
+        this.context = context;
+        
         // Initialize keyboard mapping arrays from Config
-        keyboardKeyCodes = Config.getInstance().getKeyCodes(Config.KeyboardType.K7);
-        keyboardMiscKeyCodes = Config.getInstance().getInstanceMiscKeyCodes();
+        keyboardKeyCodes = context.config.getKeyCodes(Config.KeyboardType.K7);
+        keyboardMiscKeyCodes = context.config.getInstanceMiscKeyCodes();
 
         window = ResourceFactory.get().getGameWindow();
 
@@ -332,13 +355,13 @@ public class Render implements GameWindowCallback
         // TODO: refactor this
         switch(opt.getSpeedType())
         {
-            case xRSpeed:
+            case XR_SPEED:
                 distance = new XRSpeed(distance);
                 break;
-            case WSpeed:
+            case W_SPEED:
                 distance = new WSpeed(distance, speedObj);
                 break;
-            case RegulSpeed:
+            case REGUL_SPEED:
                 distance = new RegulSpeed(385);
                 break;
         }
@@ -571,7 +594,7 @@ public class Render implements GameWindowCallback
         pills_draw = new LinkedList<Entity>();
 
         visibility_entity = new CompositeEntity();
-        if(opt.getVisibilityModifier() != GameOptions.VisibilityMod.None)
+        if(opt.getVisibilityModifier() != GameOptions.VisibilityMod.NONE)
             visibility(opt.getVisibilityModifier());
 
         judgment_line = skin.getEntityMap().get("JUDGMENT_LINE");
@@ -597,13 +620,13 @@ public class Render implements GameWindowCallback
 	//Let's randomize "-"
         switch(opt.getChannelModifier())
         {
-            case Mirror:
+            case MIRROR:
 		event_list.channelMirror();
             break;
-            case Shuffle:
+            case SHUFFLE:
                 event_list.channelShuffle();
             break;
-            case Random:
+            case RANDOM:
                 event_list.channelRandom();
             break;
         }
@@ -1360,7 +1383,7 @@ public class Render implements GameWindowCallback
     {
         if(soundSample == null) return null;
 
-	Sound sound = sounds.get(soundSample.sample_id);
+	Sound sound = sounds.get(soundSample.sampleId);
         if(sound == null)return null;
 
         try {
@@ -1693,7 +1716,7 @@ public class Render implements GameWindowCallback
         }
 
         // FIXME this is a hack
-        if(value != GameOptions.VisibilityMod.Sudden)skin.getEntityMap().get("JUDGMENT_LINE").setLayer(layer);
+        if(value != GameOptions.VisibilityMod.SUDDEN)skin.getEntityMap().get("JUDGMENT_LINE").setLayer(layer);
         skin.getEntityMap().get("MEASURE_MARK").setLayer(layer);
         
         entities_matrix.add(visibility_entity);

@@ -6,49 +6,84 @@ import java.util.ArrayList;
 import java.util.List;
 import org.open2jam.render.DisplayMode;
 import org.open2jam.parsers.Event;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * This class will store game options such as hi-speed and autoplay.
  * @author SilverHx
  */
 public class GameOptions {
-    
-    
+
+
     /*
      * "Hi-Speed"=>0, "xR-Speed"=>1, "W-Speed"=>2, "Regul-Speed"=>3
      */
     public enum SpeedType {
-        HiSpeed, xRSpeed, WSpeed, RegulSpeed;
-        
+        @JsonProperty("Hi-Speed") HI_SPEED("Hi-Speed"),
+        @JsonProperty("xR-Speed") XR_SPEED("xR-Speed"),
+        @JsonProperty("W-Speed") W_SPEED("W-Speed"),
+        @JsonProperty("Regul-Speed") REGUL_SPEED("Regul-Speed");
+
+        private final String displayName;
+
+        SpeedType(String displayName) {
+            this.displayName = displayName;
+        }
+
         @Override
         public String toString() {
-            return super.toString().replace("Speed", "-Speed:");
+            return displayName;
         }
     }
-    
+
     /**
      * Judgment type
      */
     public enum JudgmentType {
-        BeatJudgment, TimeJudgment;
+        @JsonProperty("Beat Judgment") BEAT_JUDGMENT("Beat Judgment"),
+        @JsonProperty("Time Judgment") TIME_JUDGMENT("Time Judgment");
+
+        private final String displayName;
+
+        JudgmentType(String displayName) {
+            this.displayName = displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
     }
 
     /**
      * UI Theme selection
      */
     public enum UiTheme {
-        Automatic, Light, Dark;
+        @JsonProperty("Automatic") AUTOMATIC("Automatic"),
+        @JsonProperty("Light") LIGHT("Light"),
+        @JsonProperty("Dark") DARK("Dark");
+
+        private final String displayName;
+
+        UiTheme(String displayName) {
+            this.displayName = displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
     }
 
     /**
      * FPS Limiter multiplier when VSync is OFF
      */
     public enum FpsLimiter {
-        Unlimited(0),
-        x1(1),
-        x2(2),
-        x4(4),
-        x8(8);
+        UNLIMITED(0),
+        X1(1),
+        X2(2),
+        X4(4),
+        X8(8);
 
         private final int multiplier;
 
@@ -70,22 +105,50 @@ public class GameOptions {
      * "None"=>0, "Hidden"=>1, "Sudden"=>2, "Dark"=>3
      */
     public enum VisibilityMod {
-        None, Hidden, Sudden, Dark;
+        @JsonProperty("None") NONE("None"),
+        @JsonProperty("Hidden") HIDDEN("Hidden"),
+        @JsonProperty("Sudden") SUDDEN("Sudden"),
+        @JsonProperty("Dark") DARK("Dark");
+
+        private final String displayName;
+
+        VisibilityMod(String displayName) {
+            this.displayName = displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
     }
-    
+
     /*
      * "None"=>0, "Mirror"=>1, "Shuffle"=>2, "Random"=>3
      */
     public enum ChannelMod {
-        None, Mirror, Shuffle, Random;
+        @JsonProperty("None") NONE("None"),
+        @JsonProperty("Mirror") MIRROR("Mirror"),
+        @JsonProperty("Shuffle") SHUFFLE("Shuffle"),
+        @JsonProperty("Random") RANDOM("Random");
+
+        private final String displayName;
+
+        ChannelMod(String displayName) {
+            this.displayName = displayName;
+        }
+
+        @Override
+        public String toString() {
+            return displayName;
+        }
     }
     
     // fields
     private double speedMultiplier = 1.0;
-    private SpeedType speedType = SpeedType.HiSpeed;
-    private VisibilityMod visibilityModifier = VisibilityMod.None;
-    private ChannelMod channelModifier = ChannelMod.None;
-    private JudgmentType judgmentType = JudgmentType.BeatJudgment;
+    private SpeedType speedType = SpeedType.HI_SPEED;
+    private VisibilityMod visibilityModifier = VisibilityMod.NONE;
+    private ChannelMod channelModifier = ChannelMod.NONE;
+    private JudgmentType judgmentType = JudgmentType.BEAT_JUDGMENT;
     
     float keyVolume = 1.0f;
     float bgmVolume = 1.0f;
@@ -98,7 +161,7 @@ public class GameOptions {
     // display options
     private boolean displayFullscreen = false;
     private boolean displayVsync = true;
-    private FpsLimiter fpsLimiter = FpsLimiter.x1;
+    private FpsLimiter fpsLimiter = FpsLimiter.X1;
     private int displayWidth = 0;
     private int displayHeight = 0;
     private int displayBitsPerPixel = 0;
@@ -111,15 +174,19 @@ public class GameOptions {
     private double displayLag = 0;
     private double audioLatency = 0;
     private String uiScale = "automatic";
-    private UiTheme uiTheme = UiTheme.Automatic;
-    
-    //public constructor. give default options
+    private UiTheme uiTheme = UiTheme.AUTOMATIC;
+
+    /**
+     * Default constructor - intentionally empty.
+     * Fields are initialized via setters for serialization compatibility.
+     */
     public GameOptions() {
+        // Intentionally empty - fields initialized via setters for serialization
     }
-    
-    
+
+
     private ArrayList<Boolean> generateDefaultAutoplayChannels() {
-        ArrayList<Boolean> out = new ArrayList<Boolean>();
+        ArrayList<Boolean> out = new ArrayList<>();
         for(Event.Channel c : Event.Channel.values())
         {
             if(c.toString().startsWith("NOTE_"))
@@ -301,12 +368,12 @@ public class GameOptions {
         this.audioLatency = audioLatency;
     }
 
-    public ArrayList<Boolean> getAutoplayChannels() {
+    public List<Boolean> getAutoplayChannels() {
         return autoplayChannels;
     }
 
     public void setAutoplayChannels(List<Boolean> autoplayChannels) {
-        this.autoplayChannels = new ArrayList<Boolean>(autoplayChannels);
+        this.autoplayChannels = new ArrayList<>(autoplayChannels);
     }
 
     public int getDisplayBitsPerPixel() {
@@ -452,7 +519,7 @@ public class GameOptions {
     }
 
     
-    private transient final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
+    private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
     
     /**
      * Add PropertyChangeListener.

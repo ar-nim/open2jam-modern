@@ -1,15 +1,11 @@
 package org.open2jam.parsers;
 
-import java.util.List;
-
 /**
  * Represents a song with multiple difficulties (Easy/Normal/Hard).
  * Used for UI grouping in song selection.
- * 
- * <p>Thread Safety: This class is immutable except for the difficulties field,
- * which should be populated once and never modified. Treat difficulties as read-only
- * after initial assignment.</p>
- * 
+ *
+ * <p>Thread Safety: This class is immutable.</p>
+ *
  * @author open2jam-modern team
  */
 public class SongGroup {
@@ -30,13 +26,6 @@ public class SongGroup {
     
     /** Maximum level across all difficulties */
     public final int maxLevel;
-    
-    /** 
-     * List of all difficulties in this group.
-     * Populated lazily when user expands the song in UI.
-     * May be null if not yet loaded.
-     */
-    public List<ChartMetadata> difficulties;
 
     /**
      * Construct a SongGroup from aggregated query results.
@@ -56,7 +45,6 @@ public class SongGroup {
         this.diffCount = diffCount;
         this.minLevel = minLevel;
         this.maxLevel = maxLevel;
-        this.difficulties = null;  // Lazily loaded
     }
 
     /**

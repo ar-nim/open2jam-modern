@@ -2,6 +2,7 @@ package org.open2jam.gui;
 
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
+import org.open2jam.AppContext;
 import org.open2jam.Open2jam;
 import org.open2jam.gui.parts.AdvancedOptions;
 import org.open2jam.gui.parts.Configuration;
@@ -14,21 +15,24 @@ import org.open2jam.gui.parts.MusicSelection;
  */
 public class Interface extends javax.swing.JFrame implements WindowListener
 {
-    
+
     private MusicSelection musicSelection;
+    private final AppContext context;  // NEW: Store AppContext
 
     /** Creates new form Interface */
-    public Interface() {
+    public Interface(AppContext context) {  // UPDATED: Accept AppContext
+        this.context = context;
         initComponents();
         setTitle(Open2jam.getProductTitle() + " - " + getTitle());
-        
+
         this.setLocationRelativeTo(null);
-        
-        musicSelection = new MusicSelection();
+
+        // Pass context to all panels
+        musicSelection = new MusicSelection(context);
         Tabs.addTab("Music Selection", musicSelection);
-        Tabs.addTab("Configuration", new Configuration());
-        Tabs.addTab("Advanced Options", new AdvancedOptions());
-        
+        Tabs.addTab("Configuration", new Configuration(context));
+        Tabs.addTab("Advanced Options", new AdvancedOptions(context));
+
         this.addWindowListener(this);
 	pack();
     }

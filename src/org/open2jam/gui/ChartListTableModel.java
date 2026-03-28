@@ -183,19 +183,19 @@ public class ChartListTableModel implements TableModel {
         if (isDatabaseMode()) {
             ChartMetadata m = getMetadata(rowIndex);
             if (m == null) return null;
-            
+
             // Get the specific difficulty's metadata
             // (chartMetadata has one row per difficulty)
             switch(columnIndex) {
                 case 0:
                     String title = m.getDisplayTitle();
                     // Show difficulty indicator
-                    if (m.chartIndex == 0) title = "[EX] " + title;
-                    else if (m.chartIndex == 1) title = "[NX] " + title;
-                    else if (m.chartIndex == 2) title = "[HX] " + title;
+                    if (m.getChartIndex() == 0) title = "[EX] " + title;
+                    else if (m.getChartIndex() == 1) title = "[NX] " + title;
+                    else if (m.getChartIndex() == 2) title = "[HX] " + title;
                     return title;
-                case 1: return m.level;
-                case 2: return m.genre != null ? m.genre : "";
+                case 1: return m.getLevel();
+                case 2: return m.getGenre() != null ? m.getGenre() : "";
             }
             return null;
         }

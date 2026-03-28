@@ -1,10 +1,6 @@
 package org.open2jam.gui.parts;
 
-import com.github.dtinth.partytime.server.Server;
-import com.github.dtinth.partytime.server.ServerUI;
 import java.awt.Component;
-import java.awt.Container;
-import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -13,47 +9,50 @@ import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
-import javax.swing.*;
+
+import javax.swing.ImageIcon;
+import javax.swing.JFileChooser;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPopupMenu;
+import javax.swing.JTable;
+import javax.swing.RowFilter;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableRowSorter;
-import org.open2jam.parsers.Chart;
-import org.open2jam.parsers.ChartList;
-import org.open2jam.render.Render;
-import org.open2jam.render.lwjgl.LWJGLGameWindow;
-import org.open2jam.render.DisplayMode;
+
+import org.open2jam.AppContext;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.GameOptions.ChannelMod;
 import org.open2jam.GameOptions.SpeedType;
 import org.open2jam.GameOptions.VisibilityMod;
+import org.open2jam.game.judgment.BeatJudgment;
+import org.open2jam.game.judgment.TimeJudgment;
 import org.open2jam.gui.ChartListTableModel;
 import org.open2jam.gui.ChartModelLoader;
 import org.open2jam.gui.ChartTableModel;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
-import org.open2jam.parsers.ChartParser;
-import org.open2jam.game.judgment.BeatJudgment;
-import org.open2jam.game.judgment.TimeJudgment;
-import org.open2jam.render.Render;
-import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.DisplayMode;
-import org.open2jam.Config;
-import org.open2jam.GameOptions;
-import org.open2jam.GameOptions.ChannelMod;
-import org.open2jam.GameOptions.SpeedType;
-import org.open2jam.GameOptions.VisibilityMod;
+import org.open2jam.render.Render;
 import org.open2jam.sound.SoundSystemException;
 import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
+import com.github.dtinth.partytime.server.Server;
+import com.github.dtinth.partytime.server.ServerUI;
+
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class MusicSelection extends javax.swing.JPanel
     implements PropertyChangeListener, ListSelectionListener {
+    private final AppContext context;  // NEW: Store AppContext
     private Server lastServer;
 
     private class PopupListener extends MouseAdapter {
@@ -132,7 +131,8 @@ public class MusicSelection extends javax.swing.JPanel
     }
 
     /** Creates new form Interface */
-    public MusicSelection() {
+    public MusicSelection(AppContext context) {  // UPDATED: Accept AppContext
+        this.context = context;
         initLogic();
         initComponents();
         load_progress.setVisible(false);
@@ -141,11 +141,11 @@ public class MusicSelection extends javax.swing.JPanel
         try {
             List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
             org.open2jam.parsers.Library lastOpenedLib = null;
-            Integer lastLibId = Config.getInstance().getLastOpenedLibraryId();
-            
+            Integer lastLibId = context.config.getLastOpenedLibraryId();  // Use context
+
             for (org.open2jam.parsers.Library lib : libs) {
                 combo_dirs.addItem(new FileItem(new File(lib.rootPath)));
-                
+
                 // Find last opened library
                 if (lastLibId != null && lib.id == lastLibId) {
                     lastOpenedLib = lib;
@@ -271,7 +271,7 @@ public class MusicSelection extends javax.swing.JPanel
     
     private void readGameOptions() {
         // TODO: read Config gameOptions and set them on the GUI
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
 
         jc_autoplay.setSelected(go.isAutoplay());
 	jc_autosound.setSelected(go.isAutosound());
@@ -284,7 +284,7 @@ public class MusicSelection extends javax.swing.JPanel
         combo_speedType.setSelectedItem(go.getSpeedType());
         txt_displayLag.setText(go.getDisplayLag() + "");
         txt_audioLatency.setText(go.getAudioLatency() + "");
-        jc_timed_judgment.setSelected(go.getJudgmentType() == GameOptions.JudgmentType.TimeJudgment);
+        jc_timed_judgment.setSelected(go.getJudgmentType() == GameOptions.JudgmentType.TIME_JUDGMENT);
 
     }
 
@@ -344,11 +344,11 @@ public class MusicSelection extends javax.swing.JPanel
      * Save volume settings from sliders to config.
      */
     private void saveVolumeSettings() {
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
         go.setMasterVolume(slider_main_vol.getValue() / 100f);
         go.setKeyVolume(slider_key_vol.getValue() / 100f);
         go.setBGMVolume(slider_bgm_vol.getValue() / 100f);
-        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
         DebugLogger.debug("Auto-saved volume settings: main=" + slider_main_vol.getValue() + 
                          ", key=" + slider_key_vol.getValue() + 
                          ", bgm=" + slider_bgm_vol.getValue());
@@ -358,19 +358,19 @@ public class MusicSelection extends javax.swing.JPanel
      * Save modifier settings (autoplay, autosound, channel/visibility mods, speed, judgment) to config.
      */
     private void saveModifierSettings() {
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
         go.setAutoplay(jc_autoplay.isSelected());
         go.setAutosound(jc_autosound.isSelected());
         go.setChannelModifier((ChannelMod) combo_channelModifier.getSelectedItem());
         go.setVisibilityModifier((VisibilityMod) combo_visibilityModifier.getSelectedItem());
         go.setSpeedMultiplier((Double) js_hispeed.getValue());
         go.setSpeedType((SpeedType) combo_speedType.getSelectedItem());
-        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
-        
+        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TIME_JUDGMENT : GameOptions.JudgmentType.BEAT_JUDGMENT);
+
         // Update autoplay keys button state
         btn_autoplay_keys.setEnabled(jc_autoplay.isSelected());
         
-        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
         DebugLogger.debug("Auto-saved modifier settings: autoplay=" + jc_autoplay.isSelected() + 
                          ", autosound=" + jc_autosound.isSelected() +
                          ", channelMod=" + combo_channelModifier.getSelectedItem() +
@@ -388,15 +388,15 @@ public class MusicSelection extends javax.swing.JPanel
             double displayLag = Double.parseDouble(txt_displayLag.getText().trim());
             double audioLatency = Double.parseDouble(txt_audioLatency.getText().trim());
             
-            GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            GameOptions go = context.config.getGameOptions().toGameOptions();
             go.setDisplayLag(displayLag);
             go.setAudioLatency(audioLatency);
-            Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+            context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
             DebugLogger.debug("Auto-saved display settings: displayLag=" + displayLag + 
                              ", audioLatency=" + audioLatency);
         } catch (NumberFormatException e) {
             // Invalid input - show error and revert to saved value
-            GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            GameOptions go = context.config.getGameOptions().toGameOptions();
             txt_displayLag.setText(go.getDisplayLag() + "");
             txt_audioLatency.setText(go.getAudioLatency() + "");
             JOptionPane.showMessageDialog(this, 
@@ -414,7 +414,7 @@ public class MusicSelection extends javax.swing.JPanel
      */
     public void windowClosing() {
         // Save ALL settings as a safety net (in case any listeners didn't fire)
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
 
         go.setAutoplay(jc_autoplay.isSelected());
 	go.setAutosound(jc_autosound.isSelected());
@@ -425,7 +425,7 @@ public class MusicSelection extends javax.swing.JPanel
         go.setBGMVolume(slider_bgm_vol.getValue()/100f);
         go.setSpeedMultiplier((Double)js_hispeed.getValue());
         go.setSpeedType((SpeedType)combo_speedType.getSelectedItem());
-        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
+        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TIME_JUDGMENT : GameOptions.JudgmentType.BEAT_JUDGMENT);
         
         // Also save displayLag and audioLatency from text fields
         try {
@@ -436,7 +436,7 @@ public class MusicSelection extends javax.swing.JPanel
             DebugLogger.debug("Invalid displayLag/audioLatency on window close, using existing values");
         }
 
-        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
         DebugLogger.debug("windowClosing() - Saved all game options as safety net");
     }
 
@@ -1135,23 +1135,23 @@ public class MusicSelection extends javax.swing.JPanel
                 if (cached != null) {
                     // Validate and load chart (checks file modification, re-parses if needed)
                     chartToPlay = org.open2jam.parsers.ChartCacheSQLite.loadChartForPlay(cached);
-                    
+
                     if (chartToPlay == null) {
-                        JOptionPane.showMessageDialog(this, 
+                        JOptionPane.showMessageDialog(this,
                             "Chart file is missing or corrupted.\nPlease refresh the library.",
                             "Chart Loading Error",
                             JOptionPane.ERROR_MESSAGE);
                         return;
                     }
-                    
-                    DebugLogger.debug("Loaded chart for play: " + cached.relativePath);
+
+                    DebugLogger.debug("Loaded chart for play: " + cached.getRelativePath());
                 }
             }
 
             final double hispeed = (Double) js_hispeed.getValue();
 
             // Get display mode from Configuration tab settings
-            final DisplayMode dm = Config.getInstance().getGameOptions().toGameOptions().getDisplay();
+            final DisplayMode dm = context.config.getGameOptions().toGameOptions().getDisplay();
 
             final boolean autoplay = jc_autoplay.isSelected();
             final boolean autosound = jc_autosound.isSelected();
@@ -1167,7 +1167,7 @@ public class MusicSelection extends javax.swing.JPanel
             final float keyVol = slider_key_vol.getValue() / 100f;
             final float bgmVol = slider_bgm_vol.getValue() / 100f;
 
-            final GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            final GameOptions go = context.config.getGameOptions().toGameOptions();
             go.setAutoplay(autoplay);
             go.setAutosound(autosound);
             go.setChannelModifier(channelModifier);
@@ -1177,7 +1177,7 @@ public class MusicSelection extends javax.swing.JPanel
             go.setBGMVolume(bgmVol);
             go.setSpeedMultiplier(hispeed);
             go.setSpeedType(speed_type);
-            go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
+            go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TIME_JUDGMENT : GameOptions.JudgmentType.BEAT_JUDGMENT);
 
             System.out.println(go.isAutoplay());
 
@@ -1196,7 +1196,7 @@ public class MusicSelection extends javax.swing.JPanel
             }
 
             final Render r;
-            r = new Render(chartToPlay, go, dm);  // Use validated chart
+            r = new Render(chartToPlay, go, dm, this.context);  // Use validated chart with context
             
             if (cb_startPaused.isSelected()) {
                 r.setStartPaused();
@@ -1494,67 +1494,67 @@ public class MusicSelection extends javax.swing.JPanel
                     new ArrayList<>(org.open2jam.parsers.ChartCacheSQLite.getCachedCharts(library.id));
 
                 DebugLogger.debug("Loaded " + allMetadata.size() + " chart metadata entries from cache");
-                
+
                 if (!allMetadata.isEmpty()) {
                     DebugLogger.debug("✓ Using cache - " + allMetadata.size() + " entries for " + dir.getName());
-                    
+
                     // Set libraryRootPath for all metadata (in case JOIN didn't populate it)
                     for (org.open2jam.parsers.ChartMetadata m : allMetadata) {
-                        if (m.libraryRootPath == null || m.libraryRootPath.isEmpty()) {
-                            m.libraryRootPath = library.rootPath;
+                        if (m.getLibraryRootPath() == null || m.getLibraryRootPath().isEmpty()) {
+                            m.setLibraryRootPath(library.rootPath);
                         }
                     }
-                    
+
                     // Group metadata by song_group_id to reconstruct ChartList-like structure
                     // This mimics the old VoileMap behavior where one ChartList = one file with multiple difficulties
-                    java.util.Map<String, ArrayList<org.open2jam.parsers.ChartMetadata>> groupedBySong = 
+                    java.util.Map<String, ArrayList<org.open2jam.parsers.ChartMetadata>> groupedBySong =
                         new java.util.HashMap<>();
-                    
+
                     for (org.open2jam.parsers.ChartMetadata m : allMetadata) {
-                        String key = m.songGroupId;
+                        String key = m.getSongGroupId();
                         if (!groupedBySong.containsKey(key)) {
                             groupedBySong.put(key, new ArrayList<>());
                         }
                         groupedBySong.get(key).add(m);
                     }
-                    
+
                     DebugLogger.debug("Grouped into " + groupedBySong.size() + " songs");
                     
                     // For each song group, we need to load the actual ChartList from disk
                     // This is necessary because the UI expects Chart objects, not just metadata
                     ArrayList<org.open2jam.parsers.ChartList> chartLists = new ArrayList<>();
-                    
+
                     for (ArrayList<org.open2jam.parsers.ChartMetadata> group : groupedBySong.values()) {
                         if (group.isEmpty()) continue;
-                        
+
                         // Load the actual ChartList from the first metadata's source file
                         // (all difficulties in a group come from the same file)
                         org.open2jam.parsers.ChartMetadata first = group.get(0);
-                        
+
                         // Build full path from library and relative path
                         String fullPath;
-                        if (first.libraryRootPath != null && !first.libraryRootPath.isEmpty()) {
+                        if (first.getLibraryRootPath() != null && !first.getLibraryRootPath().isEmpty()) {
                             // Remove trailing slash from rootPath if present, then add single slash
-                            String rootPath = first.libraryRootPath.endsWith("/") ? 
-                                first.libraryRootPath.substring(0, first.libraryRootPath.length() - 1) : 
-                                first.libraryRootPath;
-                            fullPath = rootPath + "/" + first.relativePath;
+                            String rootPath = first.getLibraryRootPath().endsWith("/") ?
+                                first.getLibraryRootPath().substring(0, first.getLibraryRootPath().length() - 1) :
+                                first.getLibraryRootPath();
+                            fullPath = rootPath + "/" + first.getRelativePath();
                         } else {
                             // Fallback: reconstruct from library info
-                            String rootPath = dirPathWithSlash.endsWith("/") ? 
-                                dirPathWithSlash.substring(0, dirPathWithSlash.length() - 1) : 
+                            String rootPath = dirPathWithSlash.endsWith("/") ?
+                                dirPathWithSlash.substring(0, dirPathWithSlash.length() - 1) :
                                 dirPathWithSlash;
-                            fullPath = rootPath + "/" + first.relativePath;
+                            fullPath = rootPath + "/" + first.getRelativePath();
                         }
-                        
+
                         DebugLogger.debug("  Loading ChartList from: " + fullPath);
                         File sourceFile = new File(fullPath);
-                        
+
                         if (sourceFile.exists()) {
-                            org.open2jam.parsers.ChartList chartList = 
+                            org.open2jam.parsers.ChartList chartList =
                                 org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-                            
-                            if (chartList != null && !chartList.isEmpty()) {
+
+                            if (!chartList.isEmpty()) {
                                 chartLists.add(chartList);
                                 DebugLogger.debug("  ✓ Loaded ChartList with " + chartList.size() + " difficulties");
                             } else {
@@ -1564,12 +1564,12 @@ public class MusicSelection extends javax.swing.JPanel
                             Logger.global.warning("  ⚠ File not found: " + fullPath);
                         }
                     }
-                    
+
                     DebugLogger.debug("Loaded " + chartLists.size() + " ChartList objects");
                     model_songlist.setRawList(chartLists);
-                    
+
                     // Save last opened library ID
-                    Config.getInstance().setLastOpenedLibraryId(library.id);
+                    context.config.setLastOpenedLibraryId(library.id);
                     return;  // ✅ Loaded from cache - no scan needed!
                 } else {
                     Logger.global.warning("Cache is empty for library " + library.id + " - will scan files");
@@ -1674,7 +1674,7 @@ public class MusicSelection extends javax.swing.JPanel
                         List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
                         for (org.open2jam.parsers.Library lib : libs) {
                             if (lib.rootPath.equals(currentDirectory.getAbsolutePath().replace("\\", "/"))) {
-                                Config.getInstance().setLastOpenedLibraryId(lib.id);
+                                context.config.setLastOpenedLibraryId(lib.id);
                                 break;
                             }
                         }
