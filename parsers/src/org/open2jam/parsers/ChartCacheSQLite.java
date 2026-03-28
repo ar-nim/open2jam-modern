@@ -603,10 +603,23 @@ public class ChartCacheSQLite {
         private final PreparedStatement stmt;
         private int batchSize = 0;
         private static final int BATCH_THRESHOLD = 1000;  // Execute batch every 1000 rows
+        
+        /**
+         * ThreadLocal MessageDigest for SHA-1 hashing.
+         * Reused across batch operations to avoid object creation overhead.
+         * Thread-safe via ThreadLocal isolation.
+         */
+        private static final ThreadLocal<MessageDigest> SHA1_DIGEST = ThreadLocal.withInitial(() -> {
+            try {
+                return MessageDigest.getInstance("SHA-1");
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException("SHA-1 algorithm not available (required by Java spec)", e);
+            }
+        });
 
         /**
          * Create batch inserter.
-         * 
+         *
          * <p>Caller must hold writeLock (call between beginBulkInsert and commitBulkInsert).</p>
          *
          * @throws SQLException if statement cannot be prepared
@@ -666,7 +679,7 @@ public class ChartCacheSQLite {
                 stmt.setString(paramIndex++, chartListHash);
                 stmt.setLong(paramIndex++, fileSize);
                 stmt.setLong(paramIndex++, fileModified);
-                stmt.setString(paramIndex++, chart.getType().name());
+                stmt.setString(paramIndex++, chart.getType() != null ? chart.getType().name() : "NONE");
                 stmt.setInt(paramIndex++, i);  // chart_index
                 stmt.setString(paramIndex++, chart.getTitle());
                 stmt.setString(paramIndex++, chart.getArtist());
@@ -682,7 +695,7 @@ public class ChartCacheSQLite {
                 stmt.setObject(paramIndex++, coverSize);
                 stmt.setObject(paramIndex++, noteOffset);
                 stmt.setObject(paramIndex++, noteSize);
-                stmt.setLong(paramIndex, System.currentTimeMillis());
+                stmt.setLong(paramIndex, System.currentTimeMillis());  // ← LAST parameter (23), no ++
 
                 stmt.addBatch();
                 batchSize++;
@@ -713,22 +726,21 @@ public class ChartCacheSQLite {
         }
 
         /**
-         * Generate song group ID (MD5 hash of library_id:relative_path).
+         * Generate song group ID (SHA-1 hash of library_id:relative_path).
          * Groups all difficulties from the same OJN file.
+         *
+         * <p>Uses ThreadLocal MessageDigest for performance - avoids creating new instance per call.</p>
          *
          * @param libraryId Library row ID
          * @param relativePath Relative path to chart file
-         * @return 32-character hex string
+         * @return 40-character hex string
          */
         private String generateSongGroupId(int libraryId, String relativePath) {
-            try {
-                String input = libraryId + ":" + relativePath;
-                MessageDigest md = MessageDigest.getInstance("MD5");
-                byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
-                return bytesToHex(hash);
-            } catch (NoSuchAlgorithmException e) {
-                throw new IllegalStateException("MD5 algorithm not available", e);
-            }
+            String input = libraryId + ":" + relativePath;
+            MessageDigest md = SHA1_DIGEST.get();
+            md.reset();  // Reset state before computing new hash
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash);
         }
 
         /**
