@@ -35,7 +35,7 @@ class OJNParser {
     public static ChartList parseFile(File file) {
         ByteBuffer buffer;
         try (RandomAccessFileChannelWrapper fileWrapper = new RandomAccessFileChannelWrapper(file)) {
-            buffer = fileWrapper.map(0, 300);
+            buffer = fileWrapper.map(0, 300);  // OJN header is exactly 300 bytes
         } catch (IOException e) {
             Logger.global.log(Level.WARNING, "IO exception on reading OJN file {0}", file.getName());
             return new ChartList();
@@ -132,6 +132,13 @@ class OJNParser {
             easy.coverSize = coverSize;
             normal.coverSize = coverSize;
             hard.coverSize = coverSize;
+
+            // Note: OJN header does NOT contain thumbnailSize field
+            // Thumbnail is stored sequentially after cover: thumbnailOffset = coverOffset + coverSize
+            // Thumbnail size must be determined by reading image data or calculated from file size
+            easy.thumbnailSize = 0;  // Will be calculated at runtime
+            normal.thumbnailSize = 0;
+            hard.thumbnailSize = 0;
 
             easy.duration = buffer.getInt();
             normal.duration = buffer.getInt();

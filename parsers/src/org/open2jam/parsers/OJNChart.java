@@ -31,6 +31,7 @@ public class OJNChart extends Chart {
     int noteOffsetEnd;
     int coverOffset;
     int coverSize;
+    int thumbnailSize;  // Size of embedded thumbnail image (added for SQLite caching)
 
     public OJNChart() {
 	type = TYPE.OJN;

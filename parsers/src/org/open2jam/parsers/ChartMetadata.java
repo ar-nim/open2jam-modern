@@ -50,6 +50,7 @@ public class ChartMetadata {
     private String coverExternalPath;       // Path to external cover file (BMS, SM)
     private Integer noteDataOffset;         // Byte offset of note data
     private Integer noteDataSize;           // Size of note data in bytes
+    private Integer thumbnailSize;          // Size of embedded thumbnail in bytes (OJN only)
 
     // ===== CACHE INFO =====
     private long cachedAt;                  // Unix timestamp when cached
@@ -137,6 +138,9 @@ public class ChartMetadata {
     public Integer getNoteDataSize() { return noteDataSize; }
     public void setNoteDataSize(Integer noteDataSize) { this.noteDataSize = noteDataSize; }
 
+    public Integer getThumbnailSize() { return thumbnailSize; }
+    public void setThumbnailSize(Integer thumbnailSize) { this.thumbnailSize = thumbnailSize; }
+
     public long getCachedAt() { return cachedAt; }
     public void setCachedAt(long cachedAt) { this.cachedAt = cachedAt; }
 
@@ -157,7 +161,9 @@ public class ChartMetadata {
             throw new IllegalStateException("libraryRootPath not set - must join with libraries table first");
         }
         // Security: relativePath is trusted (comes from database, validated on insert)
-        return libraryRootPath + "/" + relativePath;
+        // Handle trailing slash in libraryRootPath
+        String root = libraryRootPath.endsWith("/") ? libraryRootPath.substring(0, libraryRootPath.length() - 1) : libraryRootPath;
+        return root + "/" + relativePath;
     }
 
     /**

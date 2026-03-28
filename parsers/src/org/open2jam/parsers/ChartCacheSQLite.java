@@ -1,5 +1,6 @@
 package org.open2jam.parsers;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -69,6 +70,10 @@ import org.open2jam.parsers.utils.Logger;
  * @author open2jam-modern team
  */
 public class ChartCacheSQLite {
+
+    // ===== Debug Flag =====
+    // Enable with: java -Dopen2jam.debug=true -jar ...
+    private static final boolean DEBUG = Boolean.getBoolean("open2jam.debug");
 
     // ===== Connection Management =====
     private static Connection writerConnection;  // Dedicated writer connection
@@ -166,6 +171,7 @@ public class ChartCacheSQLite {
             cover_external_path TEXT,             -- For external cover files (BMS, SM)
             note_data_offset INTEGER,             -- Note data start offset
             note_data_size INTEGER,               -- Note data size in bytes
+            thumbnail_size INTEGER,               -- Size of embedded thumbnail (OJN only)
 
             -- Cache metadata
             cached_at INTEGER NOT NULL,           -- Unix timestamp (milliseconds)
@@ -185,6 +191,8 @@ public class ChartCacheSQLite {
         CREATE INDEX IF NOT EXISTS idx_chart_cache_level ON chart_cache(level);
         CREATE INDEX IF NOT EXISTS idx_chart_cache_type ON chart_cache(chart_type);
         CREATE INDEX IF NOT EXISTS idx_chart_cache_identity ON chart_cache(sha256_hash);
+        -- Composite index for fast path lookup (library + relative_path)
+        CREATE INDEX IF NOT EXISTS idx_chart_cache_library_path ON chart_cache(library_id, relative_path);
         
         -- Schema version tracking
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -199,23 +207,33 @@ public class ChartCacheSQLite {
     // ===== SQL Statements (prepared once, reused) =====
     private static final String INSERT_LIBRARY_SQL =
         "INSERT OR IGNORE INTO libraries (root_path, name, added_at, is_active) VALUES (?, ?, ?, 1)";
-    
+
     private static final String GET_LIBRARY_BY_ID_SQL =
         "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries WHERE id = ?";
 
     private static final String GET_ALL_LIBRARIES_SQL =
         "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries ORDER BY name";
-    
+
     private static final String UPDATE_LIBRARY_ROOT_SQL =
         "UPDATE libraries SET root_path = ? WHERE id = ?";
-    
+
+    private static final String GET_METADATA_BY_PATH_SQL = """
+        SELECT c.*, l.root_path as library_root_path
+        FROM chart_cache c
+        JOIN libraries l ON c.library_id = l.id
+        WHERE c.library_id = ? AND c.relative_path = ?
+        """;
+
+    // Cached PreparedStatement for getMetadataByPath (reused across calls - no recompilation)
+    private static PreparedStatement getMetadataByPathStmt = null;
+
     private static final String INSERT_CHART_SQL = """
         INSERT OR REPLACE INTO chart_cache (
             library_id, relative_path, song_group_id, chart_list_hash,
             source_file_size, source_file_modified, chart_type, chart_index,
             title, artist, genre, noter, level, keys, players, bpm, notes, duration,
-            cover_offset, cover_size, note_data_offset, note_data_size, cached_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            cover_offset, cover_size, cover_data, note_data_offset, note_data_size, thumbnail_size, cached_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     
     private static final String GET_CACHED_CHARTS_SQL = """
@@ -302,7 +320,7 @@ public class ChartCacheSQLite {
     public static void close() {
         // Signal shutdown to background tasks
         shuttingDown = true;
-        
+
         // Shutdown executor gracefully
         hashExecutor.shutdown();
         try {
@@ -313,7 +331,19 @@ public class ChartCacheSQLite {
             hashExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        
+
+        // Close cached PreparedStatement
+        if (getMetadataByPathStmt != null) {
+            try {
+                if (!getMetadataByPathStmt.isClosed()) {
+                    getMetadataByPathStmt.close();
+                }
+            } catch (SQLException e) {
+                Logger.global.log(Level.WARNING, "Failed to close prepared statement", e);
+            }
+            getMetadataByPathStmt = null;
+        }
+
         // Close writer connection
         if (writerConnection != null) {
             try {
@@ -669,12 +699,19 @@ public class ChartCacheSQLite {
                 Integer coverSize = null;
                 Integer noteOffset = null;
                 Integer noteSize = null;
+                Integer thumbnailSize = null;
+                byte[] thumbnailData = null;
 
                 if (chart instanceof OJNChart ojn) {
                     coverOffset = ojn.coverOffset;
                     coverSize = ojn.coverSize;
                     noteOffset = ojn.noteOffset;
                     noteSize = ojn.noteOffsetEnd - ojn.noteOffset;
+
+                    // Cache embedded thumbnail in SQLite (two-image strategy)
+                    ThumbnailResult thumbResult = cacheThumbnail(sourceFile, coverOffset, coverSize);
+                    thumbnailData = thumbResult.data;
+                    thumbnailSize = thumbResult.size;
                 }
 
                 // Set parameters
@@ -699,9 +736,11 @@ public class ChartCacheSQLite {
                 stmt.setInt(paramIndex++, chart.getDuration());
                 stmt.setObject(paramIndex++, coverOffset);
                 stmt.setObject(paramIndex++, coverSize);
+                stmt.setBytes(paramIndex++, thumbnailData);  // cover_data BLOB (thumbnail)
                 stmt.setObject(paramIndex++, noteOffset);
                 stmt.setObject(paramIndex++, noteSize);
-                stmt.setLong(paramIndex, System.currentTimeMillis());  // ← LAST parameter (23), no ++
+                stmt.setObject(paramIndex++, thumbnailSize);
+                stmt.setLong(paramIndex, System.currentTimeMillis());  // ← LAST parameter (25), no ++
 
                 stmt.addBatch();
                 batchSize++;
@@ -772,6 +811,149 @@ public class ChartCacheSQLite {
                 hex.append(String.format("%02x", b));
             }
             return hex.toString();
+        }
+
+        /**
+         * Result holder for thumbnail caching.
+         */
+        @SuppressWarnings("java:S6218")  // Array content equality not needed - never compared
+        private static record ThumbnailResult(byte[] data, Integer size) {}
+
+        /**
+         * Cache embedded thumbnail from OJN file.
+         *
+         * @param sourceFile OJN source file
+         * @param coverOffset Cover art offset
+         * @param coverSize Cover art size
+         * @return ThumbnailResult with data and size
+         */
+        private static ThumbnailResult cacheThumbnail(File sourceFile, Integer coverOffset, Integer coverSize) {
+            if (coverOffset == null || coverSize == null || coverOffset <= 0 || coverSize <= 0) {
+                return new ThumbnailResult(new byte[0], null);
+            }
+
+            long fileLen = sourceFile.length();
+            int thumbnailOffset = coverOffset + coverSize;
+
+            if (thumbnailOffset <= 0 || thumbnailOffset >= fileLen - 1) {
+                return new ThumbnailResult(new byte[0], null);
+            }
+
+            try {
+                int[] thumbSizeRef = new int[1];
+                byte[] thumbnailData = readThumbnailFromOJN(sourceFile, thumbnailOffset, thumbSizeRef);
+                if (thumbnailData.length > 0 && thumbSizeRef[0] > 0 && thumbSizeRef[0] < 1_000_000) {
+                    return new ThumbnailResult(thumbnailData, thumbSizeRef[0]);
+                }
+            } catch (Exception e) {
+                // Silently skip thumbnail caching on error
+            }
+
+            return new ThumbnailResult(new byte[0], null);
+        }
+
+        /**
+         * Read embedded thumbnail from OJN file.
+         *
+         * @param sourceFile OJN source file
+         * @param thumbnailOffset Byte offset of thumbnail in file
+         * @param thumbnailSizeRef Array to store the calculated thumbnail size
+         * @return Thumbnail byte array, or null if read fails
+         */
+        private static byte[] readThumbnailFromOJN(File sourceFile, int thumbnailOffset, int[] thumbnailSizeRef) {
+            try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
+                long fileLen = f.length();
+                if (thumbnailOffset <= 0 || thumbnailOffset >= fileLen - 1) {
+                    return new byte[0];
+                }
+
+                f.seek(thumbnailOffset);
+                byte[] header = new byte[2];
+                if (f.read(header) != 2) {
+                    return new byte[0];
+                }
+
+                int thumbnailSize;
+                f.seek(thumbnailOffset);
+
+                // Check if BMP (starts with 42 4D = "BM")
+                if ((header[0] & 0xFF) == 0x42 && (header[1] & 0xFF) == 0x4D) {
+                    thumbnailSize = findBmpSize(f, thumbnailOffset);
+                }
+                // Check if JPEG (starts with FF D8)
+                else if ((header[0] & 0xFF) == 0xFF && (header[1] & 0xFF) == 0xD8) {
+                    thumbnailSize = findJpegSize(f, thumbnailOffset);
+                }
+                // Check if PNG (starts with 89 50 4E 47)
+                else if ((header[0] & 0xFF) == 0x89 && (header[1] & 0xFF) == 0x50) {
+                    thumbnailSize = findPngSize(f, thumbnailOffset);
+                }
+                else {
+                    return new byte[0];
+                }
+
+                if (thumbnailSize <= 0 || thumbnailSize > 1_000_000 || thumbnailOffset + thumbnailSize > fileLen) {
+                    return new byte[0];
+                }
+
+                f.seek(thumbnailOffset);
+                byte[] thumbnailData = new byte[thumbnailSize];
+                f.readFully(thumbnailData);
+
+                if (thumbnailSizeRef != null && thumbnailSizeRef.length > 0) {
+                    thumbnailSizeRef[0] = thumbnailSize;
+                }
+
+                return thumbnailData;
+            } catch (IOException e) {
+                return new byte[0];
+            }
+        }
+
+        private static int findBmpSize(RandomAccessFile f, long startOffset) throws IOException {
+            f.seek(startOffset + 2);
+            byte[] sizeBytes = new byte[4];
+            if (f.read(sizeBytes) != 4) return -1;
+            return (sizeBytes[0] & 0xFF) |
+                   ((sizeBytes[1] & 0xFF) << 8) |
+                   ((sizeBytes[2] & 0xFF) << 16) |
+                   ((sizeBytes[3] & 0xFF) << 24);
+        }
+
+        private static int findJpegSize(RandomAccessFile f, long startOffset) throws IOException {
+            f.seek(startOffset);
+            int size = 2;
+            byte prev = 0;
+            while (true) {
+                int b = f.read();
+                if (b < 0) break;
+                size++;
+                if (prev == (byte)0xFF && b == 0xD9) return size;
+                if (size > 2_000_000) return size;
+                prev = (byte) b;
+            }
+            return size;
+        }
+
+        private static int findPngSize(RandomAccessFile f, long startOffset) throws IOException {
+            f.seek(startOffset);
+            byte[] header = new byte[8];
+            if (f.read(header) != 8) return -1;
+            int size = 8;
+            byte[] chunkHeader = new byte[8];
+            while (true) {
+                if (f.read(chunkHeader) != 8) break;
+                int chunkLength = ((chunkHeader[0] & 0xFF) << 24) |
+                                  ((chunkHeader[1] & 0xFF) << 16) |
+                                  ((chunkHeader[2] & 0xFF) << 8) |
+                                  (chunkHeader[3] & 0xFF);
+                size += 8 + chunkLength + 4;
+                if (chunkHeader[4] == 'I' && chunkHeader[5] == 'E' &&
+                    chunkHeader[6] == 'N' && chunkHeader[7] == 'D') return size;
+                f.skipBytes(chunkLength + 4);
+                if (size > 2_000_000) return size;
+            }
+            return size;
         }
     }
 
@@ -988,21 +1170,183 @@ public class ChartCacheSQLite {
      * @return Cover image, or null if not available
      */
     public static java.awt.image.BufferedImage getCoverFromCache(ChartMetadata cached) {
-        // Option 1: Cached BLOB thumbnail
-        if (cached.getCoverData() != null && cached.getCoverData().length > 0) {
-            try {
-                return ImageIO.read(new ByteArrayInputStream(cached.getCoverData()));
-            } catch (IOException e) {
-                // Fall through to next option
+        // Try each source in order of preference
+        BufferedImage cover = getCoverFromBlob(cached);
+        if (cover != null) return cover;
+
+        cover = getEmbeddedCover(cached);
+        if (cover != null) return cover;
+
+        return getExternalCover(cached);
+    }
+
+    /**
+     * Get cover from cached BLOB (thumbnail).
+     *
+     * @param cached Chart metadata
+     * @return Cover image, or null if not available
+     */
+    private static BufferedImage getCoverFromBlob(ChartMetadata cached) {
+        if (cached.getCoverData() == null || cached.getCoverData().length == 0) {
+            return null;
+        }
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(cached.getCoverData()));
+            if (DEBUG) {
+                Logger.global.info(() -> String.format("[DEBUG] getCoverFromBlob: Using cached BLOB thumbnail (%d bytes, %dx%d)",
+                    cached.getCoverData().length, img.getWidth(), img.getHeight()));
             }
+            return img;
+        } catch (IOException e) {
+            if (DEBUG) {
+                Logger.global.info(() -> "[DEBUG] getCoverFromBlob: Failed to read BLOB, falling back");
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Get embedded cover from OJN file using cached offsets.
+     *
+     * @param cached Chart metadata
+     * @return Cover image, or null if not available
+     */
+    private static BufferedImage getEmbeddedCover(ChartMetadata cached) {
+        if (!cached.hasEmbeddedCover()) {
+            return null;
         }
 
-        // Option 2: OJN embedded cover (using cached offsets, standard I/O)
+        Integer coverOffset = cached.getCoverOffset();
+        Integer coverSize = cached.getCoverSize();
+
+        // Guard clause: validate cover size
+        if (coverSize == null || coverSize <= 0 || coverSize > 10_000_000) {
+            Logger.global.warning(() -> String.format("Invalid cover size for %s: %d", cached.getRelativePath(), coverSize));
+            return null;
+        }
+
+        // Guard clause: validate offset
+        if (coverOffset == null || coverOffset <= 0) {
+            Logger.global.warning(() -> String.format("Invalid cover offset for %s: %d", cached.getRelativePath(), coverOffset));
+            return null;
+        }
+
+        try (RandomAccessFile f = new RandomAccessFile(cached.getFullPath(), "r")) {
+            f.seek(coverOffset);
+            byte[] coverBytes = new byte[coverSize];
+            f.readFully(coverBytes);
+            if (DEBUG) {
+                Logger.global.info(() -> String.format("[DEBUG] getEmbeddedCover: Reading full cover from file (%d bytes)", coverSize));
+            }
+            return ImageIO.read(new ByteArrayInputStream(coverBytes));
+        } catch (IOException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to read embedded cover from " + cached.getRelativePath());
+            return null;
+        }
+    }
+
+    /**
+     * Get external cover file (BMS, SM formats).
+     *
+     * @param cached Chart metadata
+     * @return Cover image, or null if not available
+     */
+    private static BufferedImage getExternalCover(ChartMetadata cached) {
+        String coverPath = cached.getCoverExternalPath();
+        if (coverPath == null || coverPath.isEmpty()) {
+            return null;
+        }
+        try {
+            return ImageIO.read(new File(coverPath));
+        } catch (IOException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to read external cover " + coverPath);
+            return null;
+        }
+    }
+
+    /**
+     * Get cached cover image for a Chart object.
+     *
+     * <p>Optimized lookup: queries directly by library_id + relative_path using index.
+     * Returns cached thumbnail for fast UI display.</p>
+     *
+     * @param chart Chart object
+     * @return Cached thumbnail image, or null if not available
+     */
+    public static java.awt.image.BufferedImage getCoverForChart(Chart chart) {
+        if (chart == null || chart.getSource() == null) {
+            return null;
+        }
+
+        File sourceFile = chart.getSource();
+        String sourcePath = sourceFile.getAbsolutePath().replace("\\", "/");
+
+        try {
+            List<Library> libs = getAllLibraries();
+            for (Library lib : libs) {
+                if (sourcePath.startsWith(lib.rootPath)) {
+                    String relativePath = sourcePath.substring(lib.rootPath.length());
+                    ChartMetadata metadata = getMetadataByPath(lib.id, relativePath);
+                    if (metadata != null) {
+                        return getCoverFromCache(metadata);
+                    }
+                    break;
+                }
+            }
+        } catch (SQLException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to get cached cover for " + sourceFile.getName());
+        }
+
+        return chart.getCover();
+    }
+
+    /**
+     * Get full-size cover image for a Chart object.
+     *
+     * <p>Always reads full-size cover from file (not cached thumbnail).
+     * Used for cover preview dialog when user clicks on thumbnail.</p>
+     *
+     * @param chart Chart object
+     * @return Full-size cover image, or null if not available
+     */
+    public static java.awt.image.BufferedImage getFullSizeCoverForChart(Chart chart) {
+        if (chart == null || chart.getSource() == null) {
+            return null;
+        }
+
+        File sourceFile = chart.getSource();
+        String sourcePath = sourceFile.getAbsolutePath().replace("\\", "/");
+
+        try {
+            List<Library> libs = getAllLibraries();
+            for (Library lib : libs) {
+                if (sourcePath.startsWith(lib.rootPath)) {
+                    String relativePath = sourcePath.substring(lib.rootPath.length());
+                    ChartMetadata metadata = getMetadataByPath(lib.id, relativePath);
+                    if (metadata != null) {
+                        return getFullSizeCoverFromCache(metadata);
+                    }
+                    break;
+                }
+            }
+        } catch (SQLException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to get cached cover for " + sourceFile.getName());
+        }
+
+        return chart.getCover();
+    }
+
+    /**
+     * Get full-size cover image from cache (reads from file, not BLOB).
+     *
+     * @param cached Chart metadata
+     * @return Full-size cover image, or null if not available
+     */
+    public static java.awt.image.BufferedImage getFullSizeCoverFromCache(ChartMetadata cached) {
         if (cached.hasEmbeddedCover()) {
             Integer coverOffset = cached.getCoverOffset();
             Integer coverSize = cached.getCoverSize();
 
-            // Security: Validate cover size (prevent DoS via malicious OJN)
             if (coverSize <= 0 || coverSize > 10_000_000) {
                 Logger.global.warning(() -> String.format("Invalid cover size for %s: %d", cached.getRelativePath(), coverSize));
                 return null;
@@ -1018,7 +1362,6 @@ public class ChartCacheSQLite {
             }
         }
 
-        // Option 3: External cover file (BMS, SM)
         if (cached.getCoverExternalPath() != null && !cached.getCoverExternalPath().isEmpty()) {
             try {
                 return ImageIO.read(new File(cached.getCoverExternalPath()));
@@ -1027,7 +1370,35 @@ public class ChartCacheSQLite {
             }
         }
 
-        return null;  // No cover available
+        return null;
+    }
+
+    /**
+     * Get metadata by library ID and relative path using indexed lookup.
+     *
+     * <p>Uses cached PreparedStatement for optimal performance (no SQL recompilation).</p>
+     *
+     * @param libraryId Library ID
+     * @param relativePath Relative path
+     * @return ChartMetadata or null if not found
+     * @throws SQLException on database error
+     */
+    private static ChartMetadata getMetadataByPath(int libraryId, String relativePath) throws SQLException {
+        // Initialize cached PreparedStatement on first use (lazy initialization)
+        if (getMetadataByPathStmt == null || getMetadataByPathStmt.isClosed()) {
+            getMetadataByPathStmt = writerConnection.prepareStatement(GET_METADATA_BY_PATH_SQL);
+        }
+
+        // Reuse PreparedStatement - no SQL recompilation overhead
+        getMetadataByPathStmt.setInt(1, libraryId);
+        getMetadataByPathStmt.setString(2, relativePath);
+
+        try (ResultSet rs = getMetadataByPathStmt.executeQuery()) {
+            if (rs.next()) {
+                return extractMetadata(rs);
+            }
+        }
+        return null;
     }
 
     // ===== SHA-256 Identity Hashing (Lazy, Fix #8) =====

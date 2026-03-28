@@ -502,7 +502,7 @@ public class Render implements GameWindowCallback
         // Get ModernRenderer from window for batched rendering
         modernRenderer = window.getModernRenderer();
 
-        // cover image load
+        // cover image load - full size for loading screen display
         try{
             BufferedImage img = chart.getCover();
             coverSprite = ResourceFactory.get().getSprite(img);  // Store for loading screen

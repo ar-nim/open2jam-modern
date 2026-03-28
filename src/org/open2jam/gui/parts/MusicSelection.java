@@ -1114,7 +1114,8 @@ public class MusicSelection extends javax.swing.JPanel
 
     private void lbl_coverMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_lbl_coverMouseClicked
         if(selected_header == null)return;
-        BufferedImage i = selected_header.getCover();
+        // Show full-size cover (not thumbnail) when clicked
+        BufferedImage i = org.open2jam.parsers.ChartCacheSQLite.getFullSizeCoverForChart(selected_header);
         if(i == null) return;
         JOptionPane.showMessageDialog(this, null, "Cover",
                 JOptionPane.INFORMATION_MESSAGE, new ImageIcon(i));
@@ -1713,8 +1714,10 @@ public class MusicSelection extends javax.swing.JPanel
         }else{
             i = table_songlist.convertRowIndexToModel(i);
         }
-        if(model_songlist.getRow(i) == selected_chart)return;
-        selected_chart = model_songlist.getRow(i);
+        ChartList row = model_songlist.getRow(i);
+        if(row == null) return;  // Guard against null row during model update
+        if(row == selected_chart)return;
+        selected_chart = row;
         if(selected_chart.size() > rank)selected_header = selected_chart.get(rank);
         if(selected_chart != model_chartlist.getChartList()){
             model_chartlist.clear();
@@ -1753,7 +1756,8 @@ public class MusicSelection extends javax.swing.JPanel
 	lbl_keys.setText(selected_header.getKeys()+"");
         lbl_time.setText(time2Text(selected_header.getDuration()));
 
-        BufferedImage i = selected_header.getCover();
+        // Use cached thumbnail if available (fast path), fallback to file read
+        BufferedImage i = org.open2jam.parsers.ChartCacheSQLite.getCoverForChart(selected_header);
 
         if(i != null)
         lbl_cover.setIcon(new ImageIcon(i.getScaledInstance(
