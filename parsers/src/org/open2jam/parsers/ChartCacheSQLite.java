@@ -83,6 +83,14 @@ public class ChartCacheSQLite {
     });
     private static volatile boolean shuttingDown = false;
 
+    /**
+     * Private constructor to prevent instantiation.
+     * This class is a utility class with only static methods.
+     */
+    private ChartCacheSQLite() {
+        // Utility class - no instances
+    }
+
     // ===== Helper Methods =====
 
     /**
@@ -193,10 +201,10 @@ public class ChartCacheSQLite {
         "INSERT OR IGNORE INTO libraries (root_path, name, added_at, is_active) VALUES (?, ?, ?, 1)";
     
     private static final String GET_LIBRARY_BY_ID_SQL =
-        "SELECT * FROM libraries WHERE id = ?";
-    
+        "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries WHERE id = ?";
+
     private static final String GET_ALL_LIBRARIES_SQL =
-        "SELECT * FROM libraries ORDER BY name";
+        "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries ORDER BY name";
     
     private static final String UPDATE_LIBRARY_ROOT_SQL =
         "UPDATE libraries SET root_path = ? WHERE id = ?";
@@ -228,7 +236,12 @@ public class ChartCacheSQLite {
         """;
     
     private static final String GET_DIFFICULTIES_FOR_SONG_SQL = """
-        SELECT * FROM chart_cache
+        SELECT id, library_id, relative_path, song_group_id, chart_list_hash,
+               source_file_size, source_file_modified, chart_type, chart_index,
+               sha256_hash, title, artist, genre, noter, level, keys, players, bpm,
+               notes, duration, cover_offset, cover_size, note_data_offset, note_data_size,
+               cover_data, cover_external_path, cached_at
+        FROM chart_cache
         WHERE song_group_id = ?
         ORDER BY chart_index
         """;
@@ -260,10 +273,8 @@ public class ChartCacheSQLite {
     public static void initialize() {
         // Ensure save directory exists
         File saveDir = new File("save");
-        if (!saveDir.exists()) {
-            if (!saveDir.mkdirs()) {
-                throw new RuntimeException("Failed to create save directory: " + saveDir.getAbsolutePath());
-            }
+        if (!saveDir.exists() && !saveDir.mkdirs()) {
+            throw new IllegalStateException("Failed to create save directory: " + saveDir.getAbsolutePath());
         }
 
         try {
@@ -282,7 +293,7 @@ public class ChartCacheSQLite {
             
         } catch (SQLException e) {
             Logger.global.log(Level.SEVERE, "Failed to initialize ChartCacheSQLite", e);
-            throw new RuntimeException("ChartCacheSQLite initialization failed", e);
+            throw new IllegalStateException("ChartCacheSQLite initialization failed", e);
         }
     }
 
@@ -485,8 +496,8 @@ public class ChartCacheSQLite {
     private static Library getLibraryByPath(String rootPath) throws SQLException {
         try (Connection conn = createReadConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT * FROM libraries WHERE root_path = ?")) {
-            
+                    "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries WHERE root_path = ?")) {
+
             stmt.setString(1, rootPath);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -700,6 +711,36 @@ public class ChartCacheSQLite {
         public void close() throws SQLException {
             stmt.close();
         }
+
+        /**
+         * Generate song group ID (MD5 hash of library_id:relative_path).
+         * Groups all difficulties from the same OJN file.
+         *
+         * @param libraryId Library row ID
+         * @param relativePath Relative path to chart file
+         * @return 32-character hex string
+         */
+        private String generateSongGroupId(int libraryId, String relativePath) {
+            try {
+                String input = libraryId + ":" + relativePath;
+                MessageDigest md = MessageDigest.getInstance("MD5");
+                byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+                return bytesToHex(hash);
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException("MD5 algorithm not available", e);
+            }
+        }
+
+        /**
+         * Generate chart list hash (for cache invalidation).
+         *
+         * @param relativePath Relative path to chart file
+         * @param modified File modification timestamp
+         * @return Short hash string
+         */
+        private String generateChartListHash(String relativePath, long modified) {
+            return Integer.toHexString((relativePath + modified).hashCode());
+        }
     }
 
     /**
@@ -804,12 +845,12 @@ public class ChartCacheSQLite {
 
     /**
      * Load chart for gameplay with lazy validation.
-     * 
+     *
      * <p>Validates file existence and modification time. If file has changed,
      * re-parses and re-caches the chart automatically.</p>
-     * 
+     *
      * <p>This is the ONLY point where file system validation occurs - NOT on startup.</p>
-     * 
+     *
      * @param cached Cached metadata from getCachedCharts()
      * @return Parsed Chart, or null if file missing/error
      */
@@ -827,47 +868,72 @@ public class ChartCacheSQLite {
         // File modified - re-parse and re-cache (Fix #6)
         long currentModified = sourceFile.lastModified();
         if (currentModified != cached.sourceFileModified) {
-            // Chart modified - re-parsing
-
-            // Invalidate old cache entry
-            invalidateCache(cached.id);
-
-            // Re-parse file
-            ChartList newList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-
-            if (newList != null) {
-                // Re-cache with new metadata
-                try {
-                    Library lib = getLibraryById(cached.libraryId);
-                    if (lib != null) {
-                        try (BatchInserter batch = new BatchInserter()) {
-                            batch.addChartList(lib, newList);
-                            batch.flush();
-                        }
-                    }
-                } catch (SQLException e) {
-                    Logger.global.log(Level.WARNING, "Failed to re-cache modified chart", e);
-                }
-
-                // Return requested difficulty
-                if (cached.chartIndex >= 0 && cached.chartIndex < newList.size()) {
-                    return newList.get(cached.chartIndex);
-                }
-                return newList.size() > 0 ? newList.get(0) : null;
-            }
-
-            return null;
+            return handleModifiedChart(cached, sourceFile);
         }
 
         // Cache valid - parse and return
+        return parseAndReturnChart(sourceFile, cached.chartIndex);
+    }
+
+    /**
+     * Handle modified chart file - invalidate cache, re-parse, and re-cache.
+     *
+     * @param cached Cached metadata
+     * @param sourceFile Chart source file
+     * @return Parsed Chart, or null if error
+     */
+    private static Chart handleModifiedChart(ChartMetadata cached, File sourceFile) {
+        // Invalidate old cache entry
+        invalidateCache(cached.id);
+
+        // Re-parse file
+        ChartList newList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
+        if (newList == null) {
+            return null;
+        }
+
+        // Re-cache with new metadata
+        try {
+            Library lib = getLibraryById(cached.libraryId);
+            if (lib != null) {
+                try (BatchInserter batch = new BatchInserter()) {
+                    batch.addChartList(lib, newList);
+                    batch.flush();
+                }
+            }
+        } catch (SQLException e) {
+            Logger.global.log(Level.WARNING, "Failed to re-cache modified chart", e);
+        }
+
+        // Return requested difficulty
+        return getChartByIndex(newList, cached.chartIndex);
+    }
+
+    /**
+     * Parse chart file and return chart by index.
+     *
+     * @param sourceFile Chart source file
+     * @param chartIndex Requested difficulty index
+     * @return Parsed Chart, or null if error
+     */
+    private static Chart parseAndReturnChart(File sourceFile, int chartIndex) {
         ChartList chartList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
         if (chartList == null || chartList.isEmpty()) {
             return null;
         }
-        
-        // Return requested difficulty
-        if (cached.chartIndex >= 0 && cached.chartIndex < chartList.size()) {
-            return chartList.get(cached.chartIndex);
+        return getChartByIndex(chartList, chartIndex);
+    }
+
+    /**
+     * Extract chart from list by index.
+     *
+     * @param chartList List of charts
+     * @param chartIndex Requested difficulty index
+     * @return Chart at index, first chart if index out of bounds, or null if empty
+     */
+    private static Chart getChartByIndex(ChartList chartList, int chartIndex) {
+        if (chartIndex >= 0 && chartIndex < chartList.size()) {
+            return chartList.get(chartIndex);
         }
         return chartList.size() > 0 ? chartList.get(0) : null;
     }
@@ -1079,40 +1145,8 @@ public class ChartCacheSQLite {
     }
 
     /**
-     * Generate song group ID (MD5 hash of library_id:relative_path).
-     * 
-     * <p>Groups all difficulties from the same OJN file.</p>
-     * 
-     * @param libraryId Library row ID
-     * @param relativePath Relative path to chart file
-     * @return 32-character hex string
-     */
-    private static String generateSongGroupId(int libraryId, String relativePath) {
-        try {
-            String input = libraryId + ":" + relativePath;
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            // MD5 is guaranteed to exist per Java spec
-            throw new RuntimeException("MD5 algorithm not available", e);
-        }
-    }
-
-    /**
-     * Generate chart list hash (for cache invalidation).
-     * 
-     * @param relativePath Relative path to chart file
-     * @param modified File modification timestamp
-     * @return Short hash string
-     */
-    private static String generateChartListHash(String relativePath, long modified) {
-        return Integer.toHexString((relativePath + modified).hashCode());
-    }
-
-    /**
      * Convert byte array to hexadecimal string.
-     * 
+     *
      * @param bytes Bytes to convert
      * @return Hex string (lowercase, 2 chars per byte)
      */
