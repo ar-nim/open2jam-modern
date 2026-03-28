@@ -682,7 +682,7 @@ public class ChartCacheSQLite {
                 stmt.setObject(paramIndex++, coverSize);
                 stmt.setObject(paramIndex++, noteOffset);
                 stmt.setObject(paramIndex++, noteSize);
-                stmt.setLong(paramIndex++, System.currentTimeMillis());
+                stmt.setLong(paramIndex, System.currentTimeMillis());
 
                 stmt.addBatch();
                 batchSize++;
@@ -740,6 +740,20 @@ public class ChartCacheSQLite {
          */
         private String generateChartListHash(String relativePath, long modified) {
             return Integer.toHexString((relativePath + modified).hashCode());
+        }
+
+        /**
+         * Convert byte array to hexadecimal string.
+         *
+         * @param bytes Bytes to convert
+         * @return Hex string (lowercase, 2 chars per byte)
+         */
+        private static String bytesToHex(byte[] bytes) {
+            StringBuilder hex = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
         }
     }
 
@@ -1142,20 +1156,6 @@ public class ChartCacheSQLite {
             normalized += "/";
         }
         return normalized;
-    }
-
-    /**
-     * Convert byte array to hexadecimal string.
-     *
-     * @param bytes Bytes to convert
-     * @return Hex string (lowercase, 2 chars per byte)
-     */
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
     }
 
     /**
