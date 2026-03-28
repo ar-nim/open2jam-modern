@@ -279,20 +279,17 @@ public class ChartCacheSQLite {
 
         try {
             File dbFile = new File(DB_PATH);
-            
+
             // Create dedicated writer connection
             writerConnection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-            
+
             // Enable foreign keys on writer connection
             try (Statement stmt = writerConnection.createStatement()) {
                 stmt.execute("PRAGMA foreign_keys = ON");
                 stmt.executeUpdate(CREATE_TABLES_SQL);
             }
 
-            // Silent initialization
-            
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Failed to initialize ChartCacheSQLite", e);
             throw new IllegalStateException("ChartCacheSQLite initialization failed", e);
         }
     }
@@ -673,8 +670,7 @@ public class ChartCacheSQLite {
                 Integer noteOffset = null;
                 Integer noteSize = null;
 
-                if (chart instanceof OJNChart) {
-                    OJNChart ojn = (OJNChart) chart;
+                if (chart instanceof OJNChart ojn) {
                     coverOffset = ojn.cover_offset;
                     coverSize = ojn.cover_size;
                     noteOffset = ojn.note_offset;
@@ -805,7 +801,7 @@ public class ChartCacheSQLite {
                 return results;
             }
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Cache read error for library " + libraryId, e);
+            Logger.global.log(Level.SEVERE, e, () -> "Cache read error for library " + libraryId);
             return Collections.emptyList();
         }
     }
@@ -841,7 +837,7 @@ public class ChartCacheSQLite {
                 return groups;
             }
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Failed to get song groups for library " + libraryId, e);
+            Logger.global.log(Level.SEVERE, e, () -> "Failed to get song groups for library " + libraryId);
             return Collections.emptyList();
         }
     }
@@ -871,7 +867,7 @@ public class ChartCacheSQLite {
                 return diffs;
             }
         } catch (SQLException e) {
-            Logger.global.log(Level.SEVERE, "Failed to get difficulties for song " + songGroupId, e);
+            Logger.global.log(Level.SEVERE, e, () -> "Failed to get difficulties for song " + songGroupId);
             return Collections.emptyList();
         }
     }
@@ -895,7 +891,7 @@ public class ChartCacheSQLite {
 
         // File missing - invalidate cache entry
         if (!sourceFile.exists()) {
-            Logger.global.warning("Chart file missing: " + fullPath + " - invalidating cache");
+            Logger.global.warning(() -> String.format("Chart file missing: %s - invalidating cache", fullPath));
             invalidateCache(cached.getId());
             return null;
         }
@@ -970,7 +966,7 @@ public class ChartCacheSQLite {
         if (chartIndex >= 0 && chartIndex < chartList.size()) {
             return chartList.get(chartIndex);
         }
-        return chartList.size() > 0 ? chartList.get(0) : null;
+        return !chartList.isEmpty() ? chartList.get(0) : null;
     }
 
     // ===== Binary Offset Extraction (Fix #4, Standard I/O) =====
@@ -1008,7 +1004,7 @@ public class ChartCacheSQLite {
 
             // Security: Validate cover size (prevent DoS via malicious OJN)
             if (coverSize <= 0 || coverSize > 10_000_000) {
-                Logger.global.warning("Invalid cover size for " + cached.getRelativePath() + ": " + coverSize);
+                Logger.global.warning(() -> String.format("Invalid cover size for %s: %d", cached.getRelativePath(), coverSize));
                 return null;
             }
 
@@ -1018,7 +1014,7 @@ public class ChartCacheSQLite {
                 f.readFully(coverBytes);
                 return ImageIO.read(new ByteArrayInputStream(coverBytes));
             } catch (IOException e) {
-                Logger.global.log(Level.WARNING, "Failed to read embedded cover from " + cached.getRelativePath(), e);
+                Logger.global.log(Level.WARNING, e, () -> "Failed to read embedded cover from " + cached.getRelativePath());
             }
         }
 
@@ -1027,7 +1023,7 @@ public class ChartCacheSQLite {
             try {
                 return ImageIO.read(new File(cached.getCoverExternalPath()));
             } catch (IOException e) {
-                Logger.global.log(Level.WARNING, "Failed to read external cover " + cached.getCoverExternalPath(), e);
+                Logger.global.log(Level.WARNING, e, () -> "Failed to read external cover " + cached.getCoverExternalPath());
             }
         }
 
@@ -1134,7 +1130,7 @@ public class ChartCacheSQLite {
                     updateHash(cached.getId(), hash);
                 }
             } catch (Exception e) {
-                Logger.global.log(Level.WARNING, "Failed to calculate hash for " + cached.getRelativePath(), e);
+                Logger.global.log(Level.WARNING, e, () -> "Failed to calculate hash for " + cached.getRelativePath());
             }
         });
     }
@@ -1154,7 +1150,7 @@ public class ChartCacheSQLite {
             stmt.setInt(2, chartId);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            Logger.global.log(Level.WARNING, "Failed to update SHA-256 hash for chart " + chartId, e);
+            Logger.global.log(Level.WARNING, e, () -> "Failed to update SHA-256 hash for chart " + chartId);
         } finally {
             writeLock.unlock();
         }
@@ -1256,7 +1252,7 @@ public class ChartCacheSQLite {
             stmt.setInt(1, chartId);
             stmt.executeUpdate();
         } catch (SQLException e) {
-            Logger.global.log(Level.WARNING, "Failed to invalidate cache for chart " + chartId, e);
+            Logger.global.log(Level.WARNING, e, () -> "Failed to invalidate cache for chart " + chartId);
         } finally {
             writeLock.unlock();
         }
