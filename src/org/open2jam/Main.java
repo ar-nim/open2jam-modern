@@ -19,12 +19,6 @@ import org.open2jam.util.Logger;
 
 public class Main implements Runnable
 {
-    private static final String LIB_PATH =
-        System.getProperty("user.dir") + File.separator +
-        "lib" + File.separator +
-        "native" + File.separator +
-        getOS();
-
     public static void main(String []args)
     {
         // LWJGL 3 handles native libraries automatically via Gradle dependencies
@@ -82,8 +76,6 @@ public class Main implements Runnable
 
     private static void setupLogging()
     {
-        //Config c = Config.get();
-        //if(c.log_handle != null)Logger.global.addHandler(c.log_handle);
         for(Handler h : Logger.global.getHandlers())h.setLevel(Level.INFO);
         Logger.global.setLevel(Level.INFO);
     }
@@ -93,51 +85,30 @@ public class Main implements Runnable
         try {
             // Enable HiDPI scaling specifically for FlatLaf
             System.setProperty("flatlaf.uiScale.enabled", "true");
-            
+
             // Handle UI Scale: "automatic" (system default) or a custom number
             String uiScaleStr = Config.getInstance().getGameOptions().uiScale;
             if (uiScaleStr != null && !"automatic".equalsIgnoreCase(uiScaleStr)) {
                 System.setProperty("flatlaf.uiScale", uiScaleStr);
             }
-            
+
             // Handle UI Theme selection
-            GameOptions.UiTheme themeSetting = Config.getInstance().getGameOptions().uiTheme;
-            boolean isDark;
-            
-            if (themeSetting == GameOptions.UiTheme.Automatic) {
-                // Auto-detection for system dark mode (heuristic)
-                // For now, default to Light until native detection is added via JNA or platform calls
-                isDark = false; 
-            } else {
-                isDark = (themeSetting == GameOptions.UiTheme.Dark);
-            }
-            
+            boolean isDark = getIsDarkMode();
+
             // Choose theme based on OS and dark mode preference
-            String os = getOS();
-            if ("macosx".equals(os)) {
-                if (isDark) FlatMacDarkLaf.setup();
-                else FlatMacLightLaf.setup();
-            } else if ("windows".equals(os)) {
-                // For Windows, use IntelliJLaf for light and DarkLaf for dark
-                if (isDark) FlatDarkLaf.setup();
-                else FlatIntelliJLaf.setup();
-            } else {
-                // Linux/Other: use default Flat themes
-                if (isDark) FlatDarkLaf.setup();
-                else FlatLightLaf.setup();
-            }
-            
+            setupLookAndFeel(isDark, getOS());
+
             // Refine UI for a more premium feel
             UIManager.put("Component.focusWidth", 2);
             UIManager.put("Button.arc", 6);
             UIManager.put("ProgressBar.arc", 6);
             UIManager.put("ScrollBar.showButtons", true);
             UIManager.put("TabbedPane.showTabSeparators", true);
-            
+
             if (isDark) {
                 UIManager.put("TabbedPane.selectedBackground", 0x3d3d3d);
             }
-            
+
         } catch (Exception e) {
             Logger.global.log(Level.WARNING, "Failed to initialize FlatLaf, falling back to system LAF", e);
             try {
@@ -145,6 +116,37 @@ public class Main implements Runnable
             } catch (Exception ex) {
                 // Last resort
             }
+        }
+    }
+
+    /**
+     * Determine if dark mode should be used based on theme setting.
+     */
+    private static boolean getIsDarkMode() {
+        GameOptions.UiTheme themeSetting = Config.getInstance().getGameOptions().uiTheme;
+        if (themeSetting == GameOptions.UiTheme.Automatic) {
+            // Auto-detection for system dark mode (heuristic)
+            // For now, default to Light until native detection is added via JNA or platform calls
+            return false;
+        }
+        return themeSetting == GameOptions.UiTheme.Dark;
+    }
+
+    /**
+     * Set up the appropriate LookAndFeel based on OS and dark mode preference.
+     */
+    private static void setupLookAndFeel(boolean isDark, String os) {
+        if ("macosx".equals(os)) {
+            if (isDark) FlatMacDarkLaf.setup();
+            else FlatMacLightLaf.setup();
+        } else if ("windows".equals(os)) {
+            // For Windows, use IntelliJLaf for light and DarkLaf for dark
+            if (isDark) FlatDarkLaf.setup();
+            else FlatIntelliJLaf.setup();
+        } else {
+            // Linux/Other: use default Flat themes
+            if (isDark) FlatDarkLaf.setup();
+            else FlatLightLaf.setup();
         }
     }
 
