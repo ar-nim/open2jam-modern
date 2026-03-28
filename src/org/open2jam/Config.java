@@ -82,8 +82,10 @@ public class Config {
     private static final String NOTE_8 = "NOTE_8";
     private static final String NOTE_SC = "NOTE_SC";
 
-    private static Config instance;
-    
+    // REMOVED: Singleton pattern (replaced with AppContext dependency injection)
+    // private static Config instance;
+    // public static Config getInstance() { ... }
+
     // ===== Debounced Save =====
     private static final ScheduledExecutorService saveExecutor = new ScheduledThreadPoolExecutor(1, r -> {
         Thread t = new Thread(r, "Config-Saver");
@@ -103,34 +105,16 @@ public class Config {
     @JsonProperty("lastOpenedLibraryId")
     private Integer lastOpenedLibraryId = null;
 
-    // ===== Initialization =====
-
-    /**
-     * Get singleton Config instance.
-     * 
-     * <p>Thread-safe lazy initialization. Loads from disk on first access if file exists.</p>
-     * 
-     * @return Singleton Config instance
-     */
-    public static Config getInstance() {
-        if (instance == null) {
-            synchronized (Config.class) {
-                if (instance == null) {
-                    instance = load();
-                }
-            }
-        }
-        return instance;
-    }
+    // REMOVED: getInstance() method (singleton pattern removed)
 
     /**
      * Load configuration from disk.
-     * 
+     *
      * <p>Creates default config if file doesn't exist or is corrupted.</p>
-     * 
+     *
      * @return Loaded or default Config instance
      */
-    private static Config load() {
+    public static Config load() {  // Changed from private to public
         // Ensure save directory exists
         File saveDir = new File("save");
         if (!saveDir.exists() && !saveDir.mkdirs()) {

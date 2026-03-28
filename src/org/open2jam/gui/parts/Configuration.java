@@ -12,6 +12,7 @@ import java.util.logging.Level;
 import javax.swing.*;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.table.DefaultTableModel;
+import org.open2jam.AppContext;
 import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.Config;
 import org.open2jam.Main;
@@ -35,6 +36,7 @@ import org.lwjgl.glfw.GLFWVidMode;
  */
 public class Configuration extends JPanel {
 
+    private final AppContext context;  // NEW: Store AppContext
     private EnumMap<Event.Channel, Integer> kb_map;
     private HashMap<Integer, Event.Channel> table_map = new HashMap<>();
 
@@ -63,7 +65,8 @@ public class Configuration extends JPanel {
     private JLabel lbl_saveFeedback;
     private javax.swing.Timer saveFeedbackTimer;
 
-    public Configuration() {
+    public Configuration(AppContext context) {  // UPDATED: Accept AppContext
+        this.context = context;
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
         // Initialize display modes
@@ -166,7 +169,7 @@ public class Configuration extends JPanel {
             default: return;
         }
         // Save keyboard map
-        Config config = Config.getInstance();
+        Config config = context.config;
         for (Map.Entry<Event.Channel, Integer> entry : kb_map.entrySet()) {
             config.setKeyCode(kt, entry.getKey(), entry.getValue());
         }
@@ -183,7 +186,7 @@ public class Configuration extends JPanel {
 
         // Apply theme immediately without restart
         FlatAnimatedLafChange.showSnapshot();
-        Main.initFlatLaf();
+        Main.initFlatLaf(context);
         SwingUtilities.updateComponentTreeUI(getTopLevelAncestor());
         FlatAnimatedLafChange.hideSnapshotWithAnimation();
 
@@ -283,7 +286,7 @@ public class Configuration extends JPanel {
 
     private void loadTableKeys(Config.KeyboardType kt) {
         // Get key codes as primitive array and convert to map for display
-        int[] keyCodes = Config.getInstance().getKeyCodes(kt);
+        int[] keyCodes = context.config.getKeyCodes(kt);
         kb_map = new java.util.EnumMap<>(Event.Channel.class);
         for (Event.Channel channel : Event.Channel.values()) {
             if (keyCodes[channel.ordinal()] != -1) {
@@ -405,7 +408,7 @@ public class Configuration extends JPanel {
     }
 
     private void loadGUISettings() {
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
         
         // Set UI Theme
         combo_uiTheme.setSelectedItem(go.getUiTheme());
@@ -422,7 +425,7 @@ public class Configuration extends JPanel {
      * Load display settings from GameOptions into the UI components.
      */
     private void loadDisplaySettings() {
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
 
         // Select the matching display mode
         DisplayMode currentMode = go.getDisplay();

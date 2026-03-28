@@ -21,6 +21,7 @@ import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableRowSorter;
+import org.open2jam.AppContext;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.render.Render;
@@ -54,6 +55,7 @@ import org.open2jam.util.Logger;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class MusicSelection extends javax.swing.JPanel
     implements PropertyChangeListener, ListSelectionListener {
+    private final AppContext context;  // NEW: Store AppContext
     private Server lastServer;
 
     private class PopupListener extends MouseAdapter {
@@ -132,7 +134,8 @@ public class MusicSelection extends javax.swing.JPanel
     }
 
     /** Creates new form Interface */
-    public MusicSelection() {
+    public MusicSelection(AppContext context) {  // UPDATED: Accept AppContext
+        this.context = context;
         initLogic();
         initComponents();
         load_progress.setVisible(false);
@@ -141,11 +144,11 @@ public class MusicSelection extends javax.swing.JPanel
         try {
             List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
             org.open2jam.parsers.Library lastOpenedLib = null;
-            Integer lastLibId = Config.getInstance().getLastOpenedLibraryId();
-            
+            Integer lastLibId = context.config.getLastOpenedLibraryId();  // Use context
+
             for (org.open2jam.parsers.Library lib : libs) {
                 combo_dirs.addItem(new FileItem(new File(lib.rootPath)));
-                
+
                 // Find last opened library
                 if (lastLibId != null && lib.id == lastLibId) {
                     lastOpenedLib = lib;
@@ -271,7 +274,7 @@ public class MusicSelection extends javax.swing.JPanel
     
     private void readGameOptions() {
         // TODO: read Config gameOptions and set them on the GUI
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
 
         jc_autoplay.setSelected(go.isAutoplay());
 	jc_autosound.setSelected(go.isAutosound());
@@ -344,11 +347,11 @@ public class MusicSelection extends javax.swing.JPanel
      * Save volume settings from sliders to config.
      */
     private void saveVolumeSettings() {
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
         go.setMasterVolume(slider_main_vol.getValue() / 100f);
         go.setKeyVolume(slider_key_vol.getValue() / 100f);
         go.setBGMVolume(slider_bgm_vol.getValue() / 100f);
-        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
         DebugLogger.debug("Auto-saved volume settings: main=" + slider_main_vol.getValue() + 
                          ", key=" + slider_key_vol.getValue() + 
                          ", bgm=" + slider_bgm_vol.getValue());
@@ -358,7 +361,7 @@ public class MusicSelection extends javax.swing.JPanel
      * Save modifier settings (autoplay, autosound, channel/visibility mods, speed, judgment) to config.
      */
     private void saveModifierSettings() {
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
         go.setAutoplay(jc_autoplay.isSelected());
         go.setAutosound(jc_autosound.isSelected());
         go.setChannelModifier((ChannelMod) combo_channelModifier.getSelectedItem());
@@ -370,7 +373,7 @@ public class MusicSelection extends javax.swing.JPanel
         // Update autoplay keys button state
         btn_autoplay_keys.setEnabled(jc_autoplay.isSelected());
         
-        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
         DebugLogger.debug("Auto-saved modifier settings: autoplay=" + jc_autoplay.isSelected() + 
                          ", autosound=" + jc_autosound.isSelected() +
                          ", channelMod=" + combo_channelModifier.getSelectedItem() +
@@ -388,15 +391,15 @@ public class MusicSelection extends javax.swing.JPanel
             double displayLag = Double.parseDouble(txt_displayLag.getText().trim());
             double audioLatency = Double.parseDouble(txt_audioLatency.getText().trim());
             
-            GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            GameOptions go = context.config.getGameOptions().toGameOptions();
             go.setDisplayLag(displayLag);
             go.setAudioLatency(audioLatency);
-            Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+            context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
             DebugLogger.debug("Auto-saved display settings: displayLag=" + displayLag + 
                              ", audioLatency=" + audioLatency);
         } catch (NumberFormatException e) {
             // Invalid input - show error and revert to saved value
-            GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            GameOptions go = context.config.getGameOptions().toGameOptions();
             txt_displayLag.setText(go.getDisplayLag() + "");
             txt_audioLatency.setText(go.getAudioLatency() + "");
             JOptionPane.showMessageDialog(this, 
@@ -414,7 +417,7 @@ public class MusicSelection extends javax.swing.JPanel
      */
     public void windowClosing() {
         // Save ALL settings as a safety net (in case any listeners didn't fire)
-        GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+        GameOptions go = context.config.getGameOptions().toGameOptions();
 
         go.setAutoplay(jc_autoplay.isSelected());
 	go.setAutosound(jc_autosound.isSelected());
@@ -436,7 +439,7 @@ public class MusicSelection extends javax.swing.JPanel
             DebugLogger.debug("Invalid displayLag/audioLatency on window close, using existing values");
         }
 
-        Config.getInstance().setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
+        context.config.setGameOptions(Config.GameOptionsWrapper.fromGameOptions(go));
         DebugLogger.debug("windowClosing() - Saved all game options as safety net");
     }
 
@@ -1151,7 +1154,7 @@ public class MusicSelection extends javax.swing.JPanel
             final double hispeed = (Double) js_hispeed.getValue();
 
             // Get display mode from Configuration tab settings
-            final DisplayMode dm = Config.getInstance().getGameOptions().toGameOptions().getDisplay();
+            final DisplayMode dm = context.config.getGameOptions().toGameOptions().getDisplay();
 
             final boolean autoplay = jc_autoplay.isSelected();
             final boolean autosound = jc_autosound.isSelected();
@@ -1167,7 +1170,7 @@ public class MusicSelection extends javax.swing.JPanel
             final float keyVol = slider_key_vol.getValue() / 100f;
             final float bgmVol = slider_bgm_vol.getValue() / 100f;
 
-            final GameOptions go = Config.getInstance().getGameOptions().toGameOptions();
+            final GameOptions go = context.config.getGameOptions().toGameOptions();
             go.setAutoplay(autoplay);
             go.setAutosound(autosound);
             go.setChannelModifier(channelModifier);
@@ -1196,7 +1199,7 @@ public class MusicSelection extends javax.swing.JPanel
             }
 
             final Render r;
-            r = new Render(chartToPlay, go, dm);  // Use validated chart
+            r = new Render(chartToPlay, go, dm, this.context);  // Use validated chart with context
             
             if (cb_startPaused.isSelected()) {
                 r.setStartPaused();
@@ -1569,7 +1572,7 @@ public class MusicSelection extends javax.swing.JPanel
                     model_songlist.setRawList(chartLists);
                     
                     // Save last opened library ID
-                    Config.getInstance().setLastOpenedLibraryId(library.id);
+                    context.config.setLastOpenedLibraryId(library.id);
                     return;  // ✅ Loaded from cache - no scan needed!
                 } else {
                     Logger.global.warning("Cache is empty for library " + library.id + " - will scan files");
@@ -1674,7 +1677,7 @@ public class MusicSelection extends javax.swing.JPanel
                         List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
                         for (org.open2jam.parsers.Library lib : libs) {
                             if (lib.rootPath.equals(currentDirectory.getAbsolutePath().replace("\\", "/"))) {
-                                Config.getInstance().setLastOpenedLibraryId(lib.id);
+                                context.config.setLastOpenedLibraryId(lib.id);
                                 break;
                             }
                         }

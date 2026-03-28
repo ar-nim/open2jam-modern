@@ -22,6 +22,7 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
+import org.open2jam.AppContext;
 import org.open2jam.render.lwjgl.Keyboard;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
@@ -54,6 +55,7 @@ import org.lwjgl.opengl.GL11;
  */
 public class Render implements GameWindowCallback
 {
+    private final AppContext context;  // NEW: Store AppContext
     private String localMatchingServer = "";
     private int rank;
     private final boolean normalizeSpeed;
@@ -306,11 +308,13 @@ public class Render implements GameWindowCallback
     protected final boolean AUTOSOUND;
     boolean disableAutoSound = false;
 
-    public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm) throws SoundSystemException
+    public Render(Chart chart, GameOptions opt, org.open2jam.render.DisplayMode dm, AppContext context) throws SoundSystemException  // UPDATED: Accept AppContext
     {
+        this.context = context;
+        
         // Initialize keyboard mapping arrays from Config
-        keyboardKeyCodes = Config.getInstance().getKeyCodes(Config.KeyboardType.K7);
-        keyboardMiscKeyCodes = Config.getInstance().getInstanceMiscKeyCodes();
+        keyboardKeyCodes = context.config.getKeyCodes(Config.KeyboardType.K7);
+        keyboardMiscKeyCodes = context.config.getInstanceMiscKeyCodes();
 
         window = ResourceFactory.get().getGameWindow();
 

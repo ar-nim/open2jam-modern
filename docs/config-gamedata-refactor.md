@@ -1,8 +1,8 @@
 # Config and Game Data Refactor
 
-**Document Version**: 3.0
+**Document Version**: 4.0
 **Date**: March 28, 2026
-**Status**: ✅ Complete - VoileMap Deprecated, SQLite + JSON Implemented, SonarLint Fixed, AppContext DI Planned
+**Status**: ✅ Complete - VoileMap Deprecated, SQLite + JSON Implemented, SonarLint Fixed, AppContext DI Complete
 **Related**: Legacy VoileMap/XML removal completed in commit c277c21 (March 25, 2026)
 
 ---
@@ -39,20 +39,22 @@ This document tracks the complete modernization of open2jam-modern's configurati
 | **ChartCacheSQLite.java** | S3398, S1854 | d199340, f4ef6d1 |
 | **Chart.java** | Various | 5951de2 |
 
-### Phase 3: Dependency Injection (Planned 📋)
+### Phase 3: Dependency Injection with AppContext (✅ Complete)
 
-**AppContext pattern to remove singleton pattern:**
+**AppContext pattern removes singleton pattern:**
 
 | Component | Status | Issues |
 |-----------|--------|--------|
-| **AppContext class** | 📋 Planned | New container for shared state |
-| **Config singleton removal** | 📋 Planned | S6548, S2168 |
-| **Constructor injection** | 📋 Planned | 25 occurrences across 7 files |
+| **AppContext class** | ✅ Complete | New container for shared state |
+| **Config singleton removal** | ✅ Complete | S6548, S2168 resolved |
+| **Constructor injection** | ✅ Complete | 25 occurrences across 7 files |
 
 **Benefits:**
-- Removes global state coupling
-- Future-proof for rendered OpenGL UI
-- Better testability (mockable Config/AppContext)
+- ✅ Removes global state coupling
+- ✅ Future-proof for rendered OpenGL UI
+- ✅ Better testability (mockable Config/AppContext)
+- ✅ Explicit dependencies
+- ✅ No framework overhead
 
 ---
 
@@ -901,7 +903,7 @@ public static List<ChartMetadata> getCachedCharts(String path) {
 | **SHA-256 identity hashes** | Feature | ⏳ Implemented, untested |
 | **Cover data BLOB caching** | Feature | ⏳ Schema ready, UI integration pending |
 
-**Note**: Singleton → Dependency Injection moved to **Section 1.4** (AppContext pattern planned)
+**Note**: Singleton → Dependency Injection completed March 28, 2026 (Section 1.4)
 
 ---
 

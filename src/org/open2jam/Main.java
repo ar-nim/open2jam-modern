@@ -19,6 +19,8 @@ import org.open2jam.util.Logger;
 
 public class Main implements Runnable
 {
+    private final AppContext context;  // NEW: Store AppContext
+    
     public static void main(String []args)
     {
         // LWJGL 3 handles native libraries automatically via Gradle dependencies
@@ -42,22 +44,31 @@ public class Main implements Runnable
             }
         }));
 
-        // Initialize Config (loads from save/config.json)
-        Config.getInstance();
+        // NEW: Create Config and AppContext explicitly (composition root)
+        Config config = Config.load();
+        AppContext context = new AppContext(config);
 
         // Initialize SQLite chart cache
         ChartCacheSQLite.initialize();
 
         setupLogging();
 
-        initFlatLaf();
+        // Pass context to initFlatLaf
+        initFlatLaf(context);
 
-        EventQueue.invokeLater(new Main());
+        // Pass context to Main instance
+        EventQueue.invokeLater(new Main(context));
+    }
+
+    // NEW: Constructor accepts AppContext
+    public Main(AppContext context) {
+        this.context = context;
     }
 
     @Override
     public void run() {
-        new Interface().setVisible(true);
+        // Pass context to Interface
+        new Interface(context).setVisible(true);
     }
 
     /**
@@ -80,20 +91,20 @@ public class Main implements Runnable
         Logger.global.setLevel(Level.INFO);
     }
 
-    public static void initFlatLaf()
+    public static void initFlatLaf(AppContext context)
     {
         try {
             // Enable HiDPI scaling specifically for FlatLaf
             System.setProperty("flatlaf.uiScale.enabled", "true");
 
             // Handle UI Scale: "automatic" (system default) or a custom number
-            String uiScaleStr = Config.getInstance().getGameOptions().uiScale;
+            String uiScaleStr = context.config.getGameOptions().uiScale;
             if (uiScaleStr != null && !"automatic".equalsIgnoreCase(uiScaleStr)) {
                 System.setProperty("flatlaf.uiScale", uiScaleStr);
             }
 
             // Handle UI Theme selection
-            boolean isDark = getIsDarkMode();
+            boolean isDark = getIsDarkMode(context);
 
             // Choose theme based on OS and dark mode preference
             setupLookAndFeel(isDark, getOS());
@@ -122,8 +133,8 @@ public class Main implements Runnable
     /**
      * Determine if dark mode should be used based on theme setting.
      */
-    private static boolean getIsDarkMode() {
-        GameOptions.UiTheme themeSetting = Config.getInstance().getGameOptions().uiTheme;
+    private static boolean getIsDarkMode(AppContext context) {
+        GameOptions.UiTheme themeSetting = context.config.getGameOptions().uiTheme;
         if (themeSetting == GameOptions.UiTheme.AUTOMATIC) {
             // Auto-detection for system dark mode (heuristic)
             // For now, default to Light until native detection is added via JNA or platform calls
