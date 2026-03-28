@@ -369,7 +369,7 @@ public class Configuration extends JPanel {
         // FPS Limiter dropdown
         JLabel fpsLimiterLabel = new JLabel("FPS Limiter:");
         combo_fpsLimiter = new JComboBox<>(GameOptions.FpsLimiter.values());
-        combo_fpsLimiter.setSelectedItem(GameOptions.FpsLimiter.x1);
+        combo_fpsLimiter.setSelectedItem(GameOptions.FpsLimiter.X1);
         updateFpsLimiterEnabled();  // Set initial enabled state
         
         // Add listener to update FPS limiter enabled state when VSync changes

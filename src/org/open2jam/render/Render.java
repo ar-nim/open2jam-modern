@@ -332,13 +332,13 @@ public class Render implements GameWindowCallback
         // TODO: refactor this
         switch(opt.getSpeedType())
         {
-            case xRSpeed:
+            case XR_SPEED:
                 distance = new XRSpeed(distance);
                 break;
-            case WSpeed:
+            case W_SPEED:
                 distance = new WSpeed(distance, speedObj);
                 break;
-            case RegulSpeed:
+            case REGUL_SPEED:
                 distance = new RegulSpeed(385);
                 break;
         }
@@ -571,7 +571,7 @@ public class Render implements GameWindowCallback
         pills_draw = new LinkedList<Entity>();
 
         visibility_entity = new CompositeEntity();
-        if(opt.getVisibilityModifier() != GameOptions.VisibilityMod.None)
+        if(opt.getVisibilityModifier() != GameOptions.VisibilityMod.NONE)
             visibility(opt.getVisibilityModifier());
 
         judgment_line = skin.getEntityMap().get("JUDGMENT_LINE");
@@ -597,13 +597,13 @@ public class Render implements GameWindowCallback
 	//Let's randomize "-"
         switch(opt.getChannelModifier())
         {
-            case Mirror:
+            case MIRROR:
 		event_list.channelMirror();
             break;
-            case Shuffle:
+            case SHUFFLE:
                 event_list.channelShuffle();
             break;
-            case Random:
+            case RANDOM:
                 event_list.channelRandom();
             break;
         }
@@ -1693,7 +1693,7 @@ public class Render implements GameWindowCallback
         }
 
         // FIXME this is a hack
-        if(value != GameOptions.VisibilityMod.Sudden)skin.getEntityMap().get("JUDGMENT_LINE").setLayer(layer);
+        if(value != GameOptions.VisibilityMod.SUDDEN)skin.getEntityMap().get("JUDGMENT_LINE").setLayer(layer);
         skin.getEntityMap().get("MEASURE_MARK").setLayer(layer);
         
         entities_matrix.add(visibility_entity);

@@ -292,10 +292,10 @@ public class Config {
     private static GameOptionsWrapper createDefaultGameOptions() {
         GameOptionsWrapper opts = new GameOptionsWrapper();
         opts.speedMultiplier = 1.0;
-        opts.speedType = GameOptions.SpeedType.HiSpeed;
-        opts.visibilityModifier = GameOptions.VisibilityMod.None;
-        opts.channelModifier = GameOptions.ChannelMod.None;
-        opts.judgmentType = GameOptions.JudgmentType.BeatJudgment;
+        opts.speedType = GameOptions.SpeedType.HI_SPEED;
+        opts.visibilityModifier = GameOptions.VisibilityMod.NONE;
+        opts.channelModifier = GameOptions.ChannelMod.NONE;
+        opts.judgmentType = GameOptions.JudgmentType.BEAT_JUDGMENT;
         opts.keyVolume = 1.0f;
         opts.bgmVolume = 1.0f;
         opts.masterVolume = 1.0f;
@@ -304,7 +304,7 @@ public class Config {
         opts.autoplayChannels = Arrays.asList(false, false, false, false, false, false, false);
         opts.displayFullscreen = false;
         opts.displayVsync = true;
-        opts.fpsLimiter = GameOptions.FpsLimiter.x1;
+        opts.fpsLimiter = GameOptions.FpsLimiter.X1;
         opts.displayWidth = 1280;
         opts.displayHeight = 720;
         opts.displayBitsPerPixel = 32;
@@ -566,10 +566,10 @@ public class Config {
     public static class GameOptionsWrapper {
         // Gameplay
         public double speedMultiplier = 1.0;
-        public GameOptions.SpeedType speedType = GameOptions.SpeedType.HiSpeed;
-        public GameOptions.VisibilityMod visibilityModifier = GameOptions.VisibilityMod.None;
-        public GameOptions.ChannelMod channelModifier = GameOptions.ChannelMod.None;
-        public GameOptions.JudgmentType judgmentType = GameOptions.JudgmentType.BeatJudgment;
+        public GameOptions.SpeedType speedType = GameOptions.SpeedType.HI_SPEED;
+        public GameOptions.VisibilityMod visibilityModifier = GameOptions.VisibilityMod.NONE;
+        public GameOptions.ChannelMod channelModifier = GameOptions.ChannelMod.NONE;
+        public GameOptions.JudgmentType judgmentType = GameOptions.JudgmentType.BEAT_JUDGMENT;
 
         // Audio
         public float keyVolume = 1.0f;
@@ -584,13 +584,13 @@ public class Config {
         // Display
         public boolean displayFullscreen = false;
         public boolean displayVsync = true;
-        public GameOptions.FpsLimiter fpsLimiter = GameOptions.FpsLimiter.x1;
+        public GameOptions.FpsLimiter fpsLimiter = GameOptions.FpsLimiter.X1;
         public int displayWidth = 1280;
         public int displayHeight = 720;
         public int displayBitsPerPixel = 32;
         public int displayFrequency = 60;
         public String uiScale = "automatic"; // "automatic" = system default, or a string number like "1.25"
-        public GameOptions.UiTheme uiTheme = GameOptions.UiTheme.Automatic;
+        public GameOptions.UiTheme uiTheme = GameOptions.UiTheme.AUTOMATIC;
 
         // Sound
         public int bufferSize = 512;

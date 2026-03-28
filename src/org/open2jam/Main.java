@@ -124,12 +124,12 @@ public class Main implements Runnable
      */
     private static boolean getIsDarkMode() {
         GameOptions.UiTheme themeSetting = Config.getInstance().getGameOptions().uiTheme;
-        if (themeSetting == GameOptions.UiTheme.Automatic) {
+        if (themeSetting == GameOptions.UiTheme.AUTOMATIC) {
             // Auto-detection for system dark mode (heuristic)
             // For now, default to Light until native detection is added via JNA or platform calls
             return false;
         }
-        return themeSetting == GameOptions.UiTheme.Dark;
+        return themeSetting == GameOptions.UiTheme.DARK;
     }
 
     /**

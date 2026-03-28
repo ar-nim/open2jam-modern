@@ -284,7 +284,7 @@ public class MusicSelection extends javax.swing.JPanel
         combo_speedType.setSelectedItem(go.getSpeedType());
         txt_displayLag.setText(go.getDisplayLag() + "");
         txt_audioLatency.setText(go.getAudioLatency() + "");
-        jc_timed_judgment.setSelected(go.getJudgmentType() == GameOptions.JudgmentType.TimeJudgment);
+        jc_timed_judgment.setSelected(go.getJudgmentType() == GameOptions.JudgmentType.TIME_JUDGMENT);
 
     }
 
@@ -365,8 +365,8 @@ public class MusicSelection extends javax.swing.JPanel
         go.setVisibilityModifier((VisibilityMod) combo_visibilityModifier.getSelectedItem());
         go.setSpeedMultiplier((Double) js_hispeed.getValue());
         go.setSpeedType((SpeedType) combo_speedType.getSelectedItem());
-        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
-        
+        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TIME_JUDGMENT : GameOptions.JudgmentType.BEAT_JUDGMENT);
+
         // Update autoplay keys button state
         btn_autoplay_keys.setEnabled(jc_autoplay.isSelected());
         
@@ -425,7 +425,7 @@ public class MusicSelection extends javax.swing.JPanel
         go.setBGMVolume(slider_bgm_vol.getValue()/100f);
         go.setSpeedMultiplier((Double)js_hispeed.getValue());
         go.setSpeedType((SpeedType)combo_speedType.getSelectedItem());
-        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
+        go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TIME_JUDGMENT : GameOptions.JudgmentType.BEAT_JUDGMENT);
         
         // Also save displayLag and audioLatency from text fields
         try {
@@ -1177,7 +1177,7 @@ public class MusicSelection extends javax.swing.JPanel
             go.setBGMVolume(bgmVol);
             go.setSpeedMultiplier(hispeed);
             go.setSpeedType(speed_type);
-            go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TimeJudgment : GameOptions.JudgmentType.BeatJudgment);
+            go.setJudgmentType(jc_timed_judgment.isSelected() ? GameOptions.JudgmentType.TIME_JUDGMENT : GameOptions.JudgmentType.BEAT_JUDGMENT);
 
             System.out.println(go.isAutoplay());
 
