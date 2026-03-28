@@ -202,7 +202,7 @@ public class Config {
     private void validateFloatRange(String name, float value, float min, float max) {
         float clamped = Math.max(min, Math.min(max, value));
         if (clamped != value) {
-            Logger.global.warning("Invalid " + name + " (" + value + "), clamped to " + clamped);
+            Logger.global.warning(INVALID_PREFIX + name + " (" + value + ")" + USING_DEFAULT_SUFFIX + "clamped to " + clamped);
         }
     }
 
@@ -749,7 +749,7 @@ public class Config {
         private int displayFrequency = 60;
         
         @JsonProperty("uiScale")
-        private String uiScale = "automatic"; // "automatic" = system default, or a string number like "1.25"
+        private String uiScale = UI_SCALE_AUTOMATIC; // "automatic" = system default, or a string number like "1.25"
         
         @JsonProperty("uiTheme")
         private GameOptions.UiTheme uiTheme = GameOptions.UiTheme.AUTOMATIC;
