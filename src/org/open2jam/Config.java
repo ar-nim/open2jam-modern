@@ -1,6 +1,7 @@
 package org.open2jam;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectWriter;
 import org.open2jam.parsers.Event;
@@ -92,17 +93,15 @@ public class Config {
     private static final AtomicBoolean savePending = new AtomicBoolean(false);
     private static final long SAVE_DELAY_MS = 500;  // Debounce delay
 
-    // ===== Config Fields =====
-    public KeyBindings keyBindings = new KeyBindings();
-    public GameOptionsWrapper gameOptions = new GameOptionsWrapper();
-    
-    // ===== UI State (persisted for convenience) =====
-    /**
-     * Last opened library ID from SQLite libraries table.
-     * Used to restore the last selected directory on startup.
-     * Ignored if library doesn't exist or database is empty.
-     */
-    public Integer lastOpenedLibraryId = null;
+    // ===== Config Fields (private for encapsulation) =====
+    @JsonProperty("keyBindings")
+    private KeyBindings keyBindings = new KeyBindings();
+
+    @JsonProperty("gameOptions")
+    private GameOptionsWrapper gameOptions = new GameOptionsWrapper();
+
+    @JsonProperty("lastOpenedLibraryId")
+    private Integer lastOpenedLibraryId = null;
 
     // ===== Initialization =====
 
@@ -278,13 +277,13 @@ public class Config {
 
     /**
      * Create default configuration.
-     * 
+     *
      * @return Config with default key bindings and game options
      */
     private static Config createDefault() {
         Config config = new Config();
-        config.keyBindings = createDefaultKeyBindings();
-        config.gameOptions = createDefaultGameOptions();
+        config.setKeyBindings(createDefaultKeyBindings());
+        config.setGameOptions(createDefaultGameOptions());
         config.save();
         return config;
     }
@@ -526,13 +525,37 @@ public class Config {
         scheduleSave();  // Debounced save for rapid changes
     }
 
+    // ===== Key Bindings =====
+
+    /**
+     * Get key bindings.
+     *
+     * @return KeyBindings with all key mappings
+     */
+    @JsonProperty("keyBindings")
+    public KeyBindings getKeyBindings() {
+        return keyBindings;
+    }
+
+    /**
+     * Set key bindings.
+     *
+     * @param keyBindings New key bindings (will be saved immediately)
+     */
+    @JsonProperty("keyBindings")
+    public void setKeyBindings(KeyBindings keyBindings) {
+        this.keyBindings = keyBindings;
+        scheduleSave();
+    }
+
     // ===== Game Options =====
 
     /**
      * Get game options.
-     * 
+     *
      * @return GameOptionsWrapper with all game settings
      */
+    @JsonProperty("gameOptions")
     public GameOptionsWrapper getGameOptions() {
         return gameOptions;
     }
@@ -542,6 +565,7 @@ public class Config {
      *
      * @param options New game options (will be saved immediately)
      */
+    @JsonProperty("gameOptions")
     public void setGameOptions(GameOptionsWrapper options) {
         this.gameOptions = options;
         scheduleSave();
@@ -554,6 +578,7 @@ public class Config {
      *
      * @return Library ID from SQLite, or null if not set
      */
+    @JsonProperty("lastOpenedLibraryId")
     public Integer getLastOpenedLibraryId() {
         return lastOpenedLibraryId;
     }
@@ -563,6 +588,7 @@ public class Config {
      *
      * @param libraryId Library ID from SQLite libraries table
      */
+    @JsonProperty("lastOpenedLibraryId")
     public void setLastOpenedLibraryId(Integer libraryId) {
         this.lastOpenedLibraryId = libraryId;
         scheduleSave();

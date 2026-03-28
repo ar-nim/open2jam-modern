@@ -35,7 +35,7 @@ This document tracks the complete modernization of open2jam-modern's configurati
 
 | File | Issues Fixed | Commits |
 |------|--------------|---------|
-| **Config.java** | S1066, S3776, S1192 | March 28, 2026 |
+| **Config.java** | S1066, S3776, S1192, **S1104** | March 28, 2026 |
 | **ChartCacheSQLite.java** | S3398, S1854 | d199340, f4ef6d1 |
 | **Chart.java** | Various | 5951de2 |
 
@@ -227,6 +227,67 @@ if (!UI_SCALE_AUTOMATIC.equalsIgnoreCase(gameOptions.uiScale)) { ... }
 | **C** | Keep fields public + suppress warning | ❌ Not recommended |
 
 **Status**: ⏳ Awaiting decision
+
+---
+
+### 1.3: S1104 Fix - Public Fields Encapsulation (March 28, 2026) ✅
+
+**Status**: ✅ **Complete** (Updated March 28, 2026)
+**Issue**: S1104 - Public fields violate encapsulation
+**Approach**: Option B1 - Private fields + `@JsonProperty` on getters/setters
+
+**Fields Fixed:**
+- `private KeyBindings keyBindings` (was public)
+- `private GameOptionsWrapper gameOptions` (was public)
+- `private Integer lastOpenedLibraryId` (was public)
+
+**Implementation:**
+```java
+// Before (public fields)
+public KeyBindings keyBindings = new KeyBindings();
+public GameOptionsWrapper gameOptions = new GameOptionsWrapper();
+public Integer lastOpenedLibraryId = null;
+
+// After (private fields with @JsonProperty)
+@JsonProperty("keyBindings")
+private KeyBindings keyBindings = new KeyBindings();
+
+@JsonProperty("gameOptions")
+private GameOptionsWrapper gameOptions = new GameOptionsWrapper();
+
+@JsonProperty("lastOpenedLibraryId")
+private Integer lastOpenedLibraryId = null;
+
+// Getters/setters with @JsonProperty for Jackson
+@JsonProperty("keyBindings")
+public KeyBindings getKeyBindings() { return keyBindings; }
+
+@JsonProperty("keyBindings")
+public void setKeyBindings(KeyBindings keyBindings) {
+    this.keyBindings = keyBindings;
+    scheduleSave();  // Auto-save on change
+}
+```
+
+**Benefits:**
+- ✅ **SonarQube S1104 passes** - Proper encapsulation
+- ✅ **Jackson compatibility** - `@JsonProperty` ensures correct serialization
+- ✅ **Auto-save hook** - Setters trigger debounced save
+- ✅ **Future-proof** - Can add validation in setters
+- ✅ **JSON format unchanged** - Existing `config.json` works without modification
+
+**Testing:**
+- ✅ Build succeeds: `./gradlew clean build`
+- ✅ Application starts correctly
+- ✅ Existing `config.json` loads without errors
+- ✅ JSON output format identical (verified with diff)
+- ✅ All fields serialized correctly: `keyBindings`, `gameOptions`, `lastOpenedLibraryId`
+
+**Code Changes:**
+- **Lines changed**: +30 (getters/setters + `@JsonProperty` annotations)
+- **Files modified**: `Config.java`
+- **Import added**: `com.fasterxml.jackson.annotation.JsonProperty`
+- **Backward compatibility**: 100% (existing config files work unchanged)
 
 ---
 
@@ -592,7 +653,7 @@ public static List<ChartMetadata> getCachedCharts(String path) {
 
 | Component | Issues Fixed | Commits |
 |-----------|--------------|---------|
-| **Config.java** | S1066 (nested if), S3776 (complexity), S1192 (constants) | March 28, 2026 |
+| **Config.java** | S1066 (nested if), S3776 (complexity), S1192 (constants), **S1104 (public fields)** | March 28, 2026 |
 | **ChartCacheSQLite.java** | S3398 (method location), S1854 (useless increment) | d199340, f4ef6d1 |
 | **Chart.java** | Various SonarQube issues | 5951de2 |
 
@@ -602,7 +663,6 @@ public static List<ChartMetadata> getCachedCharts(String path) {
 
 | Improvement | Issue | Status |
 |-------------|-------|--------|
-| **Public fields encapsulation** | S1104 | ⏳ Awaiting decision |
 | **Singleton → Dependency Injection** | S6548, S2168 | ⏳ Deferred (2-4 hours) |
 | **SHA-256 identity hashes** | Feature | ⏳ Implemented, untested |
 | **Cover data BLOB caching** | Feature | ⏳ Schema ready, UI integration pending |
