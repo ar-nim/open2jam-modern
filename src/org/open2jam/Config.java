@@ -149,9 +149,12 @@ public class Config {
             h -> gameOptions.setDisplayHeight(h));
 
         // Validate volume levels (0-100)
-        validateFloatRange("keyVolume", gameOptions.getKeyVolume(), 0, 100);
-        validateFloatRange("bgmVolume", gameOptions.getBgmVolume(), 0, 100);
-        validateFloatRange("masterVolume", gameOptions.getMasterVolume(), 0, 100);
+        validateFloatRange("keyVolume", gameOptions.getKeyVolume(), 0, 100,
+            v -> gameOptions.setKeyVolume(v));
+        validateFloatRange("bgmVolume", gameOptions.getBgmVolume(), 0, 100,
+            v -> gameOptions.setBgmVolume(v));
+        validateFloatRange("masterVolume", gameOptions.getMasterVolume(), 0, 100,
+            v -> gameOptions.setMasterVolume(v));
 
         // Validate speed multiplier (0.1x - 10x)
         validateDoubleRange("speedMultiplier", gameOptions.getSpeedMultiplier(), 0.1, 10.0, 1.0,
@@ -198,11 +201,14 @@ public class Config {
      * @param value Current value
      * @param min Minimum allowed value
      * @param max Maximum allowed value
+     * @param setter Consumer to set the clamped value
      */
-    private void validateFloatRange(String name, float value, float min, float max) {
+    private void validateFloatRange(String name, float value, float min, float max,
+                                    java.util.function.Consumer<Float> setter) {
         float clamped = Math.max(min, Math.min(max, value));
         if (clamped != value) {
             Logger.global.warning(INVALID_PREFIX + name + " (" + value + ")" + USING_DEFAULT_SUFFIX + "clamped to " + clamped);
+            setter.accept(clamped);
         }
     }
 
