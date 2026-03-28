@@ -9,6 +9,7 @@ import java.net.URL;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Level;
 
 import javax.imageio.ImageIO;
@@ -166,19 +167,13 @@ public abstract class Chart implements Comparable<Chart>
 	return getLevel() == other.getLevel() &&
 	       getKeys() == other.getKeys() &&
 	       getPlayers() == other.getPlayers() &&
-	       getTitle().equals(other.getTitle()) &&
-	       getArtist().equals(other.getArtist());
+	       Objects.equals(getTitle(), other.getTitle()) &&
+	       Objects.equals(getArtist(), other.getArtist());
     }
 
     @Override
     public int hashCode() {
-	int hash = 7;
-	hash = 31 * hash + getLevel();
-	hash = 31 * hash + getKeys();
-	hash = 31 * hash + getPlayers();
-	hash = 31 * hash + getTitle().hashCode();
-	hash = 31 * hash + getArtist().hashCode();
-	return hash;
+	return Objects.hash(getLevel(), getKeys(), getPlayers(), getTitle(), getArtist());
     }
     
     public BufferedImage getNoImage()

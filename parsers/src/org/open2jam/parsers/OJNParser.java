@@ -38,126 +38,131 @@ class OJNParser {
         OJNChart normal = new OJNChart();
         OJNChart hard = new OJNChart();
 
-        int songid = buffer.getInt();
-        int signature = buffer.getInt();
-        if (signature != OJN_SIGNATURE) {
-            Logger.global.log(Level.WARNING, "File [{0}] isn't a OJN file !", file);
+        try {
+            int songid = buffer.getInt();
+            int signature = buffer.getInt();
+            if (signature != OJN_SIGNATURE) {
+                Logger.global.log(Level.WARNING, "File [{0}] isn't a OJN file !", file);
+                return null;
+            }
+
+            float encode_version = buffer.getFloat();
+
+            int genre = buffer.getInt();
+            String str_genre = genre_map[(genre < 0 || genre > 10) ? 10 : genre];
+            easy.genre = str_genre;
+            normal.genre = str_genre;
+            hard.genre = str_genre;
+
+            float bpm = buffer.getFloat();
+            easy.bpm = bpm;
+            normal.bpm = bpm;
+            hard.bpm = bpm;
+
+            easy.level = buffer.getShort();
+            normal.level = buffer.getShort();
+            hard.level = buffer.getShort();
+            buffer.getShort(); // 0, always
+
+            int event_count[] = new int[3];
+            event_count[0] = buffer.getInt();
+            event_count[1] = buffer.getInt();
+            event_count[2] = buffer.getInt();
+
+            easy.notes = buffer.getInt();
+            normal.notes = buffer.getInt();
+            hard.notes = buffer.getInt();
+
+            int measure_count[] = new int[3];
+            measure_count[0] = buffer.getInt();
+            measure_count[1] = buffer.getInt();
+            measure_count[2] = buffer.getInt();
+            int package_count[] = new int[3];
+            package_count[0] = buffer.getInt();
+            package_count[1] = buffer.getInt();
+            package_count[2] = buffer.getInt();
+            short old_encode_version = buffer.getShort();
+            short old_songid = buffer.getShort();
+            byte old_genre[] = new byte[20];
+            buffer.get(old_genre);
+            int bmp_size = buffer.getInt();
+            int file_version = buffer.getInt();
+
+            byte title[] = new byte[64];
+            buffer.get(title);
+            String str_title = ByteHelper.toString(title);
+            easy.title = str_title;
+            normal.title = str_title;
+            hard.title = str_title;
+
+            byte artist[] = new byte[32];
+            buffer.get(artist);
+            String str_artist = ByteHelper.toString(artist);
+            easy.artist = str_artist;
+            normal.artist = str_artist;
+            hard.artist = str_artist;
+
+            byte noter[] = new byte[32];
+            buffer.get(noter);
+            String str_noter = ByteHelper.toString(noter);
+            easy.noter = str_noter;
+            normal.noter = str_noter;
+            hard.noter = str_noter;
+
+            byte ojm_file[] = new byte[32];
+            buffer.get(ojm_file);
+            // Sanitize filename to prevent path traversal attacks
+            String ojm_filename = ByteHelper.toString(ojm_file);
+            ojm_filename = new File(ojm_filename).getName(); // Strip path components
+            File sample_file = new File(file.getParent(), ojm_filename);
+            easy.sample_file = sample_file;
+            normal.sample_file = sample_file;
+            hard.sample_file = sample_file;
+
+            int cover_size = buffer.getInt();
+            easy.cover_size = cover_size;
+            normal.cover_size = cover_size;
+            hard.cover_size = cover_size;
+
+            easy.duration = buffer.getInt();
+            normal.duration = buffer.getInt();
+            hard.duration = buffer.getInt();
+
+            easy.note_offset = buffer.getInt();
+            normal.note_offset = buffer.getInt();
+            hard.note_offset = buffer.getInt();
+            int cover_offset = buffer.getInt();
+
+            easy.note_offset_end = normal.note_offset;
+            normal.note_offset_end = hard.note_offset;
+            hard.note_offset_end = cover_offset;
+
+            easy.cover_offset = cover_offset;
+            normal.cover_offset = cover_offset;
+            hard.cover_offset = cover_offset;
+
+            easy.source = file;
+            normal.source = file;
+            hard.source = file;
+
+            ChartList list = new ChartList();
+            list.add(easy);
+            list.add(normal);
+            list.add(hard);
+
+            list.source_file = file;
+            buffer.clear();
+
+            try {
+                f.close();
+            } catch (IOException ex) {
+                Logger.global.log(Level.WARNING, "Error closing the file (lol?) {0}", ex);
+            }
+            return list;
+        } catch (java.nio.BufferUnderflowException e) {
+            Logger.global.log(Level.WARNING, "Malformed OJN file (truncated or corrupted): {0}", file.getName());
             return null;
         }
-
-        float encode_version = buffer.getFloat();
-
-        int genre = buffer.getInt();
-        String str_genre = genre_map[(genre < 0 || genre > 10) ? 10 : genre];
-        easy.genre = str_genre;
-        normal.genre = str_genre;
-        hard.genre = str_genre;
-
-        float bpm = buffer.getFloat();
-        easy.bpm = bpm;
-        normal.bpm = bpm;
-        hard.bpm = bpm;
-
-        easy.level = buffer.getShort();
-        normal.level = buffer.getShort();
-        hard.level = buffer.getShort();
-        buffer.getShort(); // 0, always
-
-        int event_count[] = new int[3];
-        event_count[0] = buffer.getInt();
-        event_count[1] = buffer.getInt();
-        event_count[2] = buffer.getInt();
-
-        easy.notes = buffer.getInt();
-        normal.notes = buffer.getInt();
-        hard.notes = buffer.getInt();
-
-        int measure_count[] = new int[3];
-        measure_count[0] = buffer.getInt();
-        measure_count[1] = buffer.getInt();
-        measure_count[2] = buffer.getInt();
-        int package_count[] = new int[3];
-        package_count[0] = buffer.getInt();
-        package_count[1] = buffer.getInt();
-        package_count[2] = buffer.getInt();
-        short old_encode_version = buffer.getShort();
-        short old_songid = buffer.getShort();
-        byte old_genre[] = new byte[20];
-        buffer.get(old_genre);
-        int bmp_size = buffer.getInt();
-        int file_version = buffer.getInt();
-
-        byte title[] = new byte[64];
-        buffer.get(title);
-        String str_title = ByteHelper.toString(title);
-        easy.title = str_title;
-        normal.title = str_title;
-        hard.title = str_title;
-
-        byte artist[] = new byte[32];
-        buffer.get(artist);
-        String str_artist = ByteHelper.toString(artist);
-        easy.artist = str_artist;
-        normal.artist = str_artist;
-        hard.artist = str_artist;
-
-        byte noter[] = new byte[32];
-        buffer.get(noter);
-        String str_noter = ByteHelper.toString(noter);
-        easy.noter = str_noter;
-        normal.noter = str_noter;
-        hard.noter = str_noter;
-
-        byte ojm_file[] = new byte[32];
-        buffer.get(ojm_file);
-        // Sanitize filename to prevent path traversal attacks
-        String ojm_filename = ByteHelper.toString(ojm_file);
-        ojm_filename = new File(ojm_filename).getName(); // Strip path components
-        File sample_file = new File(file.getParent(), ojm_filename);
-        easy.sample_file = sample_file;
-        normal.sample_file = sample_file;
-        hard.sample_file = sample_file;
-
-        int cover_size = buffer.getInt();
-        easy.cover_size = cover_size;
-        normal.cover_size = cover_size;
-        hard.cover_size = cover_size;
-
-        easy.duration = buffer.getInt();
-        normal.duration = buffer.getInt();
-        hard.duration = buffer.getInt();
-
-        easy.note_offset = buffer.getInt();
-        normal.note_offset = buffer.getInt();
-        hard.note_offset = buffer.getInt();
-        int cover_offset = buffer.getInt();
-
-        easy.note_offset_end = normal.note_offset;
-        normal.note_offset_end = hard.note_offset;
-        hard.note_offset_end = cover_offset;
-
-        easy.cover_offset = cover_offset;
-        normal.cover_offset = cover_offset;
-        hard.cover_offset = cover_offset;
-
-        easy.source = file;
-        normal.source = file;
-        hard.source = file;
-
-        ChartList list = new ChartList();
-        list.add(easy);
-        list.add(normal);
-        list.add(hard);
-
-        list.source_file = file;
-        buffer.clear();
-
-        try {
-            f.close();
-        } catch (IOException ex) {
-            Logger.global.log(Level.WARNING, "Error closing the file (lol?) {0}", ex);
-        }
-        return list;
     }
 
     public static EventList parseChart(OJNChart chart) {
