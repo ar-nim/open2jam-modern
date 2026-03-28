@@ -24,7 +24,7 @@ import org.open2jam.parsers.utils.SampleData;
 * 0 - easy, 1 - normal, 2 - hard, 3 - very hard, ...
 * there's no upper bound.
 */
-public abstract class Chart implements Comparable<Chart>, java.io.Serializable
+public abstract class Chart implements Comparable<Chart>
 {
     public enum TYPE {NONE, OJN}
 
@@ -45,8 +45,8 @@ public abstract class Chart implements Comparable<Chart>, java.io.Serializable
     protected String coverName = null;
     protected File imageCover = null;
 
-    protected transient Map<Integer, String> sampleIndex = new HashMap<>();
-    protected transient Map<Integer, String> bgaIndex = new HashMap<>();
+    protected Map<Integer, String> sampleIndex = new HashMap<>();
+    protected Map<Integer, String> bgaIndex = new HashMap<>();
 
     public TYPE getType() {
         return type;

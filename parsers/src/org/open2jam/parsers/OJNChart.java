@@ -65,7 +65,7 @@ public class OJNChart extends Chart {
     }
 
     public Map<Integer, String> getSampleIndex() {
-	if(sampleIndex.isEmpty()) {
+	if (sampleIndex.isEmpty()) {
 	    for(Entry<Integer, SampleData> entry : getSamples().entrySet()) {
 		    sampleIndex.put(entry.getKey(), entry.getValue().getName());
 		try {
