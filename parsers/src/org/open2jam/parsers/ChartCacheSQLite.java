@@ -671,10 +671,10 @@ public class ChartCacheSQLite {
                 Integer noteSize = null;
 
                 if (chart instanceof OJNChart ojn) {
-                    coverOffset = ojn.cover_offset;
-                    coverSize = ojn.cover_size;
-                    noteOffset = ojn.note_offset;
-                    noteSize = ojn.note_offset_end - ojn.note_offset;
+                    coverOffset = ojn.coverOffset;
+                    coverSize = ojn.coverSize;
+                    noteOffset = ojn.noteOffset;
+                    noteSize = ojn.noteOffsetEnd - ojn.noteOffset;
                 }
 
                 // Set parameters

@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Collections;
 import java.util.logging.Level;
+
 import org.open2jam.parsers.utils.ByteHelper;
 import org.open2jam.parsers.utils.Logger;
 
@@ -114,32 +115,32 @@ class OJNParser {
             // Sanitize filename to prevent path traversal attacks
             String ojm_filename = ByteHelper.toString(ojm_file);
             ojm_filename = new File(ojm_filename).getName(); // Strip path components
-            File sample_file = new File(file.getParent(), ojm_filename);
-            easy.sample_file = sample_file;
-            normal.sample_file = sample_file;
-            hard.sample_file = sample_file;
+            File sampleFile = new File(file.getParent(), ojm_filename);
+            easy.sampleFile = sampleFile;
+            normal.sampleFile = sampleFile;
+            hard.sampleFile = sampleFile;
 
-            int cover_size = buffer.getInt();
-            easy.cover_size = cover_size;
-            normal.cover_size = cover_size;
-            hard.cover_size = cover_size;
+            int coverSize = buffer.getInt();
+            easy.coverSize = coverSize;
+            normal.coverSize = coverSize;
+            hard.coverSize = coverSize;
 
             easy.duration = buffer.getInt();
             normal.duration = buffer.getInt();
             hard.duration = buffer.getInt();
 
-            easy.note_offset = buffer.getInt();
-            normal.note_offset = buffer.getInt();
-            hard.note_offset = buffer.getInt();
-            int cover_offset = buffer.getInt();
+            easy.noteOffset = buffer.getInt();
+            normal.noteOffset = buffer.getInt();
+            hard.noteOffset = buffer.getInt();
+            int coverOffset = buffer.getInt();
 
-            easy.note_offset_end = normal.note_offset;
-            normal.note_offset_end = hard.note_offset;
-            hard.note_offset_end = cover_offset;
+            easy.noteOffsetEnd = normal.noteOffset;
+            normal.noteOffsetEnd = hard.noteOffset;
+            hard.noteOffsetEnd = coverOffset;
 
-            easy.cover_offset = cover_offset;
-            normal.cover_offset = cover_offset;
-            hard.cover_offset = cover_offset;
+            easy.coverOffset = coverOffset;
+            normal.coverOffset = coverOffset;
+            hard.coverOffset = coverOffset;
 
             easy.source = file;
             normal.source = file;
@@ -167,17 +168,14 @@ class OJNParser {
 
     public static EventList parseChart(OJNChart chart) {
         EventList event_list = new EventList();
-        try {
-            RandomAccessFile f = new RandomAccessFile(chart.getSource().getAbsolutePath(), "r");
+        try (RandomAccessFile f = new RandomAccessFile(chart.getSource().getAbsolutePath(), "r")) {
 
-            int start = chart.note_offset;
-            int end = chart.note_offset_end;
+            int start = chart.noteOffset;
+            int end = chart.noteOffsetEnd;
 
             ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, start, end - start);
             buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
             readNoteBlock(event_list, buffer);
-
-            f.close();
         } catch (java.io.FileNotFoundException e) {
             Logger.global.log(Level.WARNING, "File {0} not found !!", chart.getSource().getName());
         } catch (IOException e) {
