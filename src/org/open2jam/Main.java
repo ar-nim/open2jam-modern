@@ -98,7 +98,7 @@ public class Main implements Runnable
             System.setProperty("flatlaf.uiScale.enabled", "true");
 
             // Handle UI Scale: "automatic" (system default) or a custom number
-            String uiScaleStr = context.config.getGameOptions().uiScale;
+            String uiScaleStr = context.config.getGameOptions().getUiScale();
             if (uiScaleStr != null && !"automatic".equalsIgnoreCase(uiScaleStr)) {
                 System.setProperty("flatlaf.uiScale", uiScaleStr);
             }
@@ -134,7 +134,7 @@ public class Main implements Runnable
      * Determine if dark mode should be used based on theme setting.
      */
     private static boolean getIsDarkMode(AppContext context) {
-        GameOptions.UiTheme themeSetting = context.config.getGameOptions().uiTheme;
+        GameOptions.UiTheme themeSetting = context.config.getGameOptions().getUiTheme();
         if (themeSetting == GameOptions.UiTheme.AUTOMATIC) {
             // Auto-detection for system dark mode (heuristic)
             // For now, default to Light until native detection is added via JNA or platform calls

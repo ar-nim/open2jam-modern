@@ -113,15 +113,15 @@ public class AdvancedOptions extends JPanel {
     private void saveSettings() {
         // Update Config's GameOptionsWrapper with current values
         Config.GameOptionsWrapper wrapper = config.getGameOptions();
-        wrapper.hasteMode = go.isHasteMode();
-        wrapper.hasteModeNormalizeSpeed = go.isHasteModeNormalizeSpeed();
-        wrapper.bufferSize = go.getBufferSize();
-        
+        wrapper.setHasteMode(go.isHasteMode());
+        wrapper.setHasteModeNormalizeSpeed(go.isHasteModeNormalizeSpeed());
+        wrapper.setBufferSize(go.getBufferSize());
+
         // Trigger debounced save to persist to disk
         config.scheduleSave();
-        
-        DebugLogger.debug("AdvancedOptions saved: hasteMode=" + go.isHasteMode() 
-            + ", normalizeSpeed=" + go.isHasteModeNormalizeSpeed() 
+
+        DebugLogger.debug("AdvancedOptions saved: hasteMode=" + go.isHasteMode()
+            + ", normalizeSpeed=" + go.isHasteModeNormalizeSpeed()
             + ", bufferSize=" + go.getBufferSize());
     }
 
