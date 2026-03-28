@@ -1,10 +1,6 @@
 package org.open2jam.gui.parts;
 
-import com.github.dtinth.partytime.server.Server;
-import com.github.dtinth.partytime.server.ServerUI;
 import java.awt.Component;
-import java.awt.Container;
-import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
@@ -13,44 +9,45 @@ import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
-import javax.swing.*;
+
+import javax.swing.ImageIcon;
+import javax.swing.JFileChooser;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPopupMenu;
+import javax.swing.JTable;
+import javax.swing.RowFilter;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.table.TableRowSorter;
+
 import org.open2jam.AppContext;
-import org.open2jam.parsers.Chart;
-import org.open2jam.parsers.ChartList;
-import org.open2jam.render.Render;
-import org.open2jam.render.lwjgl.LWJGLGameWindow;
-import org.open2jam.render.DisplayMode;
 import org.open2jam.Config;
 import org.open2jam.GameOptions;
 import org.open2jam.GameOptions.ChannelMod;
 import org.open2jam.GameOptions.SpeedType;
 import org.open2jam.GameOptions.VisibilityMod;
+import org.open2jam.game.judgment.BeatJudgment;
+import org.open2jam.game.judgment.TimeJudgment;
 import org.open2jam.gui.ChartListTableModel;
 import org.open2jam.gui.ChartModelLoader;
 import org.open2jam.gui.ChartTableModel;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
-import org.open2jam.parsers.ChartParser;
-import org.open2jam.game.judgment.BeatJudgment;
-import org.open2jam.game.judgment.TimeJudgment;
-import org.open2jam.render.Render;
-import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.DisplayMode;
-import org.open2jam.Config;
-import org.open2jam.GameOptions;
-import org.open2jam.GameOptions.ChannelMod;
-import org.open2jam.GameOptions.SpeedType;
-import org.open2jam.GameOptions.VisibilityMod;
+import org.open2jam.render.Render;
 import org.open2jam.sound.SoundSystemException;
 import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
+
+import com.github.dtinth.partytime.server.Server;
+import com.github.dtinth.partytime.server.ServerUI;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class MusicSelection extends javax.swing.JPanel
@@ -1557,7 +1554,7 @@ public class MusicSelection extends javax.swing.JPanel
                             org.open2jam.parsers.ChartList chartList =
                                 org.open2jam.parsers.ChartParser.parseFile(sourceFile);
 
-                            if (chartList != null && !chartList.isEmpty()) {
+                            if (!chartList.isEmpty()) {
                                 chartLists.add(chartList);
                                 DebugLogger.debug("  ✓ Loaded ChartList with " + chartList.size() + " difficulties");
                             } else {

@@ -9,6 +9,7 @@ import java.util.ArrayList;
  *
  * @author fox
  */
+@SuppressWarnings("java:S2160")  // Equality comparison not used - ChartList is only iterated, never compared
 public class ChartList extends ArrayList<Chart>
 {
     File sourceFile;

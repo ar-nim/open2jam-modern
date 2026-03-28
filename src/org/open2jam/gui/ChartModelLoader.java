@@ -1,20 +1,19 @@
 package org.open2jam.gui;
 
-import org.open2jam.parsers.ChartCacheSQLite;
-import org.open2jam.parsers.Library;
-import org.open2jam.parsers.ChartList;
-import org.open2jam.parsers.ChartParser;
-import org.open2jam.util.DebugLogger;
-import org.open2jam.util.Logger;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Level;
 
 import javax.swing.SwingWorker;
+
+import org.open2jam.parsers.ChartCacheSQLite;
+import org.open2jam.parsers.ChartList;
+import org.open2jam.parsers.ChartParser;
+import org.open2jam.parsers.Library;
+import org.open2jam.util.DebugLogger;
+import org.open2jam.util.Logger;
 
 /**
  * Chart model loader with SQLite caching.
@@ -139,7 +138,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
                     // Parse chart file
                     ChartList cl = ChartParser.parseFile(file);
 
-                    if (cl != null) {
+                    if (!cl.isEmpty()) {
                         // Add to batch for SQLite insertion
                         batch.addChartList(library, cl);
                         publish(cl);  // Update UI

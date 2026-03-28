@@ -8,10 +8,13 @@ import java.io.File;
 **/
 public abstract class ChartParser
 {
-	/** parse and returns a ChartHeader object */
+	// Prevent instantiation and subclassing - utility class with only static methods
+	private ChartParser() {}
+
+	/** parse and returns a ChartList object */
 	public static ChartList parseFile(File file)
 	{
-	    if(OJNParser.canRead(file))return OJNParser.parseFile(file);
-	    return null;
+	    if(OJNParser.canRead(file)) return OJNParser.parseFile(file);
+	    return new ChartList();
 	}
 }

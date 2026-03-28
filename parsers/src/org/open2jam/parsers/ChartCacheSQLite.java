@@ -919,7 +919,7 @@ public class ChartCacheSQLite {
 
         // Re-parse file
         ChartList newList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-        if (newList == null) {
+        if (newList.isEmpty()) {
             return null;
         }
 
@@ -949,7 +949,7 @@ public class ChartCacheSQLite {
      */
     private static Chart parseAndReturnChart(File sourceFile, int chartIndex) {
         ChartList chartList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-        if (chartList == null || chartList.isEmpty()) {
+        if (chartList.isEmpty()) {
             return null;
         }
         return getChartByIndex(chartList, chartIndex);
@@ -1074,7 +1074,7 @@ public class ChartCacheSQLite {
             new File(cached.getFullPath())
         );
 
-        if (chartList == null || chartList.isEmpty()) {
+        if (chartList.isEmpty()) {
             return null;
         }
 
@@ -1116,7 +1116,7 @@ public class ChartCacheSQLite {
                     new File(cached.getFullPath())
                 );
 
-                if (chartList == null || chartList.isEmpty()) {
+                if (chartList.isEmpty()) {
                     return;
                 }
 
