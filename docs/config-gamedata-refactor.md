@@ -1,15 +1,15 @@
 # Config and Game Data Refactor
 
-**Document Version**: 2.0  
-**Date**: March 28, 2026  
-**Status**: ✅ Complete - VoileMap Deprecated, SQLite + JSON Implemented, SonarLint Fixed  
+**Document Version**: 3.0
+**Date**: March 28, 2026
+**Status**: ✅ Complete - VoileMap Deprecated, SQLite + JSON Implemented, SonarLint Fixed, AppContext DI Planned
 **Related**: Legacy VoileMap/XML removal completed in commit c277c21 (March 25, 2026)
 
 ---
 
 ## Executive Summary
 
-This document tracks the complete modernization of open2jam-modern's configuration and chart metadata caching system, completed in two phases:
+This document tracks the complete modernization of open2jam-modern's configuration and chart metadata caching system, completed in three phases:
 
 ### Phase 1: Architectural Refactor (March 25, 2026 - Commit c277c21)
 
@@ -38,6 +38,21 @@ This document tracks the complete modernization of open2jam-modern's configurati
 | **Config.java** | S1066, S3776, S1192, **S1104** | March 28, 2026 |
 | **ChartCacheSQLite.java** | S3398, S1854 | d199340, f4ef6d1 |
 | **Chart.java** | Various | 5951de2 |
+
+### Phase 3: Dependency Injection (Planned 📋)
+
+**AppContext pattern to remove singleton pattern:**
+
+| Component | Status | Issues |
+|-----------|--------|--------|
+| **AppContext class** | 📋 Planned | New container for shared state |
+| **Config singleton removal** | 📋 Planned | S6548, S2168 |
+| **Constructor injection** | 📋 Planned | 25 occurrences across 7 files |
+
+**Benefits:**
+- Removes global state coupling
+- Future-proof for rendered OpenGL UI
+- Better testability (mockable Config/AppContext)
 
 ---
 
@@ -289,33 +304,253 @@ public void setKeyBindings(KeyBindings keyBindings) {
 - **Import added**: `com.fasterxml.jackson.annotation.JsonProperty`
 - **Backward compatibility**: 100% (existing config files work unchanged)
 
+**Commit**: 4067818 (March 28, 2026)
+
 ---
 
-### 1.4: Future Refactoring - Singleton to Dependency Injection (Deferred ⏳)
+### 1.4: Singleton to Dependency Injection with AppContext (Planned �)
 
 **Issues**: S6548 (Singleton necessity), S2168 (Double-checked locking)
 
-**Note**: The Config.java architecture is complete and functional (JSON-based, replaced VoileMap in c277c21). This is a future architectural improvement for better testability.
+**Note**: The Config.java architecture is complete and functional (JSON-based, replaced VoileMap in c277c21). This is an architectural improvement for better testability, maintainability, and future rendered UI support.
 
-**Decision**: Implement Option C - Dependency Injection (long-term goal)
+**Decision**: Implement Dependency Injection with **AppContext pattern** (manual constructor injection, no framework)
 
 **Rationale**:
-- Provides best testability (mockable Config)
-- Explicit dependencies (clear who uses Config)
-- Follows modern Java best practices
+- ✅ Provides best testability (mockable Config/AppContext)
+- ✅ Explicit dependencies (clear who uses Config)
+- ✅ Follows modern Java best practices
+- ✅ Removes global state coupling
+- ✅ **Future-proof**: Consistent pattern for both Swing UI and planned rendered OpenGL UI
+- ✅ **Scalable**: Easy to add shared state (PlayerStats, AudioManager) without constructor bloat
 
-**Why Deferred**:
-- Requires refactoring 7+ files (30 occurrences of `Config.getInstance()`)
-- Estimated effort: 2-4 hours + regression testing
-- Current singleton is functional (not causing bugs)
+**Why AppContext Pattern?**
 
-**Migration Path**:
+| Option | Approach | Verdict |
+|--------|----------|---------|
+| **Pure DI** | Pass `Config` directly to constructors | ❌ Constructor bloat when adding more shared state |
+| **AppContext** | Wrap Config in context object | ⭐ **Recommended** - single parameter, future-proof |
+| **Service Locator** | Global `ConfigProvider.getConfig()` | ❌ Global state remains, harder to test |
+| **DI Framework** | Spring/Guice automatic injection | ❌ Overkill (~500KB+ overhead) |
+
+**Why Manual DI (No Framework)?**
+- Project is small-medium size (~25 Config usages, 7 files)
+- No Spring/Guice dependency overhead
+- Simple constructor injection is sufficient
+- Easier to understand and maintain
+
+---
+
+#### AppContext Architecture
+
+**New Class**: `AppContext` - Central container for shared application state
+
+```java
+public class AppContext {
+    public final Config config;
+    // Future extensions:
+    // public final PlayerStats stats;
+    // public final AudioManager audio;
+    // public final MultiplayerState multiplayer;
+    
+    public AppContext(Config config) {
+        this.config = config;
+    }
+}
+```
+
+**Dependency Flow**:
+```
+Main.java (composition root)
+    ↓ creates
+AppContext(config)
+    ↓ passes to
+Interface(AppContext)
+    ↓ creates
+MusicSelection(AppContext)
+Configuration(AppContext)
+AdvancedOptions(AppContext)
+    ↓ launches
+Render(AppContext)  // Game rendering (OpenGL)
+    ↓ future
+GameMenu(AppContext)  // Rendered menu (OpenGL)
+```
+
+**Benefits**:
+1. **Single parameter** - Pass `AppContext` instead of 10 separate objects
+2. **Future-proof** - Add shared state without changing every constructor
+3. **Consistent pattern** - Same for Swing UI and rendered OpenGL UI
+4. **Clear intent** - Explicit what's shared across the app
+5. **Easy testing** - Mock AppContext in tests
+6. **No framework** - Simple POJO, no DI framework needed
+
+---
+
+#### Implementation Plan (8 Phases)
+
+**Phase 1: Create AppContext Class**
+- New file: `src/org/open2jam/AppContext.java`
+- Contains: `Config config` field + constructor
+- Lines: ~15
+
+**Phase 2: Main.java as Composition Root**
+- Create `Config config = Config.load()`
+- Create `AppContext context = new AppContext(config)`
+- Pass context to `new Interface(context)`
+- Update `initFlatLaf(context)` to accept AppContext
+- Lines changed: ~15
+
+**Phase 3: Interface.java Constructor Update**
+- Add `AppContext context` parameter
+- Pass context to all panels: `new MusicSelection(context)`, etc.
+- Lines changed: ~10
+
+**Phase 4: MusicSelection.java Constructor Update**
+- Add `AppContext context` field
+- Add constructor parameter
+- Replace 14 occurrences of `Config.getInstance()` → `context.config`
+- Lines changed: ~20
+
+**Phase 5: Configuration.java Constructor Update**
+- Add `AppContext context` field
+- Add constructor parameter
+- Replace 4 occurrences
+- Lines changed: ~10
+
+**Phase 6: AdvancedOptions.java Constructor Update**
+- Update constructor to accept `AppContext context`
+- Replace 1 occurrence
+- Lines changed: ~5
+
+**Phase 7: Render.java Constructor Update**
+- Add `AppContext context` field
+- Update constructor parameter
+- Replace 2 occurrences
+- Update MusicSelection to pass context when creating Render
+- Lines changed: ~10
+
+**Phase 8: Remove Singleton Pattern**
+- Verify zero occurrences of `Config.getInstance()`
+- Remove `getInstance()` method
+- Remove static `instance` field
+- Lines removed: ~20
+
+---
+
+#### Files to Modify
+
+| File | Changes | Lines | Priority |
+|------|---------|-------|----------|
+| **AppContext.java** | NEW file | +15 | Phase 1 |
+| **Config.java** | Remove singleton | -20 | Phase 8 |
+| **Main.java** | Create AppContext, pass to Interface | ~15 | Phase 2 |
+| **Interface.java** | Accept AppContext, pass to panels | ~10 | Phase 3 |
+| **MusicSelection.java** | Accept AppContext, replace 14 calls | ~20 | Phase 4 |
+| **Configuration.java** | Accept AppContext, replace 4 calls | ~10 | Phase 5 |
+| **AdvancedOptions.java** | Accept AppContext | ~5 | Phase 6 |
+| **Render.java** | Accept AppContext, replace 2 calls | ~10 | Phase 7 |
+
+**Total**: 8 files, ~105 lines changed
+
+---
+
+#### Testing Strategy
+
+**After Each Phase**:
+- [ ] `./gradlew clean build` succeeds
+- [ ] No new compiler warnings
+
+**After Phase 7 (Before Singleton Removal)**:
+- [ ] Application starts correctly
+- [ ] Music selection loads songs
+- [ ] Configuration panel saves settings
+- [ ] Advanced Options panel works
+- [ ] Game launches and runs
+- [ ] Keyboard bindings work
+- [ ] Settings persist after restart
+
+**After Phase 8 (Singleton Removal)**:
+- [ ] Full regression testing
+- [ ] Zero `Config.getInstance()` calls remain
+- [ ] SonarQube S6548, S2168 resolved
+
+---
+
+#### Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| **Missing Config.getInstance() usage** | Low | High | Grep search before Phase 8 |
+| **Constructor chain breaks** | Medium | Low | Update all call sites incrementally |
+| **Thread-safety issues** | Low | High | Keep existing synchronization in Config |
+| **Render.java creation sites** | Low | Medium | Search for all `new Render()` calls |
+
+**Rollback Plan**:
+1. Revert commit: `git revert <commit-hash>`
+2. Hybrid approach: Keep singleton temporarily during migration
+3. All changes are incremental - can stop at any phase
+
+---
+
+#### Migration Path
+
 ```
 Architectural Refactor (c277c21): VoileMap → JSON + SQLite ✅ Complete
 Code Quality (March 28): SonarLint fixes (S1066, S3776, S1192) ✅ Complete
-Code Quality (Pending): Public fields (S1104) ⏳ Awaiting decision
-Future: Dependency Injection (S6548, S2168) ⏳ Deferred (2-4 hours)
+Code Quality (March 28): Public fields (S1104) ✅ Complete (commit 4067818)
+Dependency Injection: AppContext pattern � Planned
+  Phase 1: Create AppContext class
+  Phase 2: Main.java as composition root
+  Phase 3: Interface.java update
+  Phase 4: MusicSelection.java update
+  Phase 5: Configuration.java update
+  Phase 6: AdvancedOptions.java update
+  Phase 7: Render.java update
+  Phase 8: Remove Config singleton
 ```
+
+---
+
+#### Success Criteria
+
+- ✅ Zero occurrences of `Config.getInstance()` (except tests)
+- ✅ All 25 usages refactored to AppContext injection
+- ✅ Build succeeds: `./gradlew clean build`
+- ✅ Application starts and runs correctly
+- ✅ All settings persist across restarts
+- ✅ SonarQube S6548, S2168 resolved
+- ✅ Pattern ready for future rendered UI (OpenGL menu)
+
+---
+
+#### Post-Refactoring Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Testability** | Config/AppContext can be mocked in unit tests |
+| **Explicit dependencies** | Clear who depends on Config |
+| **No global state** | Reduced coupling, better modularity |
+| **Modern Java** | Follows best practices |
+| **Future-ready** | Consistent pattern for rendered UI |
+| **Scalable** | Easy to add shared state (PlayerStats, etc.) |
+| **SonarQube** | S6548, S2168 issues resolved |
+
+---
+
+#### Estimated Timeline
+
+| Phase | Description | Time |
+|-------|-------------|------|
+| Phase 1 | Create AppContext | 10 min |
+| Phase 2 | Main.java | 15 min |
+| Phase 3 | Interface.java | 10 min |
+| Phase 4 | MusicSelection.java | 30 min |
+| Phase 5 | Configuration.java | 15 min |
+| Phase 6 | AdvancedOptions.java | 10 min |
+| Phase 7 | Render.java | 15 min |
+| Phase 8 | Remove singleton | 10 min |
+| **Testing** | Build + regression | 60 min |
+| **Total** | | **~3 hours** |
 
 ---
 
@@ -663,9 +898,10 @@ public static List<ChartMetadata> getCachedCharts(String path) {
 
 | Improvement | Issue | Status |
 |-------------|-------|--------|
-| **Singleton → Dependency Injection** | S6548, S2168 | ⏳ Deferred (2-4 hours) |
 | **SHA-256 identity hashes** | Feature | ⏳ Implemented, untested |
 | **Cover data BLOB caching** | Feature | ⏳ Schema ready, UI integration pending |
+
+**Note**: Singleton → Dependency Injection moved to **Section 1.4** (AppContext pattern planned)
 
 ---
 
