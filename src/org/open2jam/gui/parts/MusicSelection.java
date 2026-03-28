@@ -1138,16 +1138,16 @@ public class MusicSelection extends javax.swing.JPanel
                 if (cached != null) {
                     // Validate and load chart (checks file modification, re-parses if needed)
                     chartToPlay = org.open2jam.parsers.ChartCacheSQLite.loadChartForPlay(cached);
-                    
+
                     if (chartToPlay == null) {
-                        JOptionPane.showMessageDialog(this, 
+                        JOptionPane.showMessageDialog(this,
                             "Chart file is missing or corrupted.\nPlease refresh the library.",
                             "Chart Loading Error",
                             JOptionPane.ERROR_MESSAGE);
                         return;
                     }
-                    
-                    DebugLogger.debug("Loaded chart for play: " + cached.relativePath);
+
+                    DebugLogger.debug("Loaded chart for play: " + cached.getRelativePath());
                 }
             }
 
@@ -1497,66 +1497,66 @@ public class MusicSelection extends javax.swing.JPanel
                     new ArrayList<>(org.open2jam.parsers.ChartCacheSQLite.getCachedCharts(library.id));
 
                 DebugLogger.debug("Loaded " + allMetadata.size() + " chart metadata entries from cache");
-                
+
                 if (!allMetadata.isEmpty()) {
                     DebugLogger.debug("✓ Using cache - " + allMetadata.size() + " entries for " + dir.getName());
-                    
+
                     // Set libraryRootPath for all metadata (in case JOIN didn't populate it)
                     for (org.open2jam.parsers.ChartMetadata m : allMetadata) {
-                        if (m.libraryRootPath == null || m.libraryRootPath.isEmpty()) {
-                            m.libraryRootPath = library.rootPath;
+                        if (m.getLibraryRootPath() == null || m.getLibraryRootPath().isEmpty()) {
+                            m.setLibraryRootPath(library.rootPath);
                         }
                     }
-                    
+
                     // Group metadata by song_group_id to reconstruct ChartList-like structure
                     // This mimics the old VoileMap behavior where one ChartList = one file with multiple difficulties
-                    java.util.Map<String, ArrayList<org.open2jam.parsers.ChartMetadata>> groupedBySong = 
+                    java.util.Map<String, ArrayList<org.open2jam.parsers.ChartMetadata>> groupedBySong =
                         new java.util.HashMap<>();
-                    
+
                     for (org.open2jam.parsers.ChartMetadata m : allMetadata) {
-                        String key = m.songGroupId;
+                        String key = m.getSongGroupId();
                         if (!groupedBySong.containsKey(key)) {
                             groupedBySong.put(key, new ArrayList<>());
                         }
                         groupedBySong.get(key).add(m);
                     }
-                    
+
                     DebugLogger.debug("Grouped into " + groupedBySong.size() + " songs");
                     
                     // For each song group, we need to load the actual ChartList from disk
                     // This is necessary because the UI expects Chart objects, not just metadata
                     ArrayList<org.open2jam.parsers.ChartList> chartLists = new ArrayList<>();
-                    
+
                     for (ArrayList<org.open2jam.parsers.ChartMetadata> group : groupedBySong.values()) {
                         if (group.isEmpty()) continue;
-                        
+
                         // Load the actual ChartList from the first metadata's source file
                         // (all difficulties in a group come from the same file)
                         org.open2jam.parsers.ChartMetadata first = group.get(0);
-                        
+
                         // Build full path from library and relative path
                         String fullPath;
-                        if (first.libraryRootPath != null && !first.libraryRootPath.isEmpty()) {
+                        if (first.getLibraryRootPath() != null && !first.getLibraryRootPath().isEmpty()) {
                             // Remove trailing slash from rootPath if present, then add single slash
-                            String rootPath = first.libraryRootPath.endsWith("/") ? 
-                                first.libraryRootPath.substring(0, first.libraryRootPath.length() - 1) : 
-                                first.libraryRootPath;
-                            fullPath = rootPath + "/" + first.relativePath;
+                            String rootPath = first.getLibraryRootPath().endsWith("/") ?
+                                first.getLibraryRootPath().substring(0, first.getLibraryRootPath().length() - 1) :
+                                first.getLibraryRootPath();
+                            fullPath = rootPath + "/" + first.getRelativePath();
                         } else {
                             // Fallback: reconstruct from library info
-                            String rootPath = dirPathWithSlash.endsWith("/") ? 
-                                dirPathWithSlash.substring(0, dirPathWithSlash.length() - 1) : 
+                            String rootPath = dirPathWithSlash.endsWith("/") ?
+                                dirPathWithSlash.substring(0, dirPathWithSlash.length() - 1) :
                                 dirPathWithSlash;
-                            fullPath = rootPath + "/" + first.relativePath;
+                            fullPath = rootPath + "/" + first.getRelativePath();
                         }
-                        
+
                         DebugLogger.debug("  Loading ChartList from: " + fullPath);
                         File sourceFile = new File(fullPath);
-                        
+
                         if (sourceFile.exists()) {
-                            org.open2jam.parsers.ChartList chartList = 
+                            org.open2jam.parsers.ChartList chartList =
                                 org.open2jam.parsers.ChartParser.parseFile(sourceFile);
-                            
+
                             if (chartList != null && !chartList.isEmpty()) {
                                 chartLists.add(chartList);
                                 DebugLogger.debug("  ✓ Loaded ChartList with " + chartList.size() + " difficulties");
@@ -1567,10 +1567,10 @@ public class MusicSelection extends javax.swing.JPanel
                             Logger.global.warning("  ⚠ File not found: " + fullPath);
                         }
                     }
-                    
+
                     DebugLogger.debug("Loaded " + chartLists.size() + " ChartList objects");
                     model_songlist.setRawList(chartLists);
-                    
+
                     // Save last opened library ID
                     context.config.setLastOpenedLibraryId(library.id);
                     return;  // ✅ Loaded from cache - no scan needed!

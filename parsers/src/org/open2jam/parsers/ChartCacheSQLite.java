@@ -796,11 +796,10 @@ public class ChartCacheSQLite {
             
             stmt.setInt(1, libraryId);
             List<ChartMetadata> results = new ArrayList<>();
-            
+
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     ChartMetadata m = extractMetadata(rs);
-                    m.libraryRootPath = rs.getString("library_root_path");
                     results.add(m);
                 }
                 return results;
@@ -897,18 +896,18 @@ public class ChartCacheSQLite {
         // File missing - invalidate cache entry
         if (!sourceFile.exists()) {
             Logger.global.warning("Chart file missing: " + fullPath + " - invalidating cache");
-            invalidateCache(cached.id);
+            invalidateCache(cached.getId());
             return null;
         }
 
         // File modified - re-parse and re-cache (Fix #6)
         long currentModified = sourceFile.lastModified();
-        if (currentModified != cached.sourceFileModified) {
+        if (currentModified != cached.getSourceFileModified()) {
             return handleModifiedChart(cached, sourceFile);
         }
 
         // Cache valid - parse and return
-        return parseAndReturnChart(sourceFile, cached.chartIndex);
+        return parseAndReturnChart(sourceFile, cached.getChartIndex());
     }
 
     /**
@@ -920,7 +919,7 @@ public class ChartCacheSQLite {
      */
     private static Chart handleModifiedChart(ChartMetadata cached, File sourceFile) {
         // Invalidate old cache entry
-        invalidateCache(cached.id);
+        invalidateCache(cached.getId());
 
         // Re-parse file
         ChartList newList = org.open2jam.parsers.ChartParser.parseFile(sourceFile);
@@ -930,7 +929,7 @@ public class ChartCacheSQLite {
 
         // Re-cache with new metadata
         try {
-            Library lib = getLibraryById(cached.libraryId);
+            Library lib = getLibraryById(cached.getLibraryId());
             if (lib != null) {
                 try (BatchInserter batch = new BatchInserter()) {
                     batch.addChartList(lib, newList);
@@ -942,7 +941,7 @@ public class ChartCacheSQLite {
         }
 
         // Return requested difficulty
-        return getChartByIndex(newList, cached.chartIndex);
+        return getChartByIndex(newList, cached.getChartIndex());
     }
 
     /**
@@ -994,9 +993,9 @@ public class ChartCacheSQLite {
      */
     public static java.awt.image.BufferedImage getCoverFromCache(ChartMetadata cached) {
         // Option 1: Cached BLOB thumbnail
-        if (cached.coverData != null && cached.coverData.length > 0) {
+        if (cached.getCoverData() != null && cached.getCoverData().length > 0) {
             try {
-                return ImageIO.read(new ByteArrayInputStream(cached.coverData));
+                return ImageIO.read(new ByteArrayInputStream(cached.getCoverData()));
             } catch (IOException e) {
                 // Fall through to next option
             }
@@ -1004,12 +1003,12 @@ public class ChartCacheSQLite {
 
         // Option 2: OJN embedded cover (using cached offsets, standard I/O)
         if (cached.hasEmbeddedCover()) {
-            Integer coverOffset = cached.coverOffset;
-            Integer coverSize = cached.coverSize;
-            
+            Integer coverOffset = cached.getCoverOffset();
+            Integer coverSize = cached.getCoverSize();
+
             // Security: Validate cover size (prevent DoS via malicious OJN)
             if (coverSize <= 0 || coverSize > 10_000_000) {
-                Logger.global.warning("Invalid cover size for " + cached.relativePath + ": " + coverSize);
+                Logger.global.warning("Invalid cover size for " + cached.getRelativePath() + ": " + coverSize);
                 return null;
             }
 
@@ -1019,16 +1018,16 @@ public class ChartCacheSQLite {
                 f.readFully(coverBytes);
                 return ImageIO.read(new ByteArrayInputStream(coverBytes));
             } catch (IOException e) {
-                Logger.global.log(Level.WARNING, "Failed to read embedded cover from " + cached.relativePath, e);
+                Logger.global.log(Level.WARNING, "Failed to read embedded cover from " + cached.getRelativePath(), e);
             }
         }
 
         // Option 3: External cover file (BMS, SM)
-        if (cached.coverExternalPath != null && !cached.coverExternalPath.isEmpty()) {
+        if (cached.getCoverExternalPath() != null && !cached.getCoverExternalPath().isEmpty()) {
             try {
-                return ImageIO.read(new File(cached.coverExternalPath));
+                return ImageIO.read(new File(cached.getCoverExternalPath()));
             } catch (IOException e) {
-                Logger.global.log(Level.WARNING, "Failed to read external cover " + cached.coverExternalPath, e);
+                Logger.global.log(Level.WARNING, "Failed to read external cover " + cached.getCoverExternalPath(), e);
             }
         }
 
@@ -1050,8 +1049,8 @@ public class ChartCacheSQLite {
      */
     public static String getOrCalculateHash(ChartMetadata cached) {
         // Return existing hash if available
-        if (cached.sha256Hash != null) {
-            return cached.sha256Hash;
+        if (cached.getSha256Hash() != null) {
+            return cached.getSha256Hash();
         }
 
         // Calculate hash asynchronously (don't block UI)
@@ -1070,8 +1069,8 @@ public class ChartCacheSQLite {
      */
     public static String getHashForScore(ChartMetadata cached) {
         // If hash exists, return immediately
-        if (cached.sha256Hash != null) {
-            return cached.sha256Hash;
+        if (cached.getSha256Hash() != null) {
+            return cached.getSha256Hash();
         }
 
         // Calculate synchronously (block until ready)
@@ -1084,12 +1083,12 @@ public class ChartCacheSQLite {
         }
 
         // Get the specific difficulty chart
-        Chart chart = (cached.chartIndex >= 0 && cached.chartIndex < chartList.size())
-            ? chartList.get(cached.chartIndex)
+        Chart chart = (cached.getChartIndex() >= 0 && cached.getChartIndex() < chartList.size())
+            ? chartList.get(cached.getChartIndex())
             : chartList.get(0);
 
         String hash = SHA256Util.hashChart(chart);
-        updateHash(cached.id, hash);
+        updateHash(cached.getId(), hash);
         return hash;
     }
 
@@ -1107,14 +1106,14 @@ public class ChartCacheSQLite {
         if (shuttingDown) {
             return;
         }
-        
+
         // Submit to single-threaded executor
         hashExecutor.submit(() -> {
             // Check for shutdown again
             if (shuttingDown) {
                 return;
             }
-            
+
             try {
                 // Parse chart (expensive operation)
                 ChartList chartList = ChartParser.parseFile(
@@ -1126,16 +1125,16 @@ public class ChartCacheSQLite {
                 }
 
                 // Get the specific difficulty chart
-                Chart chart = (cached.chartIndex >= 0 && cached.chartIndex < chartList.size())
-                    ? chartList.get(cached.chartIndex)
+                Chart chart = (cached.getChartIndex() >= 0 && cached.getChartIndex() < chartList.size())
+                    ? chartList.get(cached.getChartIndex())
                     : chartList.get(0);
 
                 String hash = SHA256Util.hashChart(chart);
                 if (hash != null) {
-                    updateHash(cached.id, hash);
+                    updateHash(cached.getId(), hash);
                 }
             } catch (Exception e) {
-                Logger.global.log(Level.WARNING, "Failed to calculate hash for " + cached.relativePath, e);
+                Logger.global.log(Level.WARNING, "Failed to calculate hash for " + cached.getRelativePath(), e);
             }
         });
     }
@@ -1211,33 +1210,34 @@ public class ChartCacheSQLite {
      */
     private static ChartMetadata extractMetadata(ResultSet rs) throws SQLException {
         ChartMetadata m = new ChartMetadata();
-        m.id = rs.getInt("id");
-        m.libraryId = rs.getInt("library_id");
-        m.relativePath = rs.getString("relative_path");
-        m.songGroupId = rs.getString("song_group_id");
-        m.chartListHash = rs.getString("chart_list_hash");
-        m.sourceFileSize = rs.getLong("source_file_size");
-        m.sourceFileModified = rs.getLong("source_file_modified");
-        m.chartType = rs.getString("chart_type");
-        m.chartIndex = rs.getInt("chart_index");
-        m.sha256Hash = rs.getString("sha256_hash");
-        m.title = rs.getString("title");
-        m.artist = rs.getString("artist");
-        m.genre = rs.getString("genre");
-        m.noter = rs.getString("noter");
-        m.level = rs.getInt("level");
-        m.keys = rs.getInt("keys");
-        m.players = rs.getInt("players");
-        m.bpm = rs.getDouble("bpm");
-        m.notes = rs.getInt("notes");
-        m.duration = rs.getInt("duration");
-        m.coverOffset = rs.getObject("cover_offset", Integer.class);
-        m.coverSize = rs.getObject("cover_size", Integer.class);
-        m.coverData = rs.getBytes("cover_data");
-        m.coverExternalPath = rs.getString("cover_external_path");
-        m.noteDataOffset = rs.getObject("note_data_offset", Integer.class);
-        m.noteDataSize = rs.getObject("note_data_size", Integer.class);
-        m.cachedAt = rs.getLong("cached_at");
+        m.setId(rs.getInt("id"));
+        m.setLibraryId(rs.getInt("library_id"));
+        m.setRelativePath(rs.getString("relative_path"));
+        m.setSongGroupId(rs.getString("song_group_id"));
+        m.setChartListHash(rs.getString("chart_list_hash"));
+        m.setSourceFileSize(rs.getLong("source_file_size"));
+        m.setSourceFileModified(rs.getLong("source_file_modified"));
+        m.setChartType(rs.getString("chart_type"));
+        m.setChartIndex(rs.getInt("chart_index"));
+        m.setSha256Hash(rs.getString("sha256_hash"));
+        m.setTitle(rs.getString("title"));
+        m.setArtist(rs.getString("artist"));
+        m.setGenre(rs.getString("genre"));
+        m.setNoter(rs.getString("noter"));
+        m.setLevel(rs.getInt("level"));
+        m.setKeys(rs.getInt("keys"));
+        m.setPlayers(rs.getInt("players"));
+        m.setBpm(rs.getDouble("bpm"));
+        m.setNotes(rs.getInt("notes"));
+        m.setDuration(rs.getInt("duration"));
+        m.setCoverOffset(rs.getObject("cover_offset", Integer.class));
+        m.setCoverSize(rs.getObject("cover_size", Integer.class));
+        m.setCoverData(rs.getBytes("cover_data"));
+        m.setCoverExternalPath(rs.getString("cover_external_path"));
+        m.setNoteDataOffset(rs.getObject("note_data_offset", Integer.class));
+        m.setNoteDataSize(rs.getObject("note_data_size", Integer.class));
+        m.setCachedAt(rs.getLong("cached_at"));
+        m.setLibraryRootPath(rs.getString("library_root_path"));
         return m;
     }
 

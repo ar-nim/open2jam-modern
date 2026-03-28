@@ -150,7 +150,7 @@ class OJNParser {
             list.add(normal);
             list.add(hard);
 
-            list.source_file = file;
+            list.sourceFile = file;
             buffer.clear();
 
             try {

@@ -6,15 +6,15 @@ import java.util.ArrayList;
 /**
  * the chart list contains all charts
  * produced by a source, ordered by level
- * 
+ *
  * @author fox
  */
 public class ChartList extends ArrayList<Chart>
 {
-    File source_file;
+    File sourceFile;
 
     public File getSource()
     {
-        return source_file;
+        return sourceFile;
     }
 }
