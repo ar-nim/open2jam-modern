@@ -151,7 +151,7 @@ Configuration files are stored in the `save/` directory:
 - ❌ `config.vl` (VoileMap binary format) - replaced by `config.json`
 - ❌ `game-options.xml` (Java Beans XML) - replaced by `config.json`
 
-**Note:** Old configuration files from previous versions will be regenerated in the new format.
+**Note:** The old configuration format is no longer compatible. Please re-configure your settings!
 
 ## Features
 
