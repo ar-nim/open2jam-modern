@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import javax.swing.*;
+import javax.swing.UIManager;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.table.DefaultTableModel;
 import org.open2jam.AppContext;
@@ -555,6 +556,14 @@ public class Configuration extends JPanel {
 
         TrueTypeFont trueTypeFont = new TrueTypeFont(font, false);
 
+        // Get FlatLaf colors for consistent theming
+        java.awt.Color bgColor = UIManager.getColor("Panel.background");
+        java.awt.Color fgColor = UIManager.getColor("Panel.foreground");
+        if (bgColor == null) bgColor = new java.awt.Color(0x2b2b2b);  // FlatLaf dark default
+        if (fgColor == null) fgColor = new java.awt.Color(0xcccccc);  // FlatLaf dark default
+        final float[] bgRGB = new float[] { bgColor.getRed() / 255f, bgColor.getGreen() / 255f, bgColor.getBlue() / 255f };
+        final float[] fgRGB = new float[] { fgColor.getRed() / 255f, fgColor.getGreen() / 255f, fgColor.getBlue() / 255f };
+
         // Track key states for edge detection
         boolean[] keyWasPressed = new boolean[GLFW.GLFW_KEY_LAST + 1];
         Integer capturedKey = null;  // null = waiting for input, -1 = ESC, >=0 = key code
@@ -574,12 +583,13 @@ public class Configuration extends JPanel {
 
             // Begin frame with modern renderer
             popupRenderer.begin();
-            GL11.glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
+            GL11.glClearColor(bgRGB[0], bgRGB[1], bgRGB[2], 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
-            trueTypeFont.drawString(20, 20, "Press a KEY", 1, -1);
-            trueTypeFont.drawString(20, 50, "for: " + place, 1, -1);
-            trueTypeFont.drawString(20, 80, "ESC to unbind", 1, -1);
+            // Draw text with FlatLaf foreground color
+            trueTypeFont.drawString(20, 20, "Press a KEY", 1.0f, 1.0f, fgRGB[0], fgRGB[1], fgRGB[2], 1.0f);
+            trueTypeFont.drawString(20, 50, "for: " + place, 1.0f, 1.0f, fgRGB[0], fgRGB[1], fgRGB[2], 1.0f);
+            trueTypeFont.drawString(20, 80, "ESC to unbind", 1.0f, 1.0f, fgRGB[0], fgRGB[1], fgRGB[2], 1.0f);
 
             // End frame and render
             popupRenderer.end();

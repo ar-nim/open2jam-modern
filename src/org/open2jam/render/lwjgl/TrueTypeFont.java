@@ -237,9 +237,23 @@ public class TrueTypeFont {
 
     public void drawString(float x, float y, String whatchars, int startIndex, int endIndex,
                            float scaleX, float scaleY, int format) {
+        drawString(x, y, whatchars, startIndex, endIndex, scaleX, scaleY, format, 1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    /**
+     * Draw string with custom color.
+     */
+    public void drawString(float x, float y, String whatchars, float scaleX, float scaleY,
+                           float r, float g, float b, float a) {
+        drawString(x, y, whatchars, 0, whatchars.length() - 1, scaleX, scaleY, ALIGN_LEFT, r, g, b, a);
+    }
+
+    public void drawString(float x, float y, String whatchars, int startIndex, int endIndex,
+                           float scaleX, float scaleY, int format,
+                           float r, float g, float b, float a) {
         // Use modern renderer if available
         if (modernRenderer != null) {
-            drawStringModern(x, y, whatchars, startIndex, endIndex, scaleX, scaleY, format);
+            drawStringModern(x, y, whatchars, startIndex, endIndex, scaleX, scaleY, format, r, g, b, a);
         } else {
             drawStringLegacy(x, y, whatchars, startIndex, endIndex, scaleX, scaleY, format);
         }
@@ -249,7 +263,8 @@ public class TrueTypeFont {
      * Draw string using modern batched rendering.
      */
     private void drawStringModern(float x, float y, String whatchars, int startIndex, int endIndex,
-                                  float scaleX, float scaleY, int format) {
+                                  float scaleX, float scaleY, int format,
+                                  float r, float g, float b, float a) {
         IntObject intObject;
         int charCurrent;
         int totalwidth = 0;
@@ -337,7 +352,7 @@ public class TrueTypeFont {
                         fontTextureID,
                         drawX, drawY, drawWidth, drawHeight,
                         u0, v0, u1, v1,
-                        1.0f, 1.0f, 1.0f, 1.0f
+                        r, g, b, a
                     );
 
                     if (d > 0) totalwidth += (intObject.width - c) * d;
