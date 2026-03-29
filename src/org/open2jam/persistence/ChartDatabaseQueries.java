@@ -248,13 +248,13 @@ public final class ChartDatabaseQueries {
         m.setBpm(rs.getDouble("bpm"));
         m.setNotes(rs.getInt("notes"));
         m.setDuration(rs.getInt("duration"));
-        m.setCoverOffset(rs.getObject("cover_offset", Integer.class));
-        m.setCoverSize(rs.getObject("cover_size", Integer.class));
+        m.setCoverOffset(getIntegerObject(rs, "cover_offset"));
+        m.setCoverSize(getIntegerObject(rs, "cover_size"));
         m.setThumbnailData(rs.getBytes("thumbnail_data"));
-        m.setThumbnailSize(rs.getObject("thumbnail_size", Integer.class));
+        m.setThumbnailSize(getIntegerObject(rs, "thumbnail_size"));
         m.setCoverExternalPath(rs.getString("cover_external_path"));
-        m.setNoteDataOffset(rs.getObject("note_data_offset", Integer.class));
-        m.setNoteDataSize(rs.getObject("note_data_size", Integer.class));
+        m.setNoteDataOffset(getIntegerObject(rs, "note_data_offset"));
+        m.setNoteDataSize(getIntegerObject(rs, "note_data_size"));
         m.setCachedAt(rs.getLong("cached_at"));
         m.setLibraryRootPath(rs.getString("library_root_path"));
         return m;
@@ -272,6 +272,15 @@ public final class ChartDatabaseQueries {
             normalized += "/";
         }
         return normalized;
+    }
+
+    /**
+     * Safely read nullable Integer column from ResultSet.
+     * SQLite stores integers as LONG, so we need to handle this carefully.
+     */
+    private static Integer getIntegerObject(ResultSet rs, String columnName) throws SQLException {
+        int value = rs.getInt(columnName);
+        return rs.wasNull() ? null : value;
     }
 
     private ChartDatabaseQueries() {
