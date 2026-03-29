@@ -1960,12 +1960,8 @@ public class MusicSelection extends javax.swing.JPanel
         if (libraryId != null) {
             try {
                 DebugLogger.debug("removeLibrary: Deleting library id=" + libraryId);
-                
-                // Delete chart cache and thumbnails (ChartDatabase handles CASCADE + orphan cleanup)
-                org.open2jam.persistence.ChartDatabase.deleteCacheForLibrary(libraryId);
-                DebugLogger.debug("removeLibrary: Deleted chart cache for library id=" + libraryId);
-                
-                // Delete library entry from database
+
+                // Delete library entry (CASCADE deletes charts, then cleanup orphaned thumbnails)
                 org.open2jam.persistence.ChartDatabase.deleteLibrary(libraryId);
                 DebugLogger.debug("removeLibrary: Deleted library entry id=" + libraryId);
 

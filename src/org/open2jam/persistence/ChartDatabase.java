@@ -1000,13 +1000,13 @@ public class ChartDatabase {
             writerConnection.setAutoCommit(false);
             try {
                 try (Statement stmt = writerConnection.createStatement()) {
-                    stmt.execute("PRAGMA foreign_keys = OFF");
+                    stmt.execute("PRAGMA foreign_keys = ON");
                 }
 
-                try (PreparedStatement stmt = writerConnection.prepareStatement(ChartDatabaseQueries.DELETE_CHARTS_FOR_LIBRARY_SQL)) {
+                try (PreparedStatement stmt = writerConnection.prepareStatement(ChartDatabaseQueries.DELETE_LIBRARY_SQL)) {
                     stmt.setInt(1, libraryId);
-                    int chartsDeleted = stmt.executeUpdate();
-                    DebugLogger.debug("Deleted " + chartsDeleted + " charts for library id=" + libraryId);
+                    int libsDeleted = stmt.executeUpdate();
+                    DebugLogger.debug("Deleted " + libsDeleted + " library entry (id=" + libraryId + ")");
                 }
 
                 try (PreparedStatement stmt = writerConnection.prepareStatement(
@@ -1017,12 +1017,6 @@ public class ChartDatabase {
                     }
                 }
 
-                try (PreparedStatement stmt = writerConnection.prepareStatement(ChartDatabaseQueries.DELETE_LIBRARY_SQL)) {
-                    stmt.setInt(1, libraryId);
-                    int libsDeleted = stmt.executeUpdate();
-                    DebugLogger.debug("Deleted " + libsDeleted + " library entry (id=" + libraryId + ")");
-                }
-
                 writerConnection.commit();
                 DebugLogger.debug("Library deletion committed (id=" + libraryId + ")");
             } catch (SQLException e) {
@@ -1030,9 +1024,6 @@ public class ChartDatabase {
                 DebugLogger.debug("Library deletion rolled back (id=" + libraryId + ")");
                 throw e;
             } finally {
-                try (Statement stmt = writerConnection.createStatement()) {
-                    stmt.execute("PRAGMA foreign_keys = ON");
-                }
                 writerConnection.setAutoCommit(true);
             }
         } finally {
