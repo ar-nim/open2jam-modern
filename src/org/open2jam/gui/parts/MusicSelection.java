@@ -1885,11 +1885,32 @@ public class MusicSelection extends javax.swing.JPanel
                         if (coverSize != null && coverSize > 0 && coverSize <= 10_000_000 &&
                             coverOffset != null && coverOffset > 0) {
 
+                            // Thumbnail is stored AFTER cover art
+                            int thumbnailOffset = coverOffset + coverSize;
+                            
                             try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
-                                f.seek(coverOffset);
-                                byte[] coverBytes = new byte[coverSize];
-                                f.readFully(coverBytes);
-                                return ImageIO.read(new java.io.ByteArrayInputStream(coverBytes));
+                                // Seek to thumbnail position
+                                f.seek(thumbnailOffset);
+                                
+                                // Read BMP header (14 bytes) to get thumbnail size
+                                byte[] header = new byte[14];
+                                int bytesRead = f.read(header);
+                                
+                                if (bytesRead == 14 && header[0] == 0x42 && header[1] == 0x4D) {
+                                    // Valid BMP - extract size from bytes 2-5 (little-endian)
+                                    int thumbSize = (header[2] & 0xFF) |
+                                                   ((header[3] & 0xFF) << 8) |
+                                                   ((header[4] & 0xFF) << 16) |
+                                                   ((header[5] & 0xFF) << 24);
+                                    
+                                    if (thumbSize > 0 && thumbSize <= 10_000_000) {
+                                        // Read full thumbnail data
+                                        byte[] thumbData = new byte[thumbSize];
+                                        f.seek(thumbnailOffset);
+                                        f.readFully(thumbData);
+                                        return ImageIO.read(new java.io.ByteArrayInputStream(thumbData));
+                                    }
+                                }
                             }
                         }
                     }
@@ -1913,8 +1934,44 @@ public class MusicSelection extends javax.swing.JPanel
      * @return BufferedImage of full-size cover art, or null if not available
      */
     private BufferedImage loadFullCoverFromOJN(Chart chart) {
-        // Same implementation as loadCoverFromOJN - both read the full cover art
-        return loadCoverFromOJN(chart);
+        if (chart == null || chart.getSource() == null) {
+            return null;
+        }
+
+        File sourceFile = chart.getSource();
+        String sourcePath = sourceFile.getAbsolutePath().replace("\\", "/");
+
+        try {
+            List<Library> libs = ChartDatabase.getAllLibraries();
+            for (Library lib : libs) {
+                if (sourcePath.startsWith(lib.rootPath)) {
+                    String relativePath = sourcePath.substring(lib.rootPath.length());
+                    org.open2jam.parsers.ChartMetadata metadata = ChartDatabase.getMetadataByPath(lib.id, relativePath);
+                    if (metadata != null && metadata.hasEmbeddedCover()) {
+                        Integer coverOffset = metadata.getCoverOffset();
+                        Integer coverSize = metadata.getCoverSize();
+
+                        if (coverSize != null && coverSize > 0 && coverSize <= 10_000_000 &&
+                            coverOffset != null && coverOffset > 0) {
+
+                            try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
+                                f.seek(coverOffset);
+                                byte[] coverBytes = new byte[coverSize];
+                                f.readFully(coverBytes);
+                                return ImageIO.read(new java.io.ByteArrayInputStream(coverBytes));
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (SQLException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to get metadata for cover: " + sourceFile.getName());
+        } catch (IOException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to read cover from OJN: " + sourceFile.getName());
+        }
+
+        return chart.getCover();
     }
 
     // ===== Library Management Helpers =====
