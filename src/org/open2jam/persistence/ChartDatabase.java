@@ -137,12 +137,13 @@ public class ChartDatabase {
 
         -- Thumbnail cache: stores ONE copy per song (not per difficulty)
         -- Referenced by chart_cache via song_group_id
+        -- Note: All columns except song_group_id and cached_at can be NULL for OJN files without thumbnails
         CREATE TABLE IF NOT EXISTS thumbnail (
             song_group_id TEXT PRIMARY KEY,       -- MD5 hash, same for all difficulties
-            cover_offset INTEGER,                 -- Byte offset in source file
-            cover_size INTEGER,                   -- Size of embedded cover in bytes
-            thumbnail_data BLOB,                  -- Cached thumbnail (stored ONCE)
-            thumbnail_size INTEGER,               -- Size of embedded thumbnail
+            cover_offset INTEGER,                 -- Byte offset in source file (NULL if no cover)
+            cover_size INTEGER,                   -- Size of embedded cover in bytes (NULL if no cover)
+            thumbnail_data BLOB,                  -- Cached thumbnail (NULL if not extractable)
+            thumbnail_size INTEGER,               -- Size of embedded thumbnail (NULL if not extractable)
             cached_at INTEGER NOT NULL
         );
 
@@ -739,17 +740,16 @@ public class ChartDatabase {
                 thumbnailSize = thumbResult.size;
 
                 // Insert thumbnail ONCE per song_group_id - execute immediately to satisfy FK constraint
-                if (thumbResult.data.length > 0 && thumbnailSize != null) {
-                    thumbStmt.setString(1, songGroupId);
-                    thumbStmt.setObject(2, coverOffset);
-                    thumbStmt.setObject(3, coverSize);
-                    thumbStmt.setBytes(4, thumbResult.data);
-                    thumbStmt.setObject(5, thumbnailSize);
-                    thumbStmt.setLong(6, System.currentTimeMillis());
-                    thumbStmt.addBatch();
-                    thumbStmt.executeBatch();  // Execute immediately so chart_cache can reference it
-                    thumbStmt.clearBatch();
-                }
+                // Always insert a row, even if thumbnail data is missing (NULL values allowed)
+                thumbStmt.setString(1, songGroupId);
+                thumbStmt.setObject(2, coverOffset);
+                thumbStmt.setObject(3, coverSize);
+                thumbStmt.setBytes(4, thumbResult.data.length > 0 ? thumbResult.data : null);
+                thumbStmt.setObject(5, thumbnailSize);
+                thumbStmt.setLong(6, System.currentTimeMillis());
+                thumbStmt.addBatch();
+                thumbStmt.executeBatch();  // Execute immediately so chart_cache can reference it
+                thumbStmt.clearBatch();
             }
 
             // Add each difficulty to chart_cache
