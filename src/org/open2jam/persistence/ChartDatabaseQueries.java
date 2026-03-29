@@ -191,10 +191,6 @@ public final class ChartDatabaseQueries {
     public static final String TABLE_INFO_SQL =
         "PRAGMA table_info(%s)";
 
-    public static final String DELETE_ORPHANED_THUMBNAILS_SQL =
-        "DELETE FROM thumbnail WHERE song_group_id NOT IN " +
-        "(SELECT DISTINCT song_group_id FROM chart_cache)";
-
     public static final String DELETE_LIBRARY_SQL =
         "DELETE FROM libraries WHERE id = ?";
 

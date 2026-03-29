@@ -1009,14 +1009,6 @@ public class ChartDatabase {
                     DebugLogger.debug("Deleted " + libsDeleted + " library entry (id=" + libraryId + ")");
                 }
 
-                try (PreparedStatement stmt = writerConnection.prepareStatement(
-                        ChartDatabaseQueries.DELETE_ORPHANED_THUMBNAILS_SQL)) {
-                    int orphansDeleted = stmt.executeUpdate();
-                    if (orphansDeleted > 0) {
-                        DebugLogger.debug("Cleaned up " + orphansDeleted + " orphaned thumbnails");
-                    }
-                }
-
                 writerConnection.commit();
                 DebugLogger.debug("Library deletion committed (id=" + libraryId + ")");
             } catch (SQLException e) {
