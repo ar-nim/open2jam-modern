@@ -1,4 +1,4 @@
-package org.open2jam.parsers;
+package org.open2jam.persistence;
 
 /**
  * Represents a song with multiple difficulties (Easy/Normal/Hard).
@@ -11,25 +11,25 @@ package org.open2jam.parsers;
 public class SongGroup {
     /** Unique identifier for this song group (MD5 hash) */
     public final String songGroupId;
-    
+
     /** Song title (from first difficulty) */
     public final String title;
-    
+
     /** Song artist (from first difficulty) */
     public final String artist;
-    
+
     /** Number of difficulties in this group (1-3 for OJN, 1 for BMS/SM/XNT) */
     public final int diffCount;
-    
+
     /** Minimum level across all difficulties */
     public final int minLevel;
-    
+
     /** Maximum level across all difficulties */
     public final int maxLevel;
 
     /**
      * Construct a SongGroup from aggregated query results.
-     * 
+     *
      * @param songGroupId Unique group identifier
      * @param title Song title
      * @param artist Song artist
@@ -49,7 +49,7 @@ public class SongGroup {
 
     /**
      * Check if this song has multiple difficulties.
-     * 
+     *
      * @return true if diffCount > 1
      */
     public boolean hasMultipleDifficulties() {
@@ -58,7 +58,7 @@ public class SongGroup {
 
     /**
      * Get a formatted difficulty count string for UI display.
-     * 
+     *
      * @return "[1 diff]" or "[2 diffs]" or "[3 diffs]"
      */
     public String getDiffCountString() {
@@ -67,7 +67,7 @@ public class SongGroup {
 
     /**
      * Get a formatted level range string for UI display.
-     * 
+     *
      * @return "[5]" for single diff, or "[5-12]" for multiple diffs
      */
     public String getLevelRangeString() {
@@ -80,7 +80,7 @@ public class SongGroup {
 
     /**
      * Get a formatted display label for UI.
-     * 
+     *
      * @return "Title - Artist [3 diffs: 5-12]"
      */
     public String getDisplayLabel() {

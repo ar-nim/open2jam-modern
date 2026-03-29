@@ -8,10 +8,10 @@ import java.util.logging.Level;
 
 import javax.swing.SwingWorker;
 
-import org.open2jam.parsers.ChartCacheSQLite;
 import org.open2jam.parsers.ChartList;
 import org.open2jam.parsers.ChartParser;
-import org.open2jam.parsers.Library;
+import org.open2jam.persistence.ChartDatabase;
+import org.open2jam.persistence.Library;
 import org.open2jam.util.DebugLogger;
 import org.open2jam.util.Logger;
 
@@ -29,7 +29,7 @@ import org.open2jam.util.Logger;
  * <h2>Thread Safety:</h2>
  * <ul>
  *   <li>Runs on background thread (SwingWorker)</li>
- *   <li>SQLite operations are synchronized in ChartCacheSQLite</li>
+ *   <li>SQLite operations are synchronized in ChartDatabase</li>
  *   <li>Publish/process pattern ensures Swing thread safety</li>
  * </ul>
  * 
@@ -88,7 +88,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
             }
 
             // Add/update library in SQLite
-            Library library = ChartCacheSQLite.addLibrary(dir.getAbsolutePath(), libraryName);
+            Library library = ChartDatabase.addLibrary(dir.getAbsolutePath(), libraryName);
             if (library == null) {
                 Logger.global.severe("Failed to add library to SQLite: " + dir.getAbsolutePath());
                 return null;
@@ -106,14 +106,14 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
             }
 
             // Begin bulk insert transaction FIRST (90x performance improvement)
-            ChartCacheSQLite.beginBulkInsert();
+            ChartDatabase.beginBulkInsert();
             transactionStarted = true;
 
             // Delete old cache for this directory WITHIN the transaction
-            ChartCacheSQLite.deleteCacheForLibrary(library.id);
+            ChartDatabase.deleteCacheForLibrary(library.id);
             DebugLogger.debug("Cleared old cache for library " + library.id);
 
-            try (ChartCacheSQLite.BatchInserter batch = new ChartCacheSQLite.BatchInserter()) {
+            try (ChartDatabase.BatchInserter batch = new ChartDatabase.BatchInserter()) {
                 double perc = files.size() / 100d;
                 int chartsFound = 0;
                 java.util.Set<String> seenPaths = new java.util.HashSet<>();
@@ -167,11 +167,11 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
             }
 
             // Commit transaction
-            ChartCacheSQLite.commitBulkInsert();
+            ChartDatabase.commitBulkInsert();
             transactionStarted = false;  // Successfully committed, no rollback needed
 
             // Update library scan timestamp
-            ChartCacheSQLite.updateLibraryScanTime(library.id);
+            ChartDatabase.updateLibraryScanTime(library.id);
 
             setProgress(100);
             return table_model;
@@ -180,7 +180,7 @@ public class ChartModelLoader extends SwingWorker<ChartListTableModel, ChartList
             // Rollback on error (only if transaction was started)
             if (transactionStarted) {
                 try {
-                    ChartCacheSQLite.rollbackBulkInsert();
+                    ChartDatabase.rollbackBulkInsert();
                 } catch (Exception ex) {
                     Logger.global.log(Level.WARNING, "Failed to rollback transaction", ex);
                 }

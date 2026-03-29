@@ -139,11 +139,11 @@ public class MusicSelection extends javax.swing.JPanel
 
         // Load libraries from SQLite
         try {
-            List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
-            org.open2jam.parsers.Library lastOpenedLib = null;
+            List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
+            org.open2jam.persistence.Library lastOpenedLib = null;
             Integer lastLibId = context.config.getLastOpenedLibraryId();  // Use context
 
-            for (org.open2jam.parsers.Library lib : libs) {
+            for (org.open2jam.persistence.Library lib : libs) {
                 combo_dirs.addItem(new FileItem(new File(lib.rootPath)));
 
                 // Find last opened library
@@ -1115,7 +1115,7 @@ public class MusicSelection extends javax.swing.JPanel
     private void lbl_coverMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_lbl_coverMouseClicked
         if(selected_header == null)return;
         // Show full-size cover (not thumbnail) when clicked
-        BufferedImage i = org.open2jam.parsers.ChartCacheSQLite.getFullSizeCoverForChart(selected_header);
+        BufferedImage i = org.open2jam.persistence.ChartDatabase.getFullSizeCoverForChart(selected_header);
         if(i == null) return;
         JOptionPane.showMessageDialog(this, null, "Cover",
                 JOptionPane.INFORMATION_MESSAGE, new ImageIcon(i));
@@ -1135,7 +1135,7 @@ public class MusicSelection extends javax.swing.JPanel
                 org.open2jam.parsers.ChartMetadata cached = model_songlist.getMetadata(selectedRow);
                 if (cached != null) {
                     // Validate and load chart (checks file modification, re-parses if needed)
-                    chartToPlay = org.open2jam.parsers.ChartCacheSQLite.loadChartForPlay(cached);
+                    chartToPlay = org.open2jam.persistence.ChartDatabase.loadChartForPlay(cached);
 
                     if (chartToPlay == null) {
                         JOptionPane.showMessageDialog(this,
@@ -1470,16 +1470,16 @@ public class MusicSelection extends javax.swing.JPanel
 
         // Load from SQLite cache (Database Mode - instant load!)
         try {
-            List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
+            List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
             DebugLogger.debug("Found " + libs.size() + " libraries in SQLite");
             
-            org.open2jam.parsers.Library library = null;
+            org.open2jam.persistence.Library library = null;
             String dirPathWithSlash = dir.getAbsolutePath().replace("\\", "/");
             if (!dirPathWithSlash.endsWith("/")) {
                 dirPathWithSlash += "/";
             }
             
-            for (org.open2jam.parsers.Library lib : libs) {
+            for (org.open2jam.persistence.Library lib : libs) {
                 DebugLogger.debug("  Library: " + lib.rootPath + " (id=" + lib.id + ")");
                 // Compare with trailing slash (matches how SQLite stores paths)
                 if (lib.rootPath.equals(dirPathWithSlash)) {
@@ -1492,7 +1492,7 @@ public class MusicSelection extends javax.swing.JPanel
             if (library != null) {
                 // Load cached metadata from SQLite
                 ArrayList<org.open2jam.parsers.ChartMetadata> allMetadata =
-                    new ArrayList<>(org.open2jam.parsers.ChartCacheSQLite.getCachedCharts(library.id));
+                    new ArrayList<>(org.open2jam.persistence.ChartDatabase.getCachedCharts(library.id));
 
                 DebugLogger.debug("Loaded " + allMetadata.size() + " chart metadata entries from cache");
 
@@ -1672,8 +1672,8 @@ public class MusicSelection extends javax.swing.JPanel
                 // Save last opened library ID after scan completes
                 if (currentDirectory != null) {
                     try {
-                        List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
-                        for (org.open2jam.parsers.Library lib : libs) {
+                        List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
+                        for (org.open2jam.persistence.Library lib : libs) {
                             if (lib.rootPath.equals(currentDirectory.getAbsolutePath().replace("\\", "/"))) {
                                 context.config.setLastOpenedLibraryId(lib.id);
                                 break;
@@ -1757,7 +1757,7 @@ public class MusicSelection extends javax.swing.JPanel
         lbl_time.setText(time2Text(selected_header.getDuration()));
 
         // Use cached thumbnail if available (fast path), fallback to file read
-        BufferedImage i = org.open2jam.parsers.ChartCacheSQLite.getCoverForChart(selected_header);
+        BufferedImage i = org.open2jam.persistence.ChartDatabase.getCoverForChart(selected_header);
 
         if(i != null)
         lbl_cover.setIcon(new ImageIcon(i.getScaledInstance(
@@ -1804,10 +1804,10 @@ public class MusicSelection extends javax.swing.JPanel
      */
     private ArrayList<File> getLibraryDirectories() {
         try {
-            List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
+            List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
             ArrayList<File> files = new ArrayList<>();
             if (libs != null) {
-                for (org.open2jam.parsers.Library lib : libs) {
+                for (org.open2jam.persistence.Library lib : libs) {
                     if (lib.isActive) {
                         files.add(new File(lib.rootPath));
                     }
@@ -1826,7 +1826,7 @@ public class MusicSelection extends javax.swing.JPanel
     private void addLibrary(File dir) {
         if (dir != null && dir.exists() && dir.isDirectory()) {
             try {
-                org.open2jam.parsers.ChartCacheSQLite.addLibrary(dir.getAbsolutePath(), dir.getName());
+                org.open2jam.persistence.ChartDatabase.addLibrary(dir.getAbsolutePath(), dir.getName());
             } catch (Exception e) {
                 Logger.global.log(Level.WARNING, "Failed to add library", e);
             }
@@ -1842,12 +1842,12 @@ public class MusicSelection extends javax.swing.JPanel
         if (dir != null) {
             try {
                 // Find library by path
-                List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
+                List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
                 if (libs != null) {
-                    for (org.open2jam.parsers.Library lib : libs) {
+                    for (org.open2jam.persistence.Library lib : libs) {
                         if (lib.rootPath.equals(dir.getAbsolutePath().replace("\\", "/"))) {
                             // Delete chart cache first
-                            org.open2jam.parsers.ChartCacheSQLite.deleteCacheForLibrary(lib.id);
+                            org.open2jam.persistence.ChartDatabase.deleteCacheForLibrary(lib.id);
                             
                             // Delete library entry from database (with CASCADE for chart_cache)
                             try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
@@ -1887,13 +1887,13 @@ public class MusicSelection extends javax.swing.JPanel
             combo_dirs.removeAllItems();
 
             // Reload from SQLite
-            List<org.open2jam.parsers.Library> libs = org.open2jam.parsers.ChartCacheSQLite.getAllLibraries();
+            List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
             FileItem selectedItemToRestore = null;
             
             DebugLogger.debug("Reloading " + libs.size() + " libraries from SQLite");
             
             if (libs != null) {
-                for (org.open2jam.parsers.Library lib : libs) {
+                for (org.open2jam.persistence.Library lib : libs) {
                     FileItem item = new FileItem(new File(lib.rootPath));
                     combo_dirs.addItem(item);
                     DebugLogger.debug("  Added: " + lib.rootPath);

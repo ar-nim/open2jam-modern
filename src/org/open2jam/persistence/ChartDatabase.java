@@ -1,4 +1,4 @@
-package org.open2jam.parsers;
+package org.open2jam.persistence;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -25,6 +25,12 @@ import java.util.logging.Level;
 
 import javax.imageio.ImageIO;
 
+import org.open2jam.parsers.Chart;
+import org.open2jam.parsers.ChartList;
+import org.open2jam.parsers.ChartMetadata;
+import org.open2jam.parsers.ChartParser;
+import org.open2jam.parsers.OJNChart;
+import org.open2jam.parsers.SHA256Util;
 import org.open2jam.parsers.utils.Logger;
 
 /**
@@ -69,7 +75,7 @@ import org.open2jam.parsers.utils.Logger;
  *
  * @author open2jam-modern team
  */
-public class ChartCacheSQLite {
+public class ChartDatabase {
 
     // ===== Debug Flag =====
     // Enable with: java -Dopen2jam.debug=true -jar ...
@@ -92,7 +98,7 @@ public class ChartCacheSQLite {
      * Private constructor to prevent instantiation.
      * This class is a utility class with only static methods.
      */
-    private ChartCacheSQLite() {
+    private ChartDatabase() {
         // Utility class - no instances
     }
 
@@ -330,7 +336,7 @@ public class ChartCacheSQLite {
             }
 
         } catch (SQLException e) {
-            throw new IllegalStateException("ChartCacheSQLite initialization failed", e);
+            throw new IllegalStateException("ChartDatabase initialization failed", e);
         }
     }
 
@@ -390,12 +396,12 @@ public class ChartCacheSQLite {
      *
      * <p>Usage pattern:</p>
      * <pre>{@code
-     * ChartCacheSQLite.beginBulkInsert();
+     * ChartDatabase.beginBulkInsert();
      * try {
      *     // ... add charts via BatchInserter
-     *     ChartCacheSQLite.commitBulkInsert();
+     *     ChartDatabase.commitBulkInsert();
      * } catch (SQLException e) {
-     *     ChartCacheSQLite.rollbackBulkInsert();
+     *     ChartDatabase.rollbackBulkInsert();
      *     throw e;
      * }
      * }</pre>
@@ -638,14 +644,14 @@ public class ChartCacheSQLite {
      * 
      * <p>Example usage:</p>
      * <pre>{@code
-     * ChartCacheSQLite.beginBulkInsert();
-     * try (ChartCacheSQLite.BatchInserter batch = new ChartCacheSQLite.BatchInserter()) {
+     * ChartDatabase.beginBulkInsert();
+     * try (ChartDatabase.BatchInserter batch = new ChartDatabase.BatchInserter()) {
      *     for (ChartList chartList : allCharts) {
      *         batch.addChartList(library, chartList);
      *     }
      *     batch.flush();  // Insert remaining rows
      * }
-     * ChartCacheSQLite.commitBulkInsert();
+     * ChartDatabase.commitBulkInsert();
      * }</pre>
      */
     public static class BatchInserter implements AutoCloseable {
@@ -723,8 +729,8 @@ public class ChartCacheSQLite {
 
             // Extract thumbnail from first chart (all difficulties share same file)
             if (!chartList.isEmpty() && chartList.get(0) instanceof OJNChart ojn) {
-                coverOffset = ojn.coverOffset;
-                coverSize = ojn.coverSize;
+                coverOffset = ojn.getCoverOffset();
+                coverSize = ojn.getCoverSize();
 
                 // Cache embedded thumbnail in SQLite (two-image strategy)
                 ThumbnailResult thumbResult = cacheThumbnail(sourceFile, coverOffset, coverSize);
@@ -754,8 +760,8 @@ public class ChartCacheSQLite {
                 String coverExternalPath = null;
 
                 if (chart instanceof OJNChart ojn) {
-                    noteOffset = ojn.noteOffset;
-                    noteSize = ojn.noteOffsetEnd - ojn.noteOffset;
+                    noteOffset = ojn.getNoteOffset();
+                    noteSize = ojn.getNoteOffsetEnd() - ojn.getNoteOffset();
                 } else if (chart.hasCover()) {
                     // BMS/SM with external cover file
                     coverExternalPath = chart.getCoverName();

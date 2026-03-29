@@ -1,21 +1,21 @@
 package org.open2jam;
 
 import java.awt.EventQueue;
-import java.io.File;
 import java.util.logging.Handler;
 import java.util.logging.Level;
+
 import javax.swing.UIManager;
+
+import org.open2jam.gui.Interface;
+import org.open2jam.persistence.ChartDatabase;
+import org.open2jam.util.DebugLogger;
+import org.open2jam.util.Logger;
+
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatIntelliJLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.formdev.flatlaf.themes.FlatMacDarkLaf;
 import com.formdev.flatlaf.themes.FlatMacLightLaf;
-import com.formdev.flatlaf.util.SystemInfo;
-import org.lwjgl.glfw.GLFW;
-import org.open2jam.parsers.ChartCacheSQLite;
-import org.open2jam.gui.Interface;
-import org.open2jam.util.DebugLogger;
-import org.open2jam.util.Logger;
 
 public class Main implements Runnable
 {
@@ -36,9 +36,9 @@ public class Main implements Runnable
             } catch (Exception e) {
                 // Ignore
             }
-            // Clean up SQLite cache
+            // Clean up SQLite database
             try {
-                ChartCacheSQLite.close();
+                ChartDatabase.close();
             } catch (Exception e) {
                 // Ignore
             }
@@ -48,8 +48,8 @@ public class Main implements Runnable
         Config config = Config.load();
         AppContext context = new AppContext(config);
 
-        // Initialize SQLite chart cache
-        ChartCacheSQLite.initialize();
+        // Initialize SQLite chart database
+        ChartDatabase.initialize();
 
         setupLogging();
 

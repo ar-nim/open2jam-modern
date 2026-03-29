@@ -143,4 +143,48 @@ public class OJNChart extends Chart {
     public EventList getEvents() {
 	return OJNParser.parseChart(this);
     }
+
+    // ===== Getters for persistence layer (ChartDatabase) =====
+    
+    /**
+     * Get note data offset in file.
+     * @return Byte offset where note data starts
+     * @package-private Made public for ChartDatabase access
+     */
+    public int getNoteOffset() {
+        return noteOffset;
+    }
+
+    /**
+     * Get note data end offset in file.
+     * @return Byte offset where note data ends
+     * @package-private Made public for ChartDatabase access
+     */
+    public int getNoteOffsetEnd() {
+        return noteOffsetEnd;
+    }
+
+    /**
+     * Get cover image offset in file.
+     * @return Byte offset where cover image starts
+     */
+    public int getCoverOffset() {
+        return coverOffset;
+    }
+
+    /**
+     * Get cover image size in bytes.
+     * @return Size of cover image
+     */
+    public int getCoverSize() {
+        return coverSize;
+    }
+
+    /**
+     * Get thumbnail image size in bytes.
+     * @return Size of embedded thumbnail
+     */
+    public int getThumbnailSize() {
+        return thumbnailSize;
+    }
 }

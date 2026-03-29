@@ -1,11 +1,11 @@
-package org.open2jam.parsers;
+package org.open2jam.persistence;
 
 /**
  * Data Transfer Object for library root information.
  * Represents a root directory containing chart files.
- * 
+ *
  * Thread Safety: This class is immutable and therefore thread-safe.
- * 
+ *
  * @author open2jam-modern team
  */
 public class Library {
@@ -18,7 +18,7 @@ public class Library {
 
     /**
      * Construct a Library DTO.
-     * 
+     *
      * @param id Database row ID
      * @param rootPath Absolute path to library root (must use forward slashes)
      * @param name User-friendly name for the library
@@ -38,11 +38,11 @@ public class Library {
 
     /**
      * Get full absolute path for a relative chart path.
-     * 
+     *
      * <p>Security Note: This method does NOT validate the relativePath parameter.
      * Callers must ensure relativePath does not contain ".." or other path traversal
      * sequences to prevent accessing files outside the library root.</p>
-     * 
+     *
      * @param relativePath Path relative to library root (must use forward slashes)
      * @return Full absolute path: rootPath + "/" + relativePath
      * @throws IllegalStateException if relativePath is null
@@ -60,7 +60,7 @@ public class Library {
 
     /**
      * Check if this library has been scanned at least once.
-     * 
+     *
      * @return true if lastScan is not null
      */
     public boolean hasBeenScanned() {
