@@ -118,7 +118,7 @@ public class ChartCacheSQLite {
     private static final String CREATE_TABLES_SQL = """
         -- Enable WAL mode for better crash recovery and concurrent reads
         PRAGMA journal_mode = WAL;
-        
+
         -- Libraries table: root directories containing chart files
         CREATE TABLE IF NOT EXISTS libraries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,7 +128,18 @@ public class ChartCacheSQLite {
             last_scan INTEGER,                    -- Last successful scan timestamp
             is_active INTEGER DEFAULT 1           -- 0 = disabled, 1 = active
         );
-        
+
+        -- Thumbnail cache: stores ONE copy per song (not per difficulty)
+        -- Referenced by chart_cache via song_group_id
+        CREATE TABLE IF NOT EXISTS thumbnail (
+            song_group_id TEXT PRIMARY KEY,       -- MD5 hash, same for all difficulties
+            cover_offset INTEGER,                 -- Byte offset in source file
+            cover_size INTEGER,                   -- Size of embedded cover in bytes
+            thumbnail_data BLOB,                  -- Cached thumbnail (stored ONCE)
+            thumbnail_size INTEGER,               -- Size of embedded thumbnail
+            cached_at INTEGER NOT NULL
+        );
+
         -- Chart metadata cache (optimized for OJN multi-diff structure)
         CREATE TABLE IF NOT EXISTS chart_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,22 +175,18 @@ public class ChartCacheSQLite {
             notes INTEGER,
             duration INTEGER,
 
-            -- Binary offsets (embedded data)
-            cover_offset INTEGER,                 -- Byte offset in source file
-            cover_size INTEGER,                   -- Size in bytes
-            cover_data BLOB,                      -- Cached thumbnail (optional)
-            cover_external_path TEXT,             -- For external cover files (BMS, SM)
+            -- Binary offsets (note data only - cover/thumbnail in separate table)
             note_data_offset INTEGER,             -- Note data start offset
             note_data_size INTEGER,               -- Note data size in bytes
-            thumbnail_size INTEGER,               -- Size of embedded thumbnail (OJN only)
+            cover_external_path TEXT,             -- For external cover files (BMS, SM)
 
             -- Cache metadata
             cached_at INTEGER NOT NULL,           -- Unix timestamp (milliseconds)
 
             -- Constraints
-            FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
+            FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
+            FOREIGN KEY (song_group_id) REFERENCES thumbnail(song_group_id) ON DELETE CASCADE
             -- Note: No UNIQUE constraint - allows multiple difficulties per file
-            -- song_group_id groups all difficulties from same source file
         );
         
         -- Performance indexes
@@ -193,6 +200,8 @@ public class ChartCacheSQLite {
         CREATE INDEX IF NOT EXISTS idx_chart_cache_identity ON chart_cache(sha256_hash);
         -- Composite index for fast path lookup (library + relative_path)
         CREATE INDEX IF NOT EXISTS idx_chart_cache_library_path ON chart_cache(library_id, relative_path);
+        -- Index for thumbnail lookup by song_group_id
+        CREATE INDEX IF NOT EXISTS idx_thumbnail_song_group ON thumbnail(song_group_id);
         
         -- Schema version tracking
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -217,10 +226,20 @@ public class ChartCacheSQLite {
     private static final String UPDATE_LIBRARY_ROOT_SQL =
         "UPDATE libraries SET root_path = ? WHERE id = ?";
 
+    // Insert thumbnail (one per song, not per difficulty)
+    private static final String INSERT_THUMBNAIL_SQL = """
+        INSERT OR REPLACE INTO thumbnail (
+            song_group_id, cover_offset, cover_size, thumbnail_data, thumbnail_size, cached_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """;
+
+    // Get metadata with thumbnail JOIN (for cover display)
     private static final String GET_METADATA_BY_PATH_SQL = """
-        SELECT c.*, l.root_path as library_root_path
+        SELECT c.*, l.root_path as library_root_path,
+               t.cover_offset, t.cover_size, t.thumbnail_data, t.thumbnail_size
         FROM chart_cache c
         JOIN libraries l ON c.library_id = l.id
+        LEFT JOIN thumbnail t ON c.song_group_id = t.song_group_id
         WHERE c.library_id = ? AND c.relative_path = ?
         """;
 
@@ -232,8 +251,8 @@ public class ChartCacheSQLite {
             library_id, relative_path, song_group_id, chart_list_hash,
             source_file_size, source_file_modified, chart_type, chart_index,
             title, artist, genre, noter, level, keys, players, bpm, notes, duration,
-            cover_offset, cover_size, cover_data, note_data_offset, note_data_size, thumbnail_size, cached_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            note_data_offset, note_data_size, cover_external_path, cached_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     
     private static final String GET_CACHED_CHARTS_SQL = """
@@ -254,14 +273,17 @@ public class ChartCacheSQLite {
         """;
     
     private static final String GET_DIFFICULTIES_FOR_SONG_SQL = """
-        SELECT id, library_id, relative_path, song_group_id, chart_list_hash,
-               source_file_size, source_file_modified, chart_type, chart_index,
-               sha256_hash, title, artist, genre, noter, level, keys, players, bpm,
-               notes, duration, cover_offset, cover_size, note_data_offset, note_data_size,
-               cover_data, cover_external_path, cached_at
-        FROM chart_cache
-        WHERE song_group_id = ?
-        ORDER BY chart_index
+        SELECT c.id, c.library_id, c.relative_path, c.song_group_id, c.chart_list_hash,
+               c.source_file_size, c.source_file_modified, c.chart_type, c.chart_index,
+               c.sha256_hash, c.title, c.artist, c.genre, c.noter, c.level, c.keys, c.players, c.bpm,
+               c.notes, c.duration, c.note_data_offset, c.note_data_size,
+               t.cover_offset, t.cover_size, t.thumbnail_data, t.thumbnail_size,
+               c.cached_at, l.root_path as library_root_path
+        FROM chart_cache c
+        JOIN libraries l ON c.library_id = l.id
+        LEFT JOIN thumbnail t ON c.song_group_id = t.song_group_id
+        WHERE c.song_group_id = ?
+        ORDER BY c.chart_index
         """;
     
     private static final String DELETE_CHART_SQL =
@@ -628,6 +650,7 @@ public class ChartCacheSQLite {
      */
     public static class BatchInserter implements AutoCloseable {
         private final PreparedStatement stmt;
+        private final PreparedStatement thumbStmt;  // For thumbnail table
         private int batchSize = 0;
         private static final int BATCH_THRESHOLD = 1000;  // Execute batch every 1000 rows
 
@@ -664,13 +687,15 @@ public class ChartCacheSQLite {
         public BatchInserter() throws SQLException {
             // Note: Caller must hold writeLock (enforced by beginBulkInsert)
             this.stmt = writerConnection.prepareStatement(INSERT_CHART_SQL);
+            this.thumbStmt = writerConnection.prepareStatement(INSERT_THUMBNAIL_SQL);
         }
 
         /**
          * Add a ChartList to the batch.
-         * 
-         * <p>For OJN files with 3 difficulties, adds 3 rows (one per difficulty).</p>
-         * 
+         *
+         * <p>For OJN files with 3 difficulties: inserts 1 row to thumbnail table (shared by all difficulties),
+         * then 3 rows to chart_cache (one per difficulty).</p>
+         *
          * @param library Library containing the chart
          * @param chartList ChartList to cache
          * @throws SQLException if database error occurs
@@ -678,7 +703,7 @@ public class ChartCacheSQLite {
         public void addChartList(Library library, ChartList chartList) throws SQLException {
             File sourceFile = chartList.getSource();
             String absolutePath = sourceFile.getAbsolutePath().replace("\\", "/");
-            
+
             // Calculate relative path (remove library root prefix)
             if (!absolutePath.startsWith(library.rootPath)) {
                 throw new IllegalArgumentException(
@@ -691,30 +716,52 @@ public class ChartCacheSQLite {
             String songGroupId = generateSongGroupId(library.id, relativePath);
             String chartListHash = generateChartListHash(relativePath, fileModified);
 
+            // Cache thumbnail ONCE per song (not per difficulty)
+            Integer thumbnailSize = null;
+            Integer coverOffset = null;
+            Integer coverSize = null;
+
+            // Extract thumbnail from first chart (all difficulties share same file)
+            if (!chartList.isEmpty() && chartList.get(0) instanceof OJNChart ojn) {
+                coverOffset = ojn.coverOffset;
+                coverSize = ojn.coverSize;
+
+                // Cache embedded thumbnail in SQLite (two-image strategy)
+                ThumbnailResult thumbResult = cacheThumbnail(sourceFile, coverOffset, coverSize);
+                thumbnailSize = thumbResult.size;
+
+                // Insert thumbnail ONCE per song_group_id - execute immediately to satisfy FK constraint
+                if (thumbResult.data.length > 0 && thumbnailSize != null) {
+                    thumbStmt.setString(1, songGroupId);
+                    thumbStmt.setObject(2, coverOffset);
+                    thumbStmt.setObject(3, coverSize);
+                    thumbStmt.setBytes(4, thumbResult.data);
+                    thumbStmt.setObject(5, thumbnailSize);
+                    thumbStmt.setLong(6, System.currentTimeMillis());
+                    thumbStmt.addBatch();
+                    thumbStmt.executeBatch();  // Execute immediately so chart_cache can reference it
+                    thumbStmt.clearBatch();
+                }
+            }
+
+            // Add each difficulty to chart_cache
             for (int i = 0; i < chartList.size(); i++) {
                 Chart chart = chartList.get(i);
 
-                // Extract binary offsets for OJN (Fix #4)
-                Integer coverOffset = null;
-                Integer coverSize = null;
+                // Extract note data offsets for OJN, or cover path for BMS/SM
                 Integer noteOffset = null;
                 Integer noteSize = null;
-                Integer thumbnailSize = null;
-                byte[] thumbnailData = null;
+                String coverExternalPath = null;
 
                 if (chart instanceof OJNChart ojn) {
-                    coverOffset = ojn.coverOffset;
-                    coverSize = ojn.coverSize;
                     noteOffset = ojn.noteOffset;
                     noteSize = ojn.noteOffsetEnd - ojn.noteOffset;
-
-                    // Cache embedded thumbnail in SQLite (two-image strategy)
-                    ThumbnailResult thumbResult = cacheThumbnail(sourceFile, coverOffset, coverSize);
-                    thumbnailData = thumbResult.data;
-                    thumbnailSize = thumbResult.size;
+                } else if (chart.hasCover()) {
+                    // BMS/SM with external cover file
+                    coverExternalPath = chart.getCoverName();
                 }
 
-                // Set parameters
+                // Set parameters for chart_cache
                 int paramIndex = 1;
                 stmt.setInt(paramIndex++, library.id);
                 stmt.setString(paramIndex++, relativePath);
@@ -734,18 +781,15 @@ public class ChartCacheSQLite {
                 stmt.setDouble(paramIndex++, chart.getBPM());
                 stmt.setInt(paramIndex++, chart.getNoteCount());
                 stmt.setInt(paramIndex++, chart.getDuration());
-                stmt.setObject(paramIndex++, coverOffset);
-                stmt.setObject(paramIndex++, coverSize);
-                stmt.setBytes(paramIndex++, thumbnailData);  // cover_data BLOB (thumbnail)
                 stmt.setObject(paramIndex++, noteOffset);
                 stmt.setObject(paramIndex++, noteSize);
-                stmt.setObject(paramIndex++, thumbnailSize);
-                stmt.setLong(paramIndex, System.currentTimeMillis());  // ← LAST parameter (25), no ++
+                stmt.setString(paramIndex++, coverExternalPath);
+                stmt.setLong(paramIndex, System.currentTimeMillis());
 
                 stmt.addBatch();
                 batchSize++;
 
-                // Execute batch every 1000 rows (Fix #5)
+                // Execute batch every 1000 rows
                 if (batchSize >= BATCH_THRESHOLD) {
                     stmt.executeBatch();
                     stmt.clearBatch();
@@ -756,18 +800,20 @@ public class ChartCacheSQLite {
 
         /**
          * Flush remaining rows in batch.
-         * 
+         *
          * @throws SQLException if batch execution fails
          */
         public void flush() throws SQLException {
             if (batchSize > 0) {
                 stmt.executeBatch();
+                stmt.clearBatch();
             }
         }
 
         @Override
         public void close() throws SQLException {
             stmt.close();
+            thumbStmt.close();
         }
 
         /**
@@ -1187,14 +1233,14 @@ public class ChartCacheSQLite {
      * @return Cover image, or null if not available
      */
     private static BufferedImage getCoverFromBlob(ChartMetadata cached) {
-        if (cached.getCoverData() == null || cached.getCoverData().length == 0) {
+        if (cached.getThumbnailData() == null || cached.getThumbnailData().length == 0) {
             return null;
         }
         try {
-            BufferedImage img = ImageIO.read(new ByteArrayInputStream(cached.getCoverData()));
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(cached.getThumbnailData()));
             if (DEBUG) {
                 Logger.global.info(() -> String.format("[DEBUG] getCoverFromBlob: Using cached BLOB thumbnail (%d bytes, %dx%d)",
-                    cached.getCoverData().length, img.getWidth(), img.getHeight()));
+                    cached.getThumbnailData().length, img.getWidth(), img.getHeight()));
             }
             return img;
         } catch (IOException e) {
@@ -1597,9 +1643,11 @@ public class ChartCacheSQLite {
         m.setBpm(rs.getDouble("bpm"));
         m.setNotes(rs.getInt("notes"));
         m.setDuration(rs.getInt("duration"));
+        // Cover/thumbnail fields from thumbnail table (via LEFT JOIN)
         m.setCoverOffset(rs.getObject("cover_offset", Integer.class));
         m.setCoverSize(rs.getObject("cover_size", Integer.class));
-        m.setCoverData(rs.getBytes("cover_data"));
+        m.setThumbnailData(rs.getBytes("thumbnail_data"));
+        m.setThumbnailSize(rs.getObject("thumbnail_size", Integer.class));
         m.setCoverExternalPath(rs.getString("cover_external_path"));
         m.setNoteDataOffset(rs.getObject("note_data_offset", Integer.class));
         m.setNoteDataSize(rs.getObject("note_data_size", Integer.class));
