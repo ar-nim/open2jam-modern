@@ -130,7 +130,9 @@ application {
     applicationDefaultJvmArgs = [
         '-Djava.library.path=${applicationDefaultJvmArgs}',
         '-Dopen2jam.version=' + version,
-        '-Xmx2G'
+        '-Xmx2G',
+        '-XX:+UseZGC',
+        '-XX:+AlwaysPreTouch'
     ]
 }
 
