@@ -9,8 +9,6 @@
 
 This project represents **13+ years of evolution** from the last commit in September 2013 to the present day, migrating from legacy Java 6/LWJGL 2/FMOD Ex to **modern Java 25 (LTS)**, **Gradle 9.4.0**, **LWJGL 3.4.1**, and **OpenAL**, while fixing critical native crashes on Linux/Wayland and removing all NetBeans-specific dependencies.
 
-**Latest Version**: 0.1.0-SNAPSHOT (development) | **Total Commits**: 116+ in March 2026 alone | **Lines Changed**: ~19,361 added, ~9,519 removed
-
 ## ✅ Build Status: SUCCESSFUL
 
 ```bash
