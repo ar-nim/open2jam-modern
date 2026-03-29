@@ -22,6 +22,7 @@ import org.open2jam.parsers.Event;
 import org.open2jam.render.DisplayMode;
 import org.open2jam.render.lwjgl.LWJGLGameWindow;
 import org.open2jam.render.lwjgl.TrueTypeFont;
+import org.open2jam.render.lwjgl.ModernRenderer;
 import org.open2jam.util.Logger;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
@@ -542,15 +543,15 @@ public class Configuration extends JPanel {
         // Create OpenGL capabilities for this context (LWJGL 3 requirement)
         GL.createCapabilities();
 
+        // Create minimal ModernRenderer for TrueTypeFont (required for Core Profile)
+        ModernRenderer popupRenderer = new ModernRenderer();
+        popupRenderer.setProjection(320, 120);
+        TrueTypeFont.setModernRenderer(popupRenderer);
+
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glDisable(GL11.GL_DEPTH_TEST);
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glMatrixMode(GL11.GL_PROJECTION);
-        GL11.glLoadIdentity();
-        GL11.glOrtho(0, 320, 120, 0, -1, 1);
-        GL11.glMatrixMode(GL11.GL_MODELVIEW);
-        GL11.glLoadIdentity();
 
         TrueTypeFont trueTypeFont = new TrueTypeFont(font, false);
 
@@ -571,14 +572,17 @@ public class Configuration extends JPanel {
                 break;
             }
 
-            // Clear and draw
+            // Begin frame with modern renderer
+            popupRenderer.begin();
             GL11.glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            GL11.glLoadIdentity();
 
             trueTypeFont.drawString(20, 20, "Press a KEY", 1, -1);
             trueTypeFont.drawString(20, 50, "for: " + place, 1, -1);
             trueTypeFont.drawString(20, 80, "ESC to unbind", 1, -1);
+
+            // End frame and render
+            popupRenderer.end();
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
@@ -616,14 +620,15 @@ public class Configuration extends JPanel {
         // Ensure window closes properly
         GLFW.glfwSetWindowShouldClose(window, true);
         GLFW.glfwSwapBuffers(window);
-        
+
         // Give window a chance to close
         for (int i = 0; i < 5; i++) {
             GLFW.glfwPollEvents();
             try { Thread.sleep(16); } catch (Exception e) {}
         }
-        
+
         trueTypeFont.destroy();
+        popupRenderer.delete();  // Clean up modern renderer resources
         GLFW.glfwSetKeyCallback(window, null);
         GLFW.glfwHideWindow(window);
         
