@@ -32,16 +32,6 @@ public final class ChartDatabaseQueries {
             display_order INTEGER NOT NULL
         );
 
-        -- Thumbnail cache: stores ONE copy per song (not per difficulty)
-        CREATE TABLE IF NOT EXISTS thumbnail (
-            song_group_id TEXT PRIMARY KEY,
-            cover_offset INTEGER,
-            cover_size INTEGER,
-            thumbnail_data BLOB,
-            thumbnail_size INTEGER,
-            cached_at INTEGER NOT NULL
-        );
-
         -- Chart metadata cache
         CREATE TABLE IF NOT EXISTS chart_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,10 +56,11 @@ public final class ChartDatabaseQueries {
             duration INTEGER,
             note_data_offset INTEGER,
             note_data_size INTEGER,
+            cover_offset INTEGER,
+            cover_size INTEGER,
             cover_external_path TEXT,
             cached_at INTEGER NOT NULL,
-            FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE,
-            FOREIGN KEY (song_group_id) REFERENCES thumbnail(song_group_id) ON DELETE CASCADE
+            FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
         );
 
         -- Performance indexes
@@ -82,7 +73,6 @@ public final class ChartDatabaseQueries {
         CREATE INDEX IF NOT EXISTS idx_chart_cache_type ON chart_cache(chart_type);
         CREATE INDEX IF NOT EXISTS idx_chart_cache_identity ON chart_cache(sha256_hash);
         CREATE INDEX IF NOT EXISTS idx_chart_cache_library_path ON chart_cache(library_id, relative_path);
-        CREATE INDEX IF NOT EXISTS idx_thumbnail_song_group ON thumbnail(song_group_id);
 
         -- Schema version tracking
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -124,25 +114,21 @@ public final class ChartDatabaseQueries {
             library_id, relative_path, song_group_id, chart_list_hash,
             source_file_size, source_file_modified, chart_type, chart_index,
             title, artist, genre, noter, level, keys, players, bpm, notes, duration,
-            note_data_offset, note_data_size, cover_external_path, cached_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            note_data_offset, note_data_size, cover_offset, cover_size, cover_external_path, cached_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
 
     public static final String GET_METADATA_BY_PATH_SQL = """
-        SELECT c.*, l.root_path as library_root_path,
-               t.cover_offset, t.cover_size, t.thumbnail_data, t.thumbnail_size
+        SELECT c.*, l.root_path as library_root_path
         FROM chart_cache c
         JOIN libraries l ON c.library_id = l.id
-        LEFT JOIN thumbnail t ON c.song_group_id = t.song_group_id
         WHERE c.library_id = ? AND c.relative_path = ?
         """;
 
     public static final String GET_CACHED_CHARTS_SQL = """
-        SELECT c.*, l.root_path as library_root_path,
-               t.cover_offset, t.cover_size, t.thumbnail_data, t.thumbnail_size
+        SELECT c.*, l.root_path as library_root_path
         FROM chart_cache c
         JOIN libraries l ON c.library_id = l.id
-        LEFT JOIN thumbnail t ON c.song_group_id = t.song_group_id
         WHERE c.library_id = ? AND l.is_active = 1
         ORDER BY c.song_group_id, c.chart_index
         """;
@@ -161,11 +147,10 @@ public final class ChartDatabaseQueries {
                c.source_file_size, c.source_file_modified, c.chart_type, c.chart_index,
                c.sha256_hash, c.title, c.artist, c.genre, c.noter, c.level, c.keys, c.players, c.bpm,
                c.notes, c.duration, c.note_data_offset, c.note_data_size,
-               t.cover_offset, t.cover_size, t.thumbnail_data, t.thumbnail_size,
+               c.cover_offset, c.cover_size,
                c.cached_at, l.root_path as library_root_path
         FROM chart_cache c
         JOIN libraries l ON c.library_id = l.id
-        LEFT JOIN thumbnail t ON c.song_group_id = t.song_group_id
         WHERE c.song_group_id = ?
         ORDER BY c.chart_index
         """;
@@ -250,8 +235,6 @@ public final class ChartDatabaseQueries {
         m.setDuration(rs.getInt("duration"));
         m.setCoverOffset(getIntegerObject(rs, "cover_offset"));
         m.setCoverSize(getIntegerObject(rs, "cover_size"));
-        m.setThumbnailData(rs.getBytes("thumbnail_data"));
-        m.setThumbnailSize(getIntegerObject(rs, "thumbnail_size"));
         m.setCoverExternalPath(rs.getString("cover_external_path"));
         m.setNoteDataOffset(getIntegerObject(rs, "note_data_offset"));
         m.setNoteDataSize(getIntegerObject(rs, "note_data_size"));

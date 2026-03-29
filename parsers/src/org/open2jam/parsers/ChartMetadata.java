@@ -44,12 +44,9 @@ public class ChartMetadata {
     private int duration;                   // Song duration in seconds
 
     // ===== BINARY OFFSETS (OJN-specific) =====
-    // Note: cover_offset, cover_size, thumbnail_data, thumbnail_size are now in thumbnail table
-    // These fields are populated at runtime via JOIN with thumbnail table
-    private Integer coverOffset;            // Byte offset of embedded cover art (from thumbnail table)
-    private Integer coverSize;              // Size of embedded cover in bytes (from thumbnail table)
-    private byte[] thumbnailData;           // Cached thumbnail BLOB (from thumbnail table)
-    private Integer thumbnailSize;          // Size of embedded thumbnail in bytes (from thumbnail table)
+    // Note: cover_offset and cover_size are stored directly in chart_cache table
+    private Integer coverOffset;            // Byte offset of embedded cover art
+    private Integer coverSize;              // Size of embedded cover in bytes
     private String coverExternalPath;       // Path to external cover file (BMS, SM)
     private Integer noteDataOffset;         // Byte offset of note data
     private Integer noteDataSize;           // Size of note data in bytes
@@ -127,12 +124,6 @@ public class ChartMetadata {
 
     public Integer getCoverSize() { return coverSize; }
     public void setCoverSize(Integer coverSize) { this.coverSize = coverSize; }
-
-    public byte[] getThumbnailData() { return thumbnailData; }
-    public void setThumbnailData(byte[] thumbnailData) { this.thumbnailData = thumbnailData; }
-
-    public Integer getThumbnailSize() { return thumbnailSize; }
-    public void setThumbnailSize(Integer thumbnailSize) { this.thumbnailSize = thumbnailSize; }
 
     public String getCoverExternalPath() { return coverExternalPath; }
     public void setCoverExternalPath(String coverExternalPath) { this.coverExternalPath = coverExternalPath; }

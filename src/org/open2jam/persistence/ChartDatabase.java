@@ -342,7 +342,6 @@ public class ChartDatabase {
 
     public static class BatchInserter implements AutoCloseable {
         private final PreparedStatement stmt;
-        private final PreparedStatement thumbStmt;
         private int batchSize = 0;
         private static final int BATCH_THRESHOLD = 1000;
 
@@ -356,7 +355,6 @@ public class ChartDatabase {
 
         public BatchInserter() throws SQLException {
             this.stmt = writerConnection.prepareStatement(ChartDatabaseQueries.INSERT_CHART_SQL);
-            this.thumbStmt = writerConnection.prepareStatement(ChartDatabaseQueries.INSERT_THUMBNAIL_SQL);
         }
 
         public void addChartList(Library library, ChartList chartList) throws SQLException {
@@ -371,29 +369,15 @@ public class ChartDatabase {
 
             long fileSize = sourceFile.length();
             long fileModified = sourceFile.lastModified();
-            String songGroupId = generateSongGroupId(library.id, relativePath);
+            String songGroupId = generateSongGroupId(relativePath);
             String chartListHash = generateChartListHash(relativePath, fileModified);
 
-            Integer thumbnailSize = null;
             Integer coverOffset = null;
             Integer coverSize = null;
 
             if (!chartList.isEmpty() && chartList.get(0) instanceof OJNChart ojn) {
                 coverOffset = ojn.getCoverOffset();
                 coverSize = ojn.getCoverSize();
-
-                ThumbnailResult thumbResult = cacheThumbnail(sourceFile, coverOffset, coverSize);
-                thumbnailSize = thumbResult.size;
-
-                thumbStmt.setString(1, songGroupId);
-                thumbStmt.setObject(2, coverOffset);
-                thumbStmt.setObject(3, coverSize);
-                thumbStmt.setBytes(4, thumbResult.data.length > 0 ? thumbResult.data : null);
-                thumbStmt.setObject(5, thumbnailSize);
-                thumbStmt.setLong(6, System.currentTimeMillis());
-                thumbStmt.addBatch();
-                thumbStmt.executeBatch();
-                thumbStmt.clearBatch();
             }
 
             for (int i = 0; i < chartList.size(); i++) {
@@ -431,6 +415,8 @@ public class ChartDatabase {
                 stmt.setInt(paramIndex++, chart.getDuration());
                 stmt.setObject(paramIndex++, noteOffset);
                 stmt.setObject(paramIndex++, noteSize);
+                stmt.setObject(paramIndex++, coverOffset);
+                stmt.setObject(paramIndex++, coverSize);
                 stmt.setString(paramIndex++, coverExternalPath);
                 stmt.setLong(paramIndex, System.currentTimeMillis());
 
@@ -455,14 +441,12 @@ public class ChartDatabase {
         @Override
         public void close() throws SQLException {
             stmt.close();
-            thumbStmt.close();
         }
 
-        private String generateSongGroupId(int libraryId, String relativePath) {
-            String input = libraryId + ":" + relativePath;
+        private String generateSongGroupId(String relativePath) {
             MessageDigest md = SHA1_DIGEST.get();
             md.reset();
-            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = md.digest(relativePath.getBytes(StandardCharsets.UTF_8));
             return bytesToHex(hash);
         }
 
@@ -476,125 +460,6 @@ public class ChartDatabase {
                 hex.append(String.format("%02x", b));
             }
             return hex.toString();
-        }
-
-        private static record ThumbnailResult(byte[] data, Integer size) {}
-
-        private static ThumbnailResult cacheThumbnail(File sourceFile, Integer coverOffset, Integer coverSize) {
-            if (coverOffset == null || coverSize == null || coverOffset <= 0 || coverSize <= 0) {
-                return new ThumbnailResult(new byte[0], null);
-            }
-
-            long fileLen = sourceFile.length();
-            int thumbnailOffset = coverOffset + coverSize;
-
-            if (thumbnailOffset <= 0 || thumbnailOffset >= fileLen - 1) {
-                return new ThumbnailResult(new byte[0], null);
-            }
-
-            try {
-                int[] thumbSizeRef = new int[1];
-                byte[] thumbnailData = readThumbnailFromOJN(sourceFile, thumbnailOffset, thumbSizeRef);
-                if (thumbnailData.length > 0 && thumbSizeRef[0] > 0 && thumbSizeRef[0] < 1_000_000) {
-                    return new ThumbnailResult(thumbnailData, thumbSizeRef[0]);
-                }
-            } catch (Exception e) {
-            }
-
-            return new ThumbnailResult(new byte[0], null);
-        }
-
-        private static byte[] readThumbnailFromOJN(File sourceFile, int thumbnailOffset, int[] thumbnailSizeRef) {
-            try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
-                long fileLen = f.length();
-                if (thumbnailOffset <= 0 || thumbnailOffset >= fileLen - 1) {
-                    return new byte[0];
-                }
-
-                f.seek(thumbnailOffset);
-                byte[] header = new byte[2];
-                if (f.read(header) != 2) {
-                    return new byte[0];
-                }
-
-                int thumbnailSize;
-                f.seek(thumbnailOffset);
-
-                if ((header[0] & 0xFF) == 0x42 && (header[1] & 0xFF) == 0x4D) {
-                    thumbnailSize = findBmpSize(f, thumbnailOffset);
-                }
-                else if ((header[0] & 0xFF) == 0xFF && (header[1] & 0xFF) == 0xD8) {
-                    thumbnailSize = findJpegSize(f, thumbnailOffset);
-                }
-                else if ((header[0] & 0xFF) == 0x89 && (header[1] & 0xFF) == 0x50) {
-                    thumbnailSize = findPngSize(f, thumbnailOffset);
-                }
-                else {
-                    return new byte[0];
-                }
-
-                if (thumbnailSize <= 0 || thumbnailSize > 1_000_000 || thumbnailOffset + thumbnailSize > fileLen) {
-                    return new byte[0];
-                }
-
-                f.seek(thumbnailOffset);
-                byte[] thumbnailData = new byte[thumbnailSize];
-                f.readFully(thumbnailData);
-
-                if (thumbnailSizeRef != null && thumbnailSizeRef.length > 0) {
-                    thumbnailSizeRef[0] = thumbnailSize;
-                }
-
-                return thumbnailData;
-            } catch (IOException e) {
-                return new byte[0];
-            }
-        }
-
-        private static int findBmpSize(RandomAccessFile f, long startOffset) throws IOException {
-            f.seek(startOffset + 2);
-            byte[] sizeBytes = new byte[4];
-            if (f.read(sizeBytes) != 4) return -1;
-            return (sizeBytes[0] & 0xFF) |
-                   ((sizeBytes[1] & 0xFF) << 8) |
-                   ((sizeBytes[2] & 0xFF) << 16) |
-                   ((sizeBytes[3] & 0xFF) << 24);
-        }
-
-        private static int findJpegSize(RandomAccessFile f, long startOffset) throws IOException {
-            f.seek(startOffset);
-            int size = 2;
-            byte prev = 0;
-            while (true) {
-                int b = f.read();
-                if (b < 0) break;
-                size++;
-                if (prev == (byte)0xFF && b == 0xD9) return size;
-                if (size > 2_000_000) return size;
-                prev = (byte) b;
-            }
-            return size;
-        }
-
-        private static int findPngSize(RandomAccessFile f, long startOffset) throws IOException {
-            f.seek(startOffset);
-            byte[] header = new byte[8];
-            if (f.read(header) != 8) return -1;
-            int size = 8;
-            byte[] chunkHeader = new byte[8];
-            while (true) {
-                if (f.read(chunkHeader) != 8) break;
-                int chunkLength = ((chunkHeader[0] & 0xFF) << 24) |
-                                  ((chunkHeader[1] & 0xFF) << 16) |
-                                  ((chunkHeader[2] & 0xFF) << 8) |
-                                  (chunkHeader[3] & 0xFF);
-                size += 8 + chunkLength + 4;
-                if (chunkHeader[4] == 'I' && chunkHeader[5] == 'E' &&
-                    chunkHeader[6] == 'N' && chunkHeader[7] == 'D') return size;
-                f.skipBytes(chunkLength + 4);
-                if (size > 2_000_000) return size;
-            }
-            return size;
         }
     }
 
@@ -721,32 +586,10 @@ public class ChartDatabase {
     }
 
     public static BufferedImage getCoverFromCache(ChartMetadata cached) {
-        BufferedImage cover = getCoverFromBlob(cached);
-        if (cover != null) return cover;
-
-        cover = getEmbeddedCover(cached);
+        BufferedImage cover = getEmbeddedCover(cached);
         if (cover != null) return cover;
 
         return getExternalCover(cached);
-    }
-
-    private static BufferedImage getCoverFromBlob(ChartMetadata cached) {
-        if (cached.getThumbnailData() == null || cached.getThumbnailData().length == 0) {
-            return null;
-        }
-        try {
-            BufferedImage img = ImageIO.read(new ByteArrayInputStream(cached.getThumbnailData()));
-            if (DEBUG) {
-                Logger.global.info(() -> String.format("[DEBUG] getCoverFromBlob: Using cached BLOB thumbnail (%d bytes, %dx%d)",
-                    cached.getThumbnailData().length, img.getWidth(), img.getHeight()));
-            }
-            return img;
-        } catch (IOException e) {
-            if (DEBUG) {
-                Logger.global.info(() -> "[DEBUG] getCoverFromBlob: Failed to read BLOB, falling back");
-            }
-            return null;
-        }
     }
 
     private static BufferedImage getEmbeddedCover(ChartMetadata cached) {
@@ -879,7 +722,7 @@ public class ChartDatabase {
         return null;
     }
 
-    private static ChartMetadata getMetadataByPath(int libraryId, String relativePath) throws SQLException {
+    public static ChartMetadata getMetadataByPath(int libraryId, String relativePath) throws SQLException {
         if (getMetadataByPathStmt == null || getMetadataByPathStmt.isClosed()) {
             getMetadataByPathStmt = writerConnection.prepareStatement(ChartDatabaseQueries.GET_METADATA_BY_PATH_SQL);
         }

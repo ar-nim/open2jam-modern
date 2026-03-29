@@ -8,12 +8,14 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
 
+import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
 import javax.swing.JMenuItem;
@@ -1163,7 +1165,7 @@ public class MusicSelection extends javax.swing.JPanel
     private void lbl_coverMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_lbl_coverMouseClicked
         if(selected_header == null)return;
         // Show full-size cover (not thumbnail) when clicked
-        BufferedImage i = org.open2jam.persistence.ChartDatabase.getFullSizeCoverForChart(selected_header);
+        BufferedImage i = loadFullCoverFromOJN(selected_header);
         if(i == null) return;
         JOptionPane.showMessageDialog(this, null, "Cover",
                 JOptionPane.INFORMATION_MESSAGE, new ImageIcon(i));
@@ -1826,8 +1828,8 @@ public class MusicSelection extends javax.swing.JPanel
 	lbl_keys.setText(selected_header.getKeys()+"");
         lbl_time.setText(time2Text(selected_header.getDuration()));
 
-        // Use cached thumbnail if available (fast path), fallback to file read
-        BufferedImage i = org.open2jam.persistence.ChartDatabase.getCoverForChart(selected_header);
+        // Load cover from OJN file lazily
+        BufferedImage i = loadCoverFromOJN(selected_header);
 
         if(i != null)
         lbl_cover.setIcon(new ImageIcon(i.getScaledInstance(
@@ -1851,6 +1853,68 @@ public class MusicSelection extends javax.swing.JPanel
         if(string.length() > size)
             string = string.substring(0, size)+"...";
         return string;
+    }
+
+    // ===== Cover Art Lazy Loading =====
+
+    /**
+     * Load cover art from OJN file lazily.
+     * Reads metadata from database, then extracts cover from file.
+     *
+     * @param chart The chart to load cover for
+     * @return BufferedImage of cover art, or null if not available
+     */
+    private BufferedImage loadCoverFromOJN(Chart chart) {
+        if (chart == null || chart.getSource() == null) {
+            return null;
+        }
+
+        File sourceFile = chart.getSource();
+        String sourcePath = sourceFile.getAbsolutePath().replace("\\", "/");
+
+        try {
+            List<Library> libs = ChartDatabase.getAllLibraries();
+            for (Library lib : libs) {
+                if (sourcePath.startsWith(lib.rootPath)) {
+                    String relativePath = sourcePath.substring(lib.rootPath.length());
+                    org.open2jam.parsers.ChartMetadata metadata = ChartDatabase.getMetadataByPath(lib.id, relativePath);
+                    if (metadata != null && metadata.hasEmbeddedCover()) {
+                        Integer coverOffset = metadata.getCoverOffset();
+                        Integer coverSize = metadata.getCoverSize();
+
+                        if (coverSize != null && coverSize > 0 && coverSize <= 10_000_000 &&
+                            coverOffset != null && coverOffset > 0) {
+
+                            try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
+                                f.seek(coverOffset);
+                                byte[] coverBytes = new byte[coverSize];
+                                f.readFully(coverBytes);
+                                return ImageIO.read(new java.io.ByteArrayInputStream(coverBytes));
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (SQLException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to get metadata for cover: " + sourceFile.getName());
+        } catch (IOException e) {
+            Logger.global.log(Level.WARNING, e, () -> "Failed to read cover from OJN: " + sourceFile.getName());
+        }
+
+        return chart.getCover();
+    }
+
+    /**
+     * Load full-size cover art from OJN file lazily.
+     * Same as loadCoverFromOJN but returns full resolution (for dialog display).
+     *
+     * @param chart The chart to load cover for
+     * @return BufferedImage of full-size cover art, or null if not available
+     */
+    private BufferedImage loadFullCoverFromOJN(Chart chart) {
+        // Same implementation as loadCoverFromOJN - both read the full cover art
+        return loadCoverFromOJN(chart);
     }
 
     // ===== Library Management Helpers =====
