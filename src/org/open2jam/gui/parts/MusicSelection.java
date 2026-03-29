@@ -258,8 +258,6 @@ public class MusicSelection extends javax.swing.JPanel
                         "Failed to extract keysounds: " + ex.getMessage(), 
                         "Extraction Error", 
                         JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    System.gc();
                 }
             }
         });

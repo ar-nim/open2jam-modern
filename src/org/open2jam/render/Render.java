@@ -683,9 +683,6 @@ public class Render implements GameWindowCallback
         System.out.println("[DEBUG] Render font: " + trueTypeFont.getFont().getName() + 
                            " (family=" + trueTypeFont.getFont().getFamily() + ")");
 
-        //clean up
-        System.gc();
-
         // Non-blocking loading pause (5 seconds minimum)
         // Keep window visible with cover image, poll events to keep compositor happy
         double loadStartTime = SystemTimer.getTime();
@@ -794,7 +791,6 @@ public class Render implements GameWindowCallback
         try{
             window.startRendering();
         }catch(OutOfMemoryError e) {
-            System.gc();
             Logger.global.log(Level.SEVERE, "System out of memory ! baillin out !!{0}", e.getMessage());
             JOptionPane.showMessageDialog(null, "Fatal Error", "System out of memory ! baillin out !!",JOptionPane.ERROR_MESSAGE);
             System.exit(1);
@@ -1739,7 +1735,6 @@ public class Render implements GameWindowCallback
 
         // Now safe to release audio
         soundSystem.release();
-        System.gc();
         
         if (syncingLatency != null && autosyncCallback != null) {
             SwingUtilities.invokeLater(new Runnable() {
