@@ -262,9 +262,11 @@ public class ChartDatabase {
         """;
     
     private static final String GET_CACHED_CHARTS_SQL = """
-        SELECT c.*, l.root_path as library_root_path
+        SELECT c.*, l.root_path as library_root_path,
+               t.cover_offset, t.cover_size, t.thumbnail_data, t.thumbnail_size
         FROM chart_cache c
         JOIN libraries l ON c.library_id = l.id
+        LEFT JOIN thumbnail t ON c.song_group_id = t.song_group_id
         WHERE c.library_id = ? AND l.is_active = 1
         ORDER BY c.song_group_id, c.chart_index
         """;
