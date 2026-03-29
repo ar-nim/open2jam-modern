@@ -32,6 +32,7 @@ import org.open2jam.parsers.ChartParser;
 import org.open2jam.parsers.OJNChart;
 import org.open2jam.parsers.SHA256Util;
 import org.open2jam.parsers.utils.Logger;
+import org.open2jam.util.DebugLogger;
 
 /**
  * SQLite-based chart metadata cache with root-relative path model.
@@ -132,7 +133,8 @@ public class ChartDatabase {
             name TEXT NOT NULL,                   -- User-friendly name
             added_at INTEGER NOT NULL,            -- Unix timestamp (milliseconds)
             last_scan INTEGER,                    -- Last successful scan timestamp
-            is_active INTEGER DEFAULT 1           -- 0 = disabled, 1 = active
+            is_active INTEGER DEFAULT 1,          -- 0 = disabled, 1 = active
+            display_order INTEGER NOT NULL        -- UI sort order (sparse, gap-tolerant)
         );
 
         -- Thumbnail cache: stores ONE copy per song (not per difficulty)
@@ -228,7 +230,8 @@ public class ChartDatabase {
         "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries WHERE id = ?";
 
     private static final String GET_ALL_LIBRARIES_SQL =
-        "SELECT id, root_path, name, added_at, last_scan, is_active FROM libraries ORDER BY name";
+        "SELECT id, root_path, name, added_at, last_scan, is_active, display_order " +
+        "FROM libraries ORDER BY display_order ASC";
 
     private static final String UPDATE_LIBRARY_ROOT_SQL =
         "UPDATE libraries SET root_path = ? WHERE id = ?";
@@ -338,8 +341,72 @@ public class ChartDatabase {
                 stmt.executeUpdate(CREATE_TABLES_SQL);
             }
 
+            // Run schema migrations (add display_order column if needed)
+            migrateSchema();
+
         } catch (SQLException e) {
             throw new IllegalStateException("ChartDatabase initialization failed", e);
+        }
+    }
+
+    /**
+     * Migrate database schema to latest version.
+     * 
+     * <p>Design Principle: Backward Compatibility</p>
+     * <ul>
+     *   <li>Adds display_order column if missing (for existing databases)</li>
+     *   <li>Initializes display_order from id (preserves existing order)</li>
+     *   <li>Safe to run on already-migrated databases (idempotent)</li>
+     * </ul>
+     * 
+     * @throws SQLException if migration fails
+     */
+    private static void migrateSchema() throws SQLException {
+        writeLock.lock();
+        try {
+            // Check if display_order column exists
+            boolean hasDisplayOrder = false;
+            try (PreparedStatement stmt = writerConnection.prepareStatement(
+                    "PRAGMA table_info(libraries)");
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    if ("display_order".equals(rs.getString("name"))) {
+                        hasDisplayOrder = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasDisplayOrder) {
+                DebugLogger.debug("Schema migration: Adding display_order column to libraries table");
+                writerConnection.setAutoCommit(false);
+                try {
+                    // Add column (allow NULL initially for existing rows)
+                    try (Statement stmt = writerConnection.createStatement()) {
+                        stmt.execute("ALTER TABLE libraries ADD COLUMN display_order INTEGER");
+                    }
+
+                    // Initialize display_order from id (preserves existing order)
+                    try (Statement stmt = writerConnection.createStatement()) {
+                        stmt.execute("UPDATE libraries SET display_order = id");
+                    }
+
+                    // Make column NOT NULL (now that all rows have values)
+                    // Note: SQLite doesn't support ALTER COLUMN, so we skip this step
+                    // The application logic ensures display_order is always set for new rows
+                    
+                    writerConnection.commit();
+                    DebugLogger.debug("Schema migration completed: display_order column added");
+                } catch (SQLException e) {
+                    writerConnection.rollback();
+                    DebugLogger.debug("Schema migration rolled back");
+                    throw e;
+                } finally {
+                    writerConnection.setAutoCommit(true);
+                }
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -474,6 +541,13 @@ public class ChartDatabase {
      *   <li>Case preserved (Linux is case-sensitive)</li>
      * </ul>
      *
+     * <p>Design Principle: Primary Key Stability</p>
+     * <ul>
+     *   <li>Library IDs are immutable once assigned (INTEGER PRIMARY KEY AUTOINCREMENT)</li>
+     *   <li>Never renumber or reuse IDs - they are stable foreign key anchors</li>
+     *   <li>Display ordering is handled separately via display_order column</li>
+     * </ul>
+     *
      * <p>Thread Safety: Acquires writeLock to serialize with other writes.</p>
      *
      * @param rootPath Absolute path to library root
@@ -487,36 +561,98 @@ public class ChartDatabase {
 
         writeLock.lock();
         try {
-            // Insert or ignore (UNIQUE constraint on root_path)
+            // Check if library already exists
+            Library existing = getLibraryByPath(normalizedPath);
+            if (existing != null) {
+                return existing;
+            }
+
+            // Get next display_order (sparse, gap-tolerant sequence)
+            int nextDisplayOrder = getNextDisplayOrder();
+
+            // Insert with display_order (id is AUTOINCREMENT)
             try (PreparedStatement stmt = writerConnection.prepareStatement(
-                    INSERT_LIBRARY_SQL)) {
+                    "INSERT INTO libraries (root_path, name, added_at, display_order, is_active) " +
+                    "VALUES (?, ?, ?, ?, 1)")) {
 
                 stmt.setString(1, normalizedPath);
                 stmt.setString(2, name);
                 stmt.setLong(3, System.currentTimeMillis());
+                stmt.setInt(4, nextDisplayOrder);
                 stmt.executeUpdate();
             }
 
-            // Get the ID using SQLite's last_insert_rowid()
-            Library lib = getLibraryByPath(normalizedPath);
-            if (lib != null) {
-                return lib;
-            }
-            
-            // Should not happen, but fetch by ID if path lookup fails
-            try (PreparedStatement stmt = writerConnection.prepareStatement(
-                    "SELECT last_insert_rowid()")) {
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) {
-                        return getLibraryById(rs.getInt(1));
-                    }
-                }
-            }
-            
-            return null;
+            // Return the newly created library
+            return getLibraryByPath(normalizedPath);
         } finally {
             writeLock.unlock();
         }
+    }
+
+    /**
+     * Get next available display_order value.
+     * 
+     * <p>Design Principle: Sparse Display Order (Gap-Tolerant)</p>
+     * <ul>
+     *   <li>Returns MAX(display_order) + 1, or 1 if table is empty</li>
+     *   <li>Gaps are acceptable - UI sorts by display_order, gaps are invisible</li>
+     *   <li>O(1) operation - no renumbering on delete</li>
+     * </ul>
+     * 
+     * @return Next display_order value
+     * @throws SQLException if database error occurs
+     */
+    private static int getNextDisplayOrder() throws SQLException {
+        // Check if display_order column exists (for backward compatibility during migration)
+        boolean hasDisplayOrder = columnExists("libraries", "display_order");
+        
+        if (!hasDisplayOrder) {
+            // Column doesn't exist yet - use id-based ordering temporarily
+            DebugLogger.debug("getNextDisplayOrder: display_order column not found, using id-based ordering");
+            try (PreparedStatement stmt = writerConnection.prepareStatement(
+                    "SELECT COALESCE(MAX(id), 0) + 1 FROM libraries")) {
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt(1);
+                    }
+                }
+            }
+            return 1;
+        }
+        
+        // Normal case: use display_order column
+        try (PreparedStatement stmt = writerConnection.prepareStatement(
+                "SELECT COALESCE(MAX(display_order), 0) + 1 FROM libraries")) {
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    int nextOrder = rs.getInt(1);
+                    DebugLogger.debug("getNextDisplayOrder: Next display_order = " + nextOrder);
+                    return nextOrder;
+                }
+            }
+        }
+        return 1;
+    }
+
+    /**
+     * Check if a column exists in a table.
+     * 
+     * @param tableName Table name
+     * @param columnName Column name
+     * @return true if column exists, false otherwise
+     * @throws SQLException if database error occurs
+     */
+    private static boolean columnExists(String tableName, String columnName) throws SQLException {
+        try (PreparedStatement stmt = writerConnection.prepareStatement(
+                "PRAGMA table_info(" + tableName + ")");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                if (columnName.equals(rs.getString("name"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -576,17 +712,25 @@ public class ChartDatabase {
      */
     public static List<Library> getAllLibraries() throws SQLException {
         List<Library> libraries = new ArrayList<>();
+
+        // Check if display_order column exists (backward compatibility)
+        boolean hasDisplayOrder = columnExists("libraries", "display_order");
         
+        String orderBy = hasDisplayOrder ? "display_order ASC" : "id ASC";
+        String sql = "SELECT id, root_path, name, added_at, last_scan, is_active" +
+                     (hasDisplayOrder ? ", display_order" : "") +
+                     " FROM libraries ORDER BY " + orderBy;
+
         try (Connection conn = createReadConnection();
-             PreparedStatement stmt = conn.prepareStatement(GET_ALL_LIBRARIES_SQL)) {
-            
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     libraries.add(extractLibrary(rs));
                 }
             }
         }
-        
+
         return libraries;
     }
 
@@ -1612,13 +1756,27 @@ public class ChartDatabase {
         long lastScanVal = rs.getLong("last_scan");
         Long lastScan = rs.wasNull() ? null : lastScanVal;
         
+        // Read display_order if column exists (backward compatibility)
+        int displayOrder;
+        try {
+            displayOrder = rs.getInt("display_order");
+            if (rs.wasNull()) {
+                // Column exists but value is NULL (shouldn't happen, but handle it)
+                displayOrder = rs.getInt("id");  // Fallback to id
+            }
+        } catch (SQLException e) {
+            // Column doesn't exist yet (old database before migration)
+            displayOrder = rs.getInt("id");  // Use id as display_order
+        }
+
         return new Library(
             rs.getInt("id"),
             rs.getString("root_path"),
             rs.getString("name"),
             addedAt,
             lastScan,
-            rs.getInt("is_active") == 1
+            rs.getInt("is_active") == 1,
+            displayOrder
         );
     }
 
@@ -1687,9 +1845,9 @@ public class ChartDatabase {
 
     /**
      * Delete all cached charts for a library.
-     * 
+     *
      * <p>Call this before re-scanning a library.</p>
-     * 
+     *
      * <p>Thread Safety: Acquires writeLock to serialize with other writes.</p>
      *
      * @param libraryId Library row ID
@@ -1700,6 +1858,99 @@ public class ChartDatabase {
         try (PreparedStatement stmt = writerConnection.prepareStatement(DELETE_CHARTS_FOR_LIBRARY_SQL)) {
             stmt.setInt(1, libraryId);
             stmt.executeUpdate();
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    /**
+     * Delete a library and all associated data (charts and orphaned thumbnails).
+     *
+     * <p>Design Principle: Primary Key Stability</p>
+     * <ul>
+     *   <li>Library ID is deleted, never renumbered</li>
+     *   <li>Other libraries keep their original IDs</li>
+     *   <li>display_order is NOT renumbered (gaps are acceptable)</li>
+     * </ul>
+     *
+     * <p>Design Principle: Sparse Display Order</p>
+     * <ul>
+     *   <li>No renumbering on delete - O(1) operation</li>
+     *   <li>Gaps in display_order are invisible to users (UI sorts by value)</li>
+     *   <li>Prevents write amplification (no cascade updates)</li>
+     * </ul>
+     *
+     * <p>Design Principle: Atomic Batch Operations</p>
+     * <ul>
+     *   <li>All deletions occur in a single transaction</li>
+     *   <li>Rollback on error ensures data integrity</li>
+     *   <li>Foreign keys disabled during cleanup (manual control)</li>
+     * </ul>
+     *
+     * <p>Deletion order:</p>
+     * <ol>
+     *   <li>Delete all charts from chart_cache (foreign key references)</li>
+     *   <li>Clean up orphaned thumbnails</li>
+     *   <li>Delete the library entry itself</li>
+     *   <li>NO RENUMBERING - IDs and display_order remain stable</li>
+     * </ol>
+     *
+     * <p>Thread Safety: Acquires writeLock to serialize with other writes.</p>
+     *
+     * @param libraryId Library row ID to delete
+     * @throws SQLException if database error occurs
+     */
+    public static void deleteLibrary(int libraryId) throws SQLException {
+        writeLock.lock();
+        try {
+            writerConnection.setAutoCommit(false);  // Begin transaction
+            try {
+                // Disable foreign keys during cleanup (we handle it manually)
+                try (Statement stmt = writerConnection.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = OFF");
+                }
+
+                // Step 1: Delete all charts for this library
+                try (PreparedStatement stmt = writerConnection.prepareStatement(DELETE_CHARTS_FOR_LIBRARY_SQL)) {
+                    stmt.setInt(1, libraryId);
+                    int chartsDeleted = stmt.executeUpdate();
+                    DebugLogger.debug("Deleted " + chartsDeleted + " charts for library id=" + libraryId);
+                }
+
+                // Step 2: Clean up orphaned thumbnails
+                try (PreparedStatement stmt = writerConnection.prepareStatement(
+                        "DELETE FROM thumbnail WHERE song_group_id NOT IN " +
+                        "(SELECT DISTINCT song_group_id FROM chart_cache)")) {
+                    int orphansDeleted = stmt.executeUpdate();
+                    if (orphansDeleted > 0) {
+                        DebugLogger.debug("Cleaned up " + orphansDeleted + " orphaned thumbnails");
+                    }
+                }
+
+                // Step 3: Delete the library entry itself
+                try (PreparedStatement stmt = writerConnection.prepareStatement(
+                        "DELETE FROM libraries WHERE id = ?")) {
+                    stmt.setInt(1, libraryId);
+                    int libsDeleted = stmt.executeUpdate();
+                    DebugLogger.debug("Deleted " + libsDeleted + " library entry (id=" + libraryId + ")");
+                }
+
+                // Step 4: NO RENUMBERING - IDs and display_order remain stable
+                // Gaps are acceptable and invisible to users
+
+                writerConnection.commit();
+                DebugLogger.debug("Library deletion committed (id=" + libraryId + ")");
+            } catch (SQLException e) {
+                writerConnection.rollback();
+                DebugLogger.debug("Library deletion rolled back (id=" + libraryId + ")");
+                throw e;
+            } finally {
+                // Re-enable foreign keys
+                try (Statement stmt = writerConnection.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = ON");
+                }
+                writerConnection.setAutoCommit(true);
+            }
         } finally {
             writeLock.unlock();
         }

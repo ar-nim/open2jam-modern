@@ -101,14 +101,23 @@ public class MusicSelection extends javax.swing.JPanel
     // Track currently selected directory (not from SQLite)
     private File currentDirectory = null;
     
+    // Track currently selected library ID for database operations
+    private Integer currentLibraryId = null;
+
     // Prevent recursive dropdown selection changes
     private boolean isRefreshingDropdown = false;
-    
+
     private class FileItem {
         File file;
+        Integer libraryId;  // Database ID for efficient operations
+
+        public FileItem(File f, Integer libraryId) {
+            this.file = f;
+            this.libraryId = libraryId;
+        }
         
         public FileItem(File f) {
-            this.file = f;
+            this(f, null);
         }
 
         @Override
@@ -117,13 +126,13 @@ public class MusicSelection extends javax.swing.JPanel
             hash = 59 * hash + (this.file != null ? this.file.hashCode() : 0);
             return hash;
         }
-        
+
         @Override
         public boolean equals(Object o) {
-            return (o instanceof FileItem) && 
+            return (o instanceof FileItem) &&
                     ((FileItem)o).file.equals(file);
         }
-        
+
         @Override
         public String toString() {
             return file.getName();
@@ -144,33 +153,36 @@ public class MusicSelection extends javax.swing.JPanel
             Integer lastLibId = context.config.getLastOpenedLibraryId();  // Use context
 
             for (org.open2jam.persistence.Library lib : libs) {
-                combo_dirs.addItem(new FileItem(new File(lib.rootPath)));
+                combo_dirs.addItem(new FileItem(new File(lib.rootPath), lib.id));
 
                 // Find last opened library
                 if (lastLibId != null && lib.id == lastLibId) {
                     lastOpenedLib = lib;
                 }
             }
-            
+
             // Set flag to prevent dropdown listener from triggering during initialization
             isRefreshingDropdown = true;
-            
+
             // Restore last opened library or use first one
             if (lastOpenedLib != null) {
-                FileItem lastItem = new FileItem(new File(lastOpenedLib.rootPath));
+                FileItem lastItem = new FileItem(new File(lastOpenedLib.rootPath), lastOpenedLib.id);
                 combo_dirs.setSelectedItem(lastItem);
                 setCurrentDirectory(new File(lastOpenedLib.rootPath));
-                loadDir(new File(lastOpenedLib.rootPath));
+                setCurrentLibraryId(lastOpenedLib.id);
+                loadDir(new File(lastOpenedLib.rootPath), lastOpenedLib.id);
             } else if (!libs.isEmpty()) {
                 // No last opened or invalid - use first library
-                File firstDir = new File(libs.get(0).rootPath);
+                org.open2jam.persistence.Library firstLib = libs.get(0);
+                File firstDir = new File(firstLib.rootPath);
                 setCurrentDirectory(firstDir);
-                loadDir(firstDir);
+                setCurrentLibraryId(firstLib.id);
+                loadDir(firstDir, firstLib.id);
             } else {
                 // No libraries configured - open file chooser
                 openFileChooser();
             }
-            
+
             // Clear flag after initialization
             isRefreshingDropdown = false;
         } catch (Exception e) {
@@ -1094,21 +1106,52 @@ public class MusicSelection extends javax.swing.JPanel
                 JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE)
                 != JOptionPane.YES_OPTION) return;
 
-        ArrayList<File> dir_list = getLibraryDirectories();
-
+        // Get current library ID for deletion (use ID, not path)
+        // First try currentLibraryId, then fall back to selected dropdown item
+        Integer libIdToDelete = currentLibraryId;
         File rem = getCurrentDirectory();
-        removeLibrary(rem);  // Now deletes from SQLite database
         
-        // Refresh dropdown from database (more reliable than manual removal)
+        // Fallback: if currentLibraryId is null, get it from selected dropdown item
+        if (libIdToDelete == null && combo_dirs.getSelectedItem() != null) {
+            FileItem selectedItem = (FileItem) combo_dirs.getSelectedItem();
+            libIdToDelete = selectedItem.libraryId;
+            DebugLogger.debug("btn_delete: Using library ID from dropdown item: " + libIdToDelete);
+        }
+        
+        // Final fallback: look up by path
+        if (libIdToDelete == null && rem != null) {
+            libIdToDelete = getLibraryIdByPath(rem);
+            DebugLogger.debug("btn_delete: Using library ID from path lookup: " + libIdToDelete);
+        }
+
+        DebugLogger.debug("Deleting library: " + rem + " (id=" + libIdToDelete + ")");
+
+        if (libIdToDelete == null) {
+            Logger.global.warning("Cannot delete: library ID is null");
+            return;
+        }
+
+        removeLibrary(libIdToDelete);  // Deletes from SQLite database (including thumbnails)
+        DebugLogger.debug("Library deleted from SQLite");
+
+        // Clear the model to prevent showing stale data
+        model_songlist.clear();
+        model_chartlist.clear();
+        DebugLogger.debug("Cleared song and chart models");
+
+        // Refresh dropdown from database AFTER deletion
         refreshSavedDirsDropdown();
-        
-        // Reload first available directory
-        if(dir_list.isEmpty())
+        DebugLogger.debug("Refreshed dropdown, item count: " + combo_dirs.getItemCount());
+
+        // Check if any libraries remain AFTER deletion
+        if (combo_dirs.getItemCount() == 0) {
+            // No libraries left - open file chooser
+            DebugLogger.debug("No libraries remaining, opening file chooser");
             openFileChooser();
-        else
-        {
-            File f = dir_list.get(0);
-            loadDir(f);
+        } else {
+            // Select first available library (this will trigger loadDir via combo_dirsItemStateChanged)
+            DebugLogger.debug("Selecting first library: " + combo_dirs.getItemAt(0));
+            combo_dirs.setSelectedIndex(0);
         }
 }//GEN-LAST:event_btn_deleteActionPerformed
 
@@ -1299,21 +1342,44 @@ public class MusicSelection extends javax.swing.JPanel
 
     private void combo_dirsItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_combo_dirsItemStateChanged
         // Skip if we're refreshing the dropdown (prevent recursive calls)
-        if (isRefreshingDropdown) return;
-        
+        if (isRefreshingDropdown) {
+            DebugLogger.debug("combo_dirsItemStateChanged: Skipping (refreshing dropdown)");
+            return;
+        }
+
         // Only respond to selection events (not deselection)
-        if (evt.getStateChange() != java.awt.event.ItemEvent.SELECTED) return;
-        if (combo_dirs.getSelectedIndex() == -1) return;
+        if (evt.getStateChange() != java.awt.event.ItemEvent.SELECTED) {
+            DebugLogger.debug("combo_dirsItemStateChanged: Skipping (not SELECTED event)");
+            return;
+        }
+        if (combo_dirs.getSelectedIndex() == -1) {
+            DebugLogger.debug("combo_dirsItemStateChanged: Skipping (no selection)");
+            return;
+        }
+
+        FileItem selectedItem = (FileItem)combo_dirs.getSelectedItem();
+        File dir = selectedItem.file;
+        Integer libraryId = selectedItem.libraryId;
         
-        File dir = ((FileItem)combo_dirs.getSelectedItem()).file;
-        
+        DebugLogger.debug("combo_dirsItemStateChanged: Selected " + dir.getName() + " (libraryId=" + libraryId + ")");
+
         // Prevent loading the same directory twice
-        if (currentDirectory != null && dir.equals(currentDirectory)) return;
-        
-        // Set current directory BEFORE loading
+        if (currentDirectory != null && dir.equals(currentDirectory)) {
+            DebugLogger.debug("combo_dirsItemStateChanged: Skipping (same directory)");
+            // But still update libraryId in case it was null
+            if (currentLibraryId == null && libraryId != null) {
+                setCurrentLibraryId(libraryId);
+                DebugLogger.debug("combo_dirsItemStateChanged: Updated null libraryId to " + libraryId);
+            }
+            return;
+        }
+
+        // Set current directory and library ID BEFORE loading
         setCurrentDirectory(dir);
-        
-        loadDir(dir);
+        setCurrentLibraryId(libraryId);
+        DebugLogger.debug("combo_dirsItemStateChanged: Set currentLibraryId=" + libraryId);
+
+        loadDir(dir, libraryId);
     }//GEN-LAST:event_combo_dirsItemStateChanged
 
     private void jc_autoplayActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jc_autoplayActionPerformed
@@ -1456,53 +1522,41 @@ public class MusicSelection extends javax.swing.JPanel
      * 
      * <p>Does NOT add library - that should be done separately when user adds a new directory.</p>
      */
-    private void loadDir(File dir)
+    private void loadDir(File dir, Integer libraryId)
     {
         if(dir == null) return;
 
         // Set current directory BEFORE loading (prevents recursive calls)
         setCurrentDirectory(dir);
+        setCurrentLibraryId(libraryId);
 
         // Clear model first to prevent duplicates
         model_songlist.clear();
-        
-        DebugLogger.debug("=== loadDir called for: " + dir.getAbsolutePath());
+
+        DebugLogger.debug("=== loadDir called for: " + dir.getAbsolutePath() + " (libraryId=" + libraryId + ")");
 
         // Load from SQLite cache (Database Mode - instant load!)
-        try {
-            List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
-            DebugLogger.debug("Found " + libs.size() + " libraries in SQLite");
-            
-            org.open2jam.persistence.Library library = null;
-            String dirPathWithSlash = dir.getAbsolutePath().replace("\\", "/");
-            if (!dirPathWithSlash.endsWith("/")) {
-                dirPathWithSlash += "/";
-            }
-            
-            for (org.open2jam.persistence.Library lib : libs) {
-                DebugLogger.debug("  Library: " + lib.rootPath + " (id=" + lib.id + ")");
-                // Compare with trailing slash (matches how SQLite stores paths)
-                if (lib.rootPath.equals(dirPathWithSlash)) {
-                    library = lib;
-                    DebugLogger.debug("  ✓ Found matching library with id=" + lib.id);
-                    break;
-                }
-            }
-
-            if (library != null) {
-                // Load cached metadata from SQLite
+        if (libraryId != null) {
+            try {
+                // Load cached metadata from SQLite using library ID (no path lookup needed!)
                 ArrayList<org.open2jam.parsers.ChartMetadata> allMetadata =
-                    new ArrayList<>(org.open2jam.persistence.ChartDatabase.getCachedCharts(library.id));
+                    new ArrayList<>(org.open2jam.persistence.ChartDatabase.getCachedCharts(libraryId));
 
-                DebugLogger.debug("Loaded " + allMetadata.size() + " chart metadata entries from cache");
+                DebugLogger.debug("Loaded " + allMetadata.size() + " chart metadata entries from cache for library id=" + libraryId);
 
                 if (!allMetadata.isEmpty()) {
                     DebugLogger.debug("✓ Using cache - " + allMetadata.size() + " entries for " + dir.getName());
 
+                    // Get library info for root path
+                    org.open2jam.persistence.Library library = org.open2jam.persistence.ChartDatabase.getLibraryById(libraryId);
+                    String dirPathWithSlash = dir.getAbsolutePath().replace("\\", "/");
+                    
                     // Set libraryRootPath for all metadata (in case JOIN didn't populate it)
                     for (org.open2jam.parsers.ChartMetadata m : allMetadata) {
                         if (m.getLibraryRootPath() == null || m.getLibraryRootPath().isEmpty()) {
-                            m.setLibraryRootPath(library.rootPath);
+                            if (library != null) {
+                                m.setLibraryRootPath(library.rootPath);
+                            }
                         }
                     }
 
@@ -1520,7 +1574,7 @@ public class MusicSelection extends javax.swing.JPanel
                     }
 
                     DebugLogger.debug("Grouped into " + groupedBySong.size() + " songs");
-                    
+
                     // For each song group, we need to load the actual ChartList from disk
                     // This is necessary because the UI expects Chart objects, not just metadata
                     ArrayList<org.open2jam.parsers.ChartList> chartLists = new ArrayList<>();
@@ -1570,16 +1624,14 @@ public class MusicSelection extends javax.swing.JPanel
                     model_songlist.setRawList(chartLists);
 
                     // Save last opened library ID
-                    context.config.setLastOpenedLibraryId(library.id);
+                    context.config.setLastOpenedLibraryId(libraryId);
                     return;  // ✅ Loaded from cache - no scan needed!
                 } else {
-                    Logger.global.warning("Cache is empty for library " + library.id + " - will scan files");
+                    Logger.global.warning("Cache is empty for library id=" + libraryId + " - will scan files");
                 }
-            } else {
-                Logger.global.warning("Library not found in SQLite for: " + dirPathWithSlash);
+            } catch (Exception e) {
+                Logger.global.log(Level.WARNING, "Failed to load from cache, will scan files", e);
             }
-        } catch (Exception e) {
-            Logger.global.log(Level.WARNING, "Failed to load from cache, will scan files", e);
         }
 
         // Cache empty or error - scan files (ChartModelLoader will populate cache)
@@ -1614,28 +1666,39 @@ public class MusicSelection extends javax.swing.JPanel
         jfc.setAcceptAllFileFilterUsed(false);
         if (jfc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File selectedDir = jfc.getSelectedFile();
-            
-            // Add library to SQLite first (if not already exists)
-            addLibrary(selectedDir);
-            
+
+            // Add library to SQLite and get the library ID
+            Integer libraryId = addLibrary(selectedDir);
+            if (libraryId == null) {
+                Logger.global.warning("Failed to add library: " + selectedDir);
+                return;
+            }
+
+            DebugLogger.debug("openFileChooser: Added library with id=" + libraryId);
+
             // Add to dropdown if not already there
-            FileItem selectedItem = new FileItem(selectedDir);
+            FileItem selectedItem = new FileItem(selectedDir, libraryId);
             boolean found = false;
             for (int i = 0; i < combo_dirs.getItemCount(); i++) {
-                if (combo_dirs.getItemAt(i).equals(selectedItem)) {
+                FileItem existingItem = (FileItem) combo_dirs.getItemAt(i);
+                if (existingItem.libraryId != null && existingItem.libraryId.equals(libraryId)) {
                     found = true;
                     combo_dirs.setSelectedIndex(i);
+                    DebugLogger.debug("openFileChooser: Library already in dropdown, selected index " + i);
                     break;
                 }
             }
             if (!found) {
                 combo_dirs.addItem(selectedItem);
                 combo_dirs.setSelectedItem(selectedItem);
+                DebugLogger.debug("openFileChooser: Added new item to dropdown");
             }
-            
-            // Set current directory and load charts (from cache or scan)
+
+            // Set current directory and library ID, then load charts (from cache or scan)
             setCurrentDirectory(selectedDir);
-            loadDir(selectedDir);
+            setCurrentLibraryId(libraryId);
+            DebugLogger.debug("openFileChooser: Set current library ID to " + libraryId);
+            loadDir(selectedDir, libraryId);
         }
     }
 
@@ -1791,12 +1854,26 @@ public class MusicSelection extends javax.swing.JPanel
     private File getCurrentDirectory() {
         return currentDirectory;
     }
-    
+
     /**
      * Set current directory (called when dropdown selection changes).
      */
     private void setCurrentDirectory(File dir) {
         this.currentDirectory = dir;
+    }
+    
+    /**
+     * Get current library ID.
+     */
+    private Integer getCurrentLibraryId() {
+        return currentLibraryId;
+    }
+
+    /**
+     * Set current library ID (called when dropdown selection changes).
+     */
+    private void setCurrentLibraryId(Integer libraryId) {
+        this.currentLibraryId = libraryId;
     }
 
     /**
@@ -1819,50 +1896,82 @@ public class MusicSelection extends javax.swing.JPanel
             return new ArrayList<>();
         }
     }
+    
+    /**
+     * Get library ID by path.
+     * 
+     * @param dir Directory to look up
+     * @return Library ID, or null if not found
+     */
+    private Integer getLibraryIdByPath(File dir) {
+        if (dir == null) return null;
+        
+        try {
+            // Normalize path to match database format
+            String dirPath = dir.getAbsolutePath().replace("\\", "/");
+            if (!dirPath.endsWith("/")) {
+                dirPath += "/";
+            }
+            
+            List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
+            if (libs != null) {
+                for (org.open2jam.persistence.Library lib : libs) {
+                    if (lib.rootPath.equals(dirPath)) {
+                        return lib.id;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Logger.global.log(Level.WARNING, "Failed to get library ID for path", e);
+        }
+        return null;
+    }
 
     /**
      * Add library directory.
+     * 
+     * @param dir Directory to add
+     * @return Library ID, or null if failed
      */
-    private void addLibrary(File dir) {
+    private Integer addLibrary(File dir) {
         if (dir != null && dir.exists() && dir.isDirectory()) {
             try {
-                org.open2jam.persistence.ChartDatabase.addLibrary(dir.getAbsolutePath(), dir.getName());
+                org.open2jam.persistence.Library lib = org.open2jam.persistence.ChartDatabase.addLibrary(
+                    dir.getAbsolutePath(), dir.getName());
+                if (lib != null) {
+                    DebugLogger.debug("addLibrary: Added library '" + lib.name + "' with id=" + lib.id);
+                    return lib.id;
+                } else {
+                    DebugLogger.debug("addLibrary: Library already exists, fetching ID");
+                    // Library already exists - get its ID
+                    return getLibraryIdByPath(dir);
+                }
             } catch (Exception e) {
                 Logger.global.log(Level.WARNING, "Failed to add library", e);
             }
         }
+        return null;
     }
 
     /**
      * Remove library directory.
-     * 
-     * <p>Deletes both chart cache AND library entry from SQLite database.</p>
+     *
+     * <p>Deletes chart cache, thumbnails, and library entry from SQLite database.</p>
      */
-    private void removeLibrary(File dir) {
-        if (dir != null) {
+    private void removeLibrary(Integer libraryId) {
+        if (libraryId != null) {
             try {
-                // Find library by path
-                List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
-                if (libs != null) {
-                    for (org.open2jam.persistence.Library lib : libs) {
-                        if (lib.rootPath.equals(dir.getAbsolutePath().replace("\\", "/"))) {
-                            // Delete chart cache first
-                            org.open2jam.persistence.ChartDatabase.deleteCacheForLibrary(lib.id);
-                            
-                            // Delete library entry from database (with CASCADE for chart_cache)
-                            try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
-                                    "jdbc:sqlite:save/songcache.db");
-                                 java.sql.PreparedStatement stmt = conn.prepareStatement(
-                                    "DELETE FROM libraries WHERE id = ?")) {
-                                stmt.setInt(1, lib.id);
-                                stmt.executeUpdate();
-                            }
-                            
-                            DebugLogger.debug("Removed library: " + lib.name);
-                            break;
-                        }
-                    }
-                }
+                DebugLogger.debug("removeLibrary: Deleting library id=" + libraryId);
+                
+                // Delete chart cache and thumbnails (ChartDatabase handles CASCADE + orphan cleanup)
+                org.open2jam.persistence.ChartDatabase.deleteCacheForLibrary(libraryId);
+                DebugLogger.debug("removeLibrary: Deleted chart cache for library id=" + libraryId);
+                
+                // Delete library entry from database
+                org.open2jam.persistence.ChartDatabase.deleteLibrary(libraryId);
+                DebugLogger.debug("removeLibrary: Deleted library entry id=" + libraryId);
+
+                DebugLogger.debug("Removed library id=" + libraryId);
             } catch (Exception e) {
                 Logger.global.log(Level.WARNING, "Failed to remove library", e);
             }
@@ -1871,17 +1980,17 @@ public class MusicSelection extends javax.swing.JPanel
 
     /**
      * Refresh saved directories dropdown from SQLite database.
-     * 
+     *
      * <p>Call this after library changes (add/delete/scan complete).</p>
      */
     private void refreshSavedDirsDropdown() {
         // Save current selection
-        File previouslySelectedDir = currentDirectory;
-        DebugLogger.debug("=== refreshSavedDirsDropdown() - previously selected: " + previouslySelectedDir);
-        
+        Integer previouslySelectedLibId = currentLibraryId;
+        DebugLogger.debug("=== refreshSavedDirsDropdown() - previously selected library ID: " + previouslySelectedLibId);
+
         // Set flag to prevent dropdown listener from triggering
         isRefreshingDropdown = true;
-        
+
         try {
             // Clear current items
             combo_dirs.removeAllItems();
@@ -1889,33 +1998,23 @@ public class MusicSelection extends javax.swing.JPanel
             // Reload from SQLite
             List<org.open2jam.persistence.Library> libs = org.open2jam.persistence.ChartDatabase.getAllLibraries();
             FileItem selectedItemToRestore = null;
-            
+
             DebugLogger.debug("Reloading " + libs.size() + " libraries from SQLite");
-            
+
             if (libs != null) {
                 for (org.open2jam.persistence.Library lib : libs) {
-                    FileItem item = new FileItem(new File(lib.rootPath));
+                    FileItem item = new FileItem(new File(lib.rootPath), lib.id);
                     combo_dirs.addItem(item);
-                    DebugLogger.debug("  Added: " + lib.rootPath);
-                    
-                    // Find the previously selected directory
-                    if (previouslySelectedDir != null) {
-                        // Compare with trailing slash (matches how SQLite stores paths)
-                        String libPath = lib.rootPath;
-                        String currentPath = previouslySelectedDir.getAbsolutePath().replace("\\", "/");
-                        if (!currentPath.endsWith("/")) {
-                            currentPath += "/";
-                        }
-                        DebugLogger.debug("  Comparing: '" + libPath + "' == '" + currentPath + "' ? " + libPath.equals(currentPath));
-                        
-                        if (libPath.equals(currentPath)) {
-                            selectedItemToRestore = item;
-                            DebugLogger.debug("  ✓ Found match to restore");
-                        }
+                    DebugLogger.debug("  Added: " + lib.rootPath + " (id=" + lib.id + ")");
+
+                    // Find the previously selected library by ID (more reliable than path comparison)
+                    if (previouslySelectedLibId != null && lib.id == previouslySelectedLibId) {
+                        selectedItemToRestore = item;
+                        DebugLogger.debug("  ✓ Found match to restore (id=" + lib.id + ")");
                     }
                 }
             }
-            
+
             // Restore selection using setSelectedItem (forces display refresh)
             if (selectedItemToRestore != null) {
                 DebugLogger.debug("Restoring selection to: " + selectedItemToRestore.file);

@@ -15,6 +15,7 @@ public class Library {
     public final long addedAt;           // Unix timestamp (milliseconds)
     public final Long lastScan;          // Null if never scanned
     public final boolean isActive;       // False = disabled
+    public final int displayOrder;       // UI sort order (sparse, gap-tolerant)
 
     /**
      * Construct a Library DTO.
@@ -25,15 +26,17 @@ public class Library {
      * @param addedAt Unix timestamp when library was added
      * @param lastScan Unix timestamp of last successful scan, or null if never scanned
      * @param isActive Whether the library is enabled
+     * @param displayOrder UI sort order (sparse sequence, gaps acceptable)
      */
     public Library(int id, String rootPath, String name, long addedAt,
-                   Long lastScan, boolean isActive) {
+                   Long lastScan, boolean isActive, int displayOrder) {
         this.id = id;
         this.rootPath = rootPath;
         this.name = name;
         this.addedAt = addedAt;
         this.lastScan = lastScan;
         this.isActive = isActive;
+        this.displayOrder = displayOrder;
     }
 
     /**
@@ -74,6 +77,7 @@ public class Library {
                ", rootPath='" + rootPath + '\'' +
                ", name='" + name + '\'' +
                ", isActive=" + isActive +
+               ", displayOrder=" + displayOrder +
                '}';
     }
 }
