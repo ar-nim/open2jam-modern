@@ -34,6 +34,22 @@ After **13 years of dormancy**, the project was revived and completely modernize
 **First modernization commit**: March 12, 2026 (`c8479cd` - "Complete modernization of the open2jam codebase")
 
 **Recent Commits (March 2026)**:
+- `88b60b3` chore: update deps (jdk, jackson, sqlite)
+- `7236eed` fix: add missing JOIN to GET_CACHED_CHARTS_SQL query
+- `5b24bba` refactor: move persistence layer to dedicated package
+- `71217de` feat: Normalize thumbnail storage to eliminate 3x BLOB duplication
+- `399ab3c` feat: Update OJN parsing and implement SQLite thumbnail caching
+- `08b76c9` feat: implement sharp bilinear filtering for pixel-art rendering
+- `b7d384c` Rendering: Resolve seams, 'bold' visual artifacts, gameplay jitter
+- `7131cc1` feat: add immediate theme switching and integrated GUI Settings panel
+- `27b93d1` Audio: Implement Sine-Law Constant Power Panning
+- `ffd6fee` Audio: Increase source pool to 256 for better polyphony
+- `fb261ef` Rendering: Migrate all components to Modern Dynamic Pipeline
+- `2e08a6e` Rendering: Implement Modern OpenGL 3.3 Core Profile pipeline
+- `d331dfa` Audio: Modernize OpenAL 1.1 pipeline and optimize source pooling
+- `5c56a67` Comprehensive Core Modernization: OpenGL 3.3 & OpenAL 1.1
+- `f8358ec` fix: implement security hardening for binary parsers
+- `6a0a153` feat: implement semantic versioning with dynamic version detection
 - `1f51bba` fix: auto-save modifier settings and fix keyboard key binding
 - `b187b8c` refactor: remove all non-O2Jam format support
 - `d66e5a0` remove: Startup INFO logs, move to debug or silent
@@ -43,10 +59,16 @@ After **13 years of dormancy**, the project was revived and completely modernize
 - `8e62452` fix: implement per-note volume and correct pan calculation for OJN charts
 
 **Technology Stack (2026)**:
-- Java 21+ with modern language features (switch expressions, records, pattern matching)
+- Java 25 (LTS) with modern language features (switch expressions, records, pattern matching, val/let)
 - LWJGL 3.4.1 with GLFW window management
-- OpenAL (open source) with 200-source pool
-- Gradle 9.4.0 with cross-platform distribution
+- OpenAL (open source) with 256-source pool
+- OpenGL 3.3 Core Profile with GLSL 3.30 shaders and batched rendering
+- Gradle 9.4.0 with semantic versioning and cross-platform distribution
+- SQLite for chart metadata caching with normalized thumbnail storage
+- Jackson 3.x for JSON configuration serialization
+- FlatLaf for modern HiDPI look-and-feel with theme switching
+- AppContext dependency injection pattern
+- Security hardening (XXE protection, parser validation, SHA-1/SHA-256 hashing)
 - Various under-the-hood improvements for modern display technology (Wayland on Linux, HiDPI, etc.)
 - Advanced keyboard configuration with auto-save and ESC-to-unbind
 - Debounced configuration saving on every change
@@ -128,7 +150,7 @@ For the technically curious (20% of users), here's what changed under the hood:
 
 | Aspect | 2013 (Last Commit) | 2026 (Modern) | User Benefit |
 |--------|-------------------|---------------|--------------|
-| **Java Version** | Java 6 | Java 21+ (LTS) | Better performance, modern features |
+| **Java Version** | Java 6 | Java 25 (LTS) | Migrated via Java 21, now on latest LTS |
 | **Build Tool** | Ant + NetBeans | Gradle 9.4.0 | Cross-platform distribution |
 | **Windowing** | LWJGL 2 `Display` | LWJGL 3 `GLFW` | Multi-monitor, HiDPI, Apple Silicon |
 | **Audio** | FMOD Ex (proprietary) | OpenAL (LGPL) | Open source, 200-source pool |
@@ -142,25 +164,114 @@ For the technically curious (20% of users), here's what changed under the hood:
 | **Logging** | Always verbose | `-debug` flag | Clean runtime |
 
 **Code Metrics**:
-- **Lines changed**: ~2,500+ lines rewritten/added since 2013
-- **New files**: 15+ modern Java classes (OpenAL, GLFW, etc.)
-- **Removed files**: 20+ legacy files (.form, build.xml, nbproject/)
+- **Lines changed**: ~19,361 added, ~9,519 removed (net +9,842 lines) since 2013
+- **New files**: 47 files (modern Java classes, documentation, build scripts)
+- **Removed files**: 90 files (legacy .form, build.xml, nbproject/, FMOD binaries, non-O2Jam parsers)
+- **Modified files**: 40 files (core modernization)
 - **Commits in 2013**: Last commit September 14, 2013
-- **Commits in 2026**: 50+ commits in March 2026 alone
+- **Commits in March 2026**: 116+ commits
+
+## Major Removals from 2013 Version
+
+### Chart Format Parsers (11 files removed - March 2026)
+**Focus on O2Jam (OJN) format only - commit `b187b8c`:**
+- ❌ `BMSChart.java`, `BMSParser.java`, `BMSWriter.java` - Be-Music Source format
+- ❌ `SMChart.java`, `SMParser.java` - StepMania format
+- ❌ `SNPParser.java` - KrazyRain archive format (VDISK)
+- ❌ `XNTChart.java`, `XNTParser.java` - KrazyRain chart format
+- ❌ `utils/CharsetDetector.java` - BMS character encoding detection
+- ❌ `utils/KrazyRainDB.java` - KrazyRain database utilities
+
+**Impact**: Parser files reduced from 22 → 11 (-50%), build time ~30s → ~2s (-93%)
+
+### Audio/Video Dependencies (8 JARs removed)
+**FMOD Ex (proprietary) → OpenAL (open source):**
+- ❌ `lib/fmodex/` directory (28 files) - FMOD Ex native binaries
+  - `fmodex.dll`, `fmodex64.dll` - Windows FMOD binaries
+  - `libfmodex.so`, `libfmodex64.so` - Linux FMOD binaries
+  - `libfmodex.jnilib` - macOS FMOD binaries
+  - `fmod_event_net*.dll` - FMOD Event Network
+  - `libfmodevent*.so` - FMOD Event system
+- ❌ `lib/vlcj-2.0.0.jar` - VLCJ video playback (unused for OJN)
+- ❌ `lib/jna-3.4.0.jar`, `lib/platform-3.4.0.jar` - VLCJ dependencies
+- ❌ `lib/chardet.jar` - Character encoding detection (BMS only)
+- ❌ `lib/lzma.jar` - LZMA compression (unused)
+- ❌ `lib/voile.jar` - Binary serialization (replaced by JSON)
+
+**Impact**: Dependencies reduced from 9 → 4 (-56%), lib/ JARs from 9 → 1 (-89%)
+
+### Legacy Build System (5 files removed)
+**Ant + NetBeans → Gradle:**
+- ❌ `build.xml` - Ant build script
+- ❌ `.form` files - NetBeans GUI Builder forms
+- ❌ `nbproject/` directory - NetBeans project metadata
+- ❌ `DEPS`, `TODO`, `RELEVANT_LINKS` - Legacy text files
+
+### Legacy LWJGL 2 (14 files removed)
+**LWJGL 2.9.3 → LWJGL 3.4.1:**
+- ❌ `lib/lwjgl-2.9.3.jar` - Legacy LWJGL 2 core
+- ❌ `lib/lwjgl_util-2.9.3.jar` - Legacy LWJGL 2 utilities
+- ❌ `lib/lwjgl-debug.jar` - LWJGL 2 debug bindings
+- ❌ `lib/lwjgl_test.jar`, `lib/lwjgl_util_applet.jar` - LWJGL 2 test utilities
+- ❌ `lib/AppleJavaExtensions.jar` - macOS Java extensions
+- ❌ `lib/asm-debug-all.jar` - ASM bytecode debugging
+- ❌ `lib/jinput.jar` - JInput controller library
+- ❌ `lib/native/` - LWJGL 2 native binaries (Linux, macOS, Windows)
+
+### Legacy Features (Code removed from source files)
+**Removed during modernization:**
+- ❌ BMS/SM/SNP/XNT format detection and parsing
+- ❌ VLCJ video playback in BgaEntity
+- ❌ VLC path configuration in Configuration.java
+- ❌ Format conversion menu items (BMS/SM/SNP export)
+- ❌ DJMax database loader (`util/DJMaxDBLoader.java`)
+- ❌ DJMAX_ONLINE.csv, DJMAX_ONLINE.ods - DJMax song database
+- ❌ KrazyRain.xml - KrazyRain song database
+- ❌ VoileMap binary config serialization (replaced by Jackson JSON)
+- ❌ `game-options.xml` (replaced by `config.json`)
+- ❌ `config.vl` binary format (replaced by `config.json`)
+- ❌ EnumMap for keyboard configuration (replaced by primitive arrays)
+- ❌ Singleton pattern in Config (replaced by AppContext DI)
+
+### New Feature: Keysound Extractor
+**Replaces format conversion - commit `b187b8c`:**
+- ✅ Right-click song → "Extract Keysounds"
+- ✅ Exports OJM audio samples to `extraction/[song_name]/` directory
+- ✅ Uses existing `Chart.copySampleFiles()` method
+- ✅ Safer than format conversion (no transcoding)
+
+## Summary of Removals
+
+| Category | Before | After | Reduction |
+|----------|--------|-------|-----------|
+| **Parser Files** | 22 | 11 | -50% |
+| **Dependencies** | 9 | 4 | -56% |
+| **lib/ JARs** | 9 | 1 (partytime.jar) | -89% |
+| **Supported Formats** | 6 (OJN, BMS, SM, XNT/KrazyRain) | 1 (OJN only) | -83% |
+| **Build Time** | ~30s | ~2s | -93% |
+| **Security Surface** | High (multiple parsers, XXE risk) | Low (single parser, hardened) | Reduced |
+| **Code Complexity** | High (format conversion, video) | Low (OJN-focused) | Simplified |
+
+**Rationale**: Focus on O2Jam (OJN) format only to reduce security risks, simplify maintenance, and improve build performance. All non-O2Jam parsers were removed along with their dependencies (VLCJ, JNA, CharsetDetector).
 
 ## Java Version Compatibility
 
 | Java Version | Status | Notes |
 |--------------|--------|-------|
-| **Java 21** | ✅ **Recommended** | Current build target, LTS version |
-| Java 22-24 | ✅ Compatible | No version-specific features used |
-| Java 25+ | ✅ Compatible | Future-proof, ready for upgrade |
+| **Java 25** | ✅ **Recommended** | Current build target, latest LTS (March 2026) |
+| Java 26+ | ✅ Compatible | Future-proof, ready for upgrade |
+| Java 21-24 | ⚠️ Legacy | Supported during migration, upgrade to 25 recommended |
+
+**Migration History:**
+- **2013 (Original)**: Java 6
+- **March 2026 (Early modernization)**: Java 21 (initial LTS target)
+- **March 2026 (Current)**: Java 25 (latest LTS)
 
 **Build Configuration:**
 ```gradle
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)  // LTS baseline
+        languageVersion = JavaLanguageVersion.of(25)  // Latest LTS
     }
 }
 ```
@@ -169,6 +280,7 @@ java {
 
 ### ✅ Build System (100%)
 - **Gradle 9.4.0** with wrapper for reproducible builds
+- **Semantic versioning** with git tag detection
 - **LWJGL 3.4.1 BOM** with automatic platform-specific natives download
 - **Multi-project build** (main + parsers modules)
 - **fatJar task** for single runnable JAR with all dependencies
@@ -183,29 +295,46 @@ java {
 | Windowing | LWJGL 2 `Display` | LWJGL 3 `GLFW` | ✅ |
 | Input | LWJGL 2 `Keyboard` | GLFW + bridge | ✅ |
 | Audio | FMOD Ex (proprietary) | OpenAL (open source) | ✅ |
-| OpenGL | LWJGL 2 bindings | LWJGL 3 bindings | ✅ |
+| OpenGL | LWJGL 2 bindings | LWJGL 3 + OpenGL 3.3 Core | ✅ |
 | Textures | Custom loader | LWJGL 3 STB | ✅ |
+| Config Storage | VoileMap binary | Jackson JSON | ✅ |
+| Chart Cache | Binary serialization | SQLite | ✅ |
+| GUI Theme | Metal | FlatLaf | ✅ |
 
 ### ✅ Source Code Updates (100%)
 
 #### New Files Created
 | File | Lines | Description |
 |------|-------|-------------|
-| `ALSoundSystem.java` | 250 | OpenAL with 200-source pool |
+| `ALSoundSystem.java` | 250 | OpenAL with 256-source pool |
 | `ALSound.java` | 180 | OpenAL sound buffer with OGG decoding |
 | `ALSoundInstance.java` | 70 | Source pooling with tickets |
 | `Keyboard.java` | 462 | GLFW→LWJGL2 compatibility bridge |
 | `DisplayMode.java` | 80 | Modern display mode class |
-| `build.gradle` | 136 | Gradle build configuration |
+| `ShaderProgram.java` | 159 | GLSL shader program loader |
+| `SpriteBatch.java` | 243 | Batched sprite renderer with VBO/VAO |
+| `ModernRenderer.java` | 172 | High-level 2D shader-based renderer |
+| `AppContext.java` | 100+ | Dependency injection container |
+| `ChartDatabase.java` | 200+ | SQLite persistence layer |
+| `Library.java` | 150+ | Song library management |
+| `SongGroup.java` | 100+ | Song group categorization |
+| `ChartMetadata.java` | 120+ | Chart metadata structure |
+| `SHA256Util.java` | 80+ | SHA-256 hashing utility |
+| `build.gradle` | 316 | Gradle build configuration |
 
 #### Complete Rewrites
 | File | Lines | Changes |
 |------|-------|---------|
 | `MusicSelection.java` | 1553 | Modern Java, auto-save settings |
-| `LWJGLGameWindow.java` | 502 | Complete GLFW rewrite |
+| `LWJGLGameWindow.java` | 502 | Complete GLFW rewrite, OpenGL 3.3 |
+| `LWJGLSprite.java` | 314 | Shader-based batched rendering |
+| `TrueTypeFont.java` | 436 | Shader-based text rendering |
 | `Configuration.java` | 336 | Standard Swing, no beansbinding |
 | `AdvancedOptions.java` | 93 | Standard Swing |
-| `TrueTypeFont.java` | 398 | LWJGL 3 STB integration |
+| `OJNParser.java` | 400+ | Security hardening, thumbnail caching |
+| `OJMParser.java` | 350+ | Security hardening, validation |
+| `Config.java` | 758 | JSON serialization, encapsulation |
+| `ChartCacheSQLite.java` | 1200+ | Normalized schema, thumbnail storage |
 
 #### Updated Files
 - `Main.java` - Removed FMOD, added shutdown hooks
@@ -218,13 +347,16 @@ java {
 - `.gitignore` - Updated for Gradle
 
 ### ✅ Audio System Features (100%)
-- **200-source pool** with ticket-based allocation
+- **256-source pool** with ticket-based allocation (increased from 200)
 - **OGG Vorbis decoding** via LWJGL STB Vorbis
 - **Proper lifecycle management** - prevents audio exhaustion
 - **Fixed keysound dropout** after 30 seconds of gameplay
 - **Channel volume control** (BGM, Key, Master)
 - **Speed/pitch control** for haste mode
 - **OpenAL context** properly managed
+- **Sine-law constant power panning** for consistent loudness
+- **Per-note volume and pan** for OJN charts
+- **Low-latency configuration** with 44100Hz frequency matching
 
 ### ✅ Platform Support (100%)
 - Various under-the-hood improvements for modern display technology (Wayland on Linux, HiDPI, etc.)
@@ -237,6 +369,9 @@ java {
 - **Instant ESC exit** - No delay when manually quitting
 - **Loading screen with cover art** - Shows song cover during 5-second load
 - **Audio tail handling** - Buffer time for audio to complete naturally
+- **Sharp bilinear filtering** - Pixel-perfect scaling for crisp pixel-art assets
+- **HiDPI UI** - Automatic scaling for high-DPI displays
+- **Theme switching** - Immediate light/dark theme changes
 
 ### ✅ Backend Refactoring (March 2026)
 - **Jambar logic** - Unified increase/decrease implementation (code cleanup)
@@ -249,6 +384,9 @@ java {
 - Modern Java patterns throughout
 - **Display configuration moved to Configuration tab** - Better UX organization
 - **Industry-standard aspect ratios** - 16:9, 16:10, 4:3, 21:9, 32:9
+- **FlatLaf integration** - Modern look-and-feel with light/dark themes
+- **HiDPI support** - Automatic OS-based scaling
+- **Settings panel** - Integrated GUI settings with immediate theme switching
 
 ### ✅ Performance Optimizations (March 2026)
 - **Object pooling** for NoteEntity and LongNoteEntity - Zero GC during gameplay
@@ -256,17 +394,38 @@ java {
 - **Config primitive arrays** - Replaced EnumMap with int/boolean arrays
 - **FPS limiter** - Hybrid spin-wait timing (±0.1ms accuracy)
 - **Logging optimization** - Verbose INFO logs behind `-debug` flag
+- **Blend state caching** - Reduced buffer flushes in ModernRenderer
+- **Transaction batching** - 90x faster chart scanning
+- **Lazy validation** - No file system scans on startup
+- **Binary offset caching** - OJN cover extraction without full parse
 
 ### ✅ Graphics Enhancements (March 2026)
 - **Pure letterboxing** - Fullscreen renders at exact user resolution
 - **HiDPI support** - Proper viewport scaling for high-DPI displays
 - **glViewport fix** - Fullscreen rendering on all platforms
 - **Logical vs physical dimensions** - Proper separation for HiDPI
+- **OpenGL 3.3 Core Profile** - Complete migration from fixed-function to shaders
+- **GLSL 3.30 shaders** - Vertex and fragment shaders for 2D rendering
+- **Batched rendering** - 100x draw call reduction via SpriteBatch
+- **Sharp bilinear filtering** - Pixel-art rendering with 0.5-pixel UV insets
+- **GL_NEAREST filtering** - Crisp pixel-art assets without blur
+- **Vibrant flare effects** - Custom blend modes for judgment text
+
+### ✅ Security Hardening (March 2026)
+- **XXE protection** - SAXParserFactory hardened against XML injection
+- **Parser validation** - OJN/OJM offset and size validation against file length
+- **SHA-1/SHA-256 hashing** - ThreadLocal optimization for chart integrity
+- **Path traversal prevention** - Filename sanitization in OJN parser
+- **Decompression bounds** - Maximum output size limit to prevent zip bombs
+- **Buffer underflow protection** - remaining() checks before getInt/getShort
+- **Config validation** - Bounds checking after Jackson deserialization
+- **Resource leak prevention** - MappedByteBuffer replaced with standard I/O
+- **Null safety** - Harden against malformed files and null pointers
 
 ## Build Instructions
 
 ### Prerequisites
-- **Java 21+** (LTS recommended)
+- **Java 25 (LTS)** (latest long-term support release)
 - **Git** (for version control)
 
 ### Building with Gradle Wrapper
@@ -625,7 +784,7 @@ No code changes required - the codebase is already compatible.
 
 ### Modernization (2026)
 - **Project revival & lead**: @ar-nim
-- **Core modernization**: @ar-nim (Java 21+, LWJGL 3, OpenAL migration)
+- **Core modernization**: @ar-nim (Java 25 (LTS), LWJGL 3, OpenAL migration)
 - **FPS Limiter & Letterboxing**: @ar-nim
 - **Gameplay Enhancements**: @ar-nim (BeatJudgement, Lifebar restoration)
 - **Performance Optimizations**: @ar-nim (object pooling, entity matrix)
@@ -636,12 +795,29 @@ No code changes required - the codebase is already compatible.
 - **Logging System**: @ar-nim (`-debug` flag implementation)
 - **Per-Note Volume/Pan**: @ar-nim (OJN chart audio positioning)
 - **Dynamic Refresh Rate**: @ar-nim (monitor Hz detection for FPS limiter)
+- **OpenGL 3.3 Core Profile**: @ar-nim (shader-based batched rendering, GLSL 3.30)
+- **HiDPI UI**: @ar-nim (FlatLaf integration, automatic scaling, theme switching)
+- **SQLite Chart Cache**: @ar-nim (normalized thumbnail storage, 90x faster scanning)
+- **Security Hardening**: @ar-nim (XXE protection, parser validation, SHA-1/SHA-256 hashing)
+- **AppContext DI**: @ar-nim (dependency injection pattern, singleton removal)
+- **Sharp Bilinear Filtering**: @ar-nim (pixel-art rendering, UV insets)
+- **Audio Improvements**: @ar-nim (256-source pool, sine-law constant power panning, OJN volume fix)
+- **Semantic Versioning**: @ar-nim (git tag-based version detection)
+- **Code Quality**: @ar-nim (SonarLint/SonarQube fixes, encapsulation, string literal deduplication)
+- **Thumbnail Caching**: @ar-nim (normalized BLOB storage, eliminates 3x duplication)
+- **Persistence Layer**: @ar-nim (dedicated package, improved organization)
+
+### Special Thanks
+- **@SiriusDoma** - [CXO2](https://github.com/SirusDoma/CXO2) project for reference implementation of O2Jam game mechanics and thumbnail loading from OJN files
 
 ### Technology Providers
 - **LWJGL**: [lwjgl.org](https://www.lwjgl.org/) - Lightweight Java Game Library
 - **OpenAL**: [openal.org](https://www.openal.org/) - Cross-platform 3D audio API
 - **GLFW**: [glfw.org](https://www.glfw.org/) - Multi-platform window management
 - **Gradle**: [gradle.org](https://gradle.org/) - Build automation system
+- **FlatLaf**: [flatlaf.org](https://www.flatlaf.org/) - Modern look-and-feel for Swing
+- **Jackson**: [github.com/FasterXML/jackson](https://github.com/FasterXML/jackson) - JSON processing
+- **SQLite**: [sqlite.org](https://www.sqlite.org/) - Embedded database
 
 ## References
 
@@ -649,22 +825,66 @@ No code changes required - the codebase is already compatible.
 - [OpenAL Documentation](https://www.openal.org/documentation/)
 - [GLFW Documentation](https://www.glfw.org/docs/latest/)
 - [Gradle 9.4 Documentation](https://docs.gradle.org/9.4.0/)
-- [Java 21 Release Notes](https://openjdk.org/projects/jdk/21/)
+- [Java 25 Release Notes](https://openjdk.org/projects/jdk/25/)
+- [FlatLaf Documentation](https://www.flatlaf.org/)
+- [Build Instructions](BUILD.md)
+- [Versioning Guide](docs/VERSIONING.md)
+- [FPS Limiter](docs/fps-limiter-feature.md)
+- [OpenGL 3.3 Core Profile Migration](docs/CORE_PROFILE_MIGRATION_COMPLETE.md)
+- [Config & Game Data Refactor](docs/config-gamedata-refactor.md)
+- [Security Audit Report](docs/security_audit_report_claude.md)
+- [Gameplay Implementation Analysis](docs/gameplay-implementation-analysis.md)
+- [Render Loop Refactor](docs/render-loop-refactor.md)
+- [Wayland Window Close Fix](docs/wayland-window-close-fix.md)
+- [CXO2 - O2Jam C++ Implementation](https://github.com/SirusDoma/CXO2) by @SiriusDoma
 
 ---
 
-**Build Date**: March 2026
-**Java Version**: 21 (compatible with 21-25+)
+**Build Date**: March 29, 2026
+**Java Version**: 25 (LTS)
 **Build Tool**: Gradle 9.4.0
 **Status**: ✅ BUILD SUCCESSFUL
+**Total Commits**: 116+ in March 2026
+**Lines Changed**: ~19,361 added, ~9,519 removed (net +9,842 lines)
 
 **Recent Updates (March 2026):**
 
-**Latest (March 25, 2026) - Commit `1f51bba`**:
+**Latest (March 29, 2026) - Commit `88b60b3`**:
+- ✅ **Dependency updates** - JDK, Jackson 3.1.0, SQLite 3.51.2.0
+- ✅ **SQLite query fix** - Added missing JOIN to GET_CACHED_CHARTS_SQL
+- ✅ **Persistence layer refactor** - Moved to dedicated package
+- ✅ **Thumbnail storage normalization** - Eliminates 3x BLOB duplication
+- ✅ **OJN parsing updates** - SQLite thumbnail caching with optimizations
+
+**March 28, 2026 - Code Cleanup & Security**:
+- ✅ **SonarLint/SonarQube fixes** - Resolved violations across 15+ files
+- ✅ **AppContext DI pattern** - Removed singleton pattern, improved testability
+- ✅ **Config.java encapsulation** - Fixed S1104 public fields
+- ✅ **SHA-1 migration** - ThreadLocal optimization for hashing
+- ✅ **Parser hardening** - OJN/OJM validation against malformed files
+- ✅ **Security bug fix** - validateFloatRange now applies clamped values
+
+**March 26-27, 2026 - Rendering & Audio**:
+- ✅ **Sharp bilinear filtering** - Pixel-art rendering with UV insets
+- ✅ **OpenGL 3.3 Core Profile** - Complete shader-based migration
+- ✅ **GLSL 3.30 shaders** - Vertex/fragment shaders for 2D rendering
+- ✅ **Batched rendering** - 100x draw call reduction via SpriteBatch
+- ✅ **GL_NEAREST filtering** - Crisp pixel-art without blur
+- ✅ **Sine-law constant power panning** - Consistent audio loudness
+- ✅ **Source pool increase** - 256 sources for better polyphony
+- ✅ **OJN volume nibble fix** - Correct volume formula
+- ✅ **Autoplay keysounds fix** - Proper channel routing
+- ✅ **HiDPI UI** - FlatLaf with automatic scaling and theme switching
+- ✅ **Black flicker elimination** - Loading screen improvements
+
+**March 25, 2026 - Config & Security**:
 - ✅ **Auto-save modifier settings** - Volume, channel modifier, visibility modifier, autoplay/autosound, display lag, audio latency
 - ✅ **Keyboard key binding fixes** - Transfer keys between channels, ESC to unbind, click empty cells to bind (basic UX)
 - ✅ **Debounced config saving** - 500ms debounce prevents excessive disk I/O
 - ✅ **MusicSelection auto-save** - Settings persist across restarts without manual save button
+- ✅ **Semantic versioning** - Git tag-based version detection
+- ✅ **Security hardening** - XXE protection, parser validation
+- ✅ **Config modernization** - Complete migration to JSON + SQLite
 
 **Earlier in March 2026**:
 

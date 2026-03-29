@@ -66,6 +66,7 @@ In the Configuration screen (accessible from the main menu):
      - `4x Refresh Rate` (e.g., 240 FPS on 60Hz monitor)
      - `8x Refresh Rate` (e.g., 480 FPS on 60Hz monitor)
      - `Unlimited` (no cap)
+3. **Auto-Save**: Settings are automatically saved to `save/config.json` on change (500ms debounce)
 
 ### Behavior Matrix
 
@@ -91,6 +92,7 @@ In the Configuration screen (accessible from the main menu):
    - Added FPS limiter dropdown (`JComboBox<GameOptions.FpsLimiter>`)
    - Added `updateFpsLimiterEnabled()` method to grey out dropdown when VSync is on
    - Integrated into load/save display settings
+   - Auto-saves settings with 500ms debounce (March 2026)
 
 3. **GameWindow.java**
    - Added new `setDisplay()` method with FPS limiter parameter
@@ -182,18 +184,20 @@ if (!vsync && fpsLimiter != GameOptions.FpsLimiter.Unlimited) {
 
 ## Configuration Files
 
-The FPS limiter setting is saved in `game-options.xml`:
+The FPS limiter setting is saved in `save/config.json` (Jackson JSON format):
 
-```xml
-<game-options>
-  ...
-  <display-vsync>true</display-vsync>
-  <fps-limiter>x1</fps-limiter>
-  ...
-</game-options>
+```json
+{
+  "gameOptions": {
+    "displayVsync": true,
+    "fpsLimiter": "x1"
+  }
+}
 ```
 
-Valid values: `Unlimited`, `x1`, `x2`, `x4`, `x8`
+**Valid values**: `Unlimited`, `x1`, `x2`, `x4`, `x8`
+
+**Note**: The configuration format was migrated from `game-options.xml` (Java Beans XML) to `config.json` (Jackson JSON) in March 2026. Old XML files will be automatically migrated on first launch.
 
 ## Recommendations
 
