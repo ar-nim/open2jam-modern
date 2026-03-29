@@ -99,21 +99,21 @@ class OJNParser {
 
             byte[] title = new byte[64];
             buffer.get(title);
-            String strTitle = ByteHelper.toString(title);
+            String strTitle = ByteHelper.toStringAutoDetect(title);
             easy.title = strTitle;
             normal.title = strTitle;
             hard.title = strTitle;
 
             byte[] artist = new byte[32];
             buffer.get(artist);
-            String strArtist = ByteHelper.toString(artist);
+            String strArtist = ByteHelper.toStringAutoDetect(artist);
             easy.artist = strArtist;
             normal.artist = strArtist;
             hard.artist = strArtist;
 
             byte[] noter = new byte[32];
             buffer.get(noter);
-            String strNoter = ByteHelper.toString(noter);
+            String strNoter = ByteHelper.toStringAutoDetect(noter);
             easy.noter = strNoter;
             normal.noter = strNoter;
             hard.noter = strNoter;

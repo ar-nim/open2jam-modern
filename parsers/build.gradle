@@ -18,7 +18,9 @@ repositories {
 }
 
 dependencies {
-    // No external dependencies - all utilities are internal
+    // chardet4j 77.1.0 for charset detection (ICU 77 core, ~85KB)
+    // Used as fallback for non-Korean O2Jam charts (Japanese/Chinese)
+    implementation 'com.sigpwned:chardet4j:77.1.0'
 }
 
 sourceSets {
