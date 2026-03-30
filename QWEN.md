@@ -34,6 +34,16 @@ After **13 years of dormancy**, the project was revived and completely modernize
 **First modernization commit**: March 12, 2026 (`c8479cd` - "Complete modernization of the open2jam codebase")
 
 **Recent Commits (March 2026)**:
+- `2201799` fix: use FlatLaf theme colors in key binding popup
+- `b5d4b9d` fix: TrueTypeFont rendering in key binding popup (OpenGL 3.3 Core Profile)
+- `f058fd6` feat: add EUC-KR encoding support for O2Jam Korean charts
+- `ad69046` fix: read thumbnail from correct offset (coverOffset + coverSize)
+- `8cbbaa8` feat: remove thumbnail caching from SQLite
+- `dfb8091` fix: critical library deletion and cache bugs causing UI breakage
+- `ce7a994` refactor: use CASCADE delete for library removal
+- `3eee7c9` feat: implement stable library IDs with sparse display ordering
+- `9dc7619` perf: optimise memory management by adopting ZGC and AlwaysPreTouch
+- `1b89d26` refactor: extract SQL queries to ChartDatabaseQueries
 - `88b60b3` chore: update deps (jdk, jackson, sqlite)
 - `7236eed` fix: add missing JOIN to GET_CACHED_CHARTS_SQL query
 - `5b24bba` refactor: move persistence layer to dedicated package
@@ -64,11 +74,13 @@ After **13 years of dormancy**, the project was revived and completely modernize
 - OpenAL (open source) with 256-source pool
 - OpenGL 3.3 Core Profile with GLSL 3.30 shaders and batched rendering
 - Gradle 9.4.0 with semantic versioning and cross-platform distribution
-- SQLite for chart metadata caching with normalized thumbnail storage
+- SQLite for chart metadata caching (thumbnail caching removed March 2026)
 - Jackson 3.x for JSON configuration serialization
 - FlatLaf for modern HiDPI look-and-feel with theme switching
 - AppContext dependency injection pattern
 - Security hardening (XXE protection, parser validation, SHA-1/SHA-256 hashing)
+- EUC-KR encoding support for Korean O2Jam charts (90%+ priority)
+- ZGC + AlwaysPreTouch for low-latency memory management
 - Various under-the-hood improvements for modern display technology (Wayland on Linux, HiDPI, etc.)
 - Advanced keyboard configuration with auto-save and ESC-to-unbind
 - Debounced configuration saving on every change
@@ -787,7 +799,7 @@ No code changes required - the codebase is already compatible.
 - **Core modernization**: @ar-nim (Java 25 (LTS), LWJGL 3, OpenAL migration)
 - **FPS Limiter & Letterboxing**: @ar-nim
 - **Gameplay Enhancements**: @ar-nim (BeatJudgement, Lifebar restoration)
-- **Performance Optimizations**: @ar-nim (object pooling, entity matrix)
+- **Performance Optimizations**: @ar-nim (object pooling, entity matrix, ZGC + AlwaysPreTouch)
 - **Modern Display Support**: @ar-nim (Wayland, HiDPI, etc.)
 - **Auto-Save System**: @ar-nim (MusicSelection, Configuration)
 - **Keyboard Configuration**: @ar-nim (key binding fixes, ESC to unbind)
@@ -797,15 +809,18 @@ No code changes required - the codebase is already compatible.
 - **Dynamic Refresh Rate**: @ar-nim (monitor Hz detection for FPS limiter)
 - **OpenGL 3.3 Core Profile**: @ar-nim (shader-based batched rendering, GLSL 3.30)
 - **HiDPI UI**: @ar-nim (FlatLaf integration, automatic scaling, theme switching)
-- **SQLite Chart Cache**: @ar-nim (normalized thumbnail storage, 90x faster scanning)
+- **SQLite Chart Cache**: @ar-nim (normalized thumbnail storage, later removed for simplicity)
 - **Security Hardening**: @ar-nim (XXE protection, parser validation, SHA-1/SHA-256 hashing)
 - **AppContext DI**: @ar-nim (dependency injection pattern, singleton removal)
 - **Sharp Bilinear Filtering**: @ar-nim (pixel-art rendering, UV insets)
 - **Audio Improvements**: @ar-nim (256-source pool, sine-law constant power panning, OJN volume fix)
 - **Semantic Versioning**: @ar-nim (git tag-based version detection)
 - **Code Quality**: @ar-nim (SonarLint/SonarQube fixes, encapsulation, string literal deduplication)
-- **Thumbnail Caching**: @ar-nim (normalized BLOB storage, eliminates 3x duplication)
+- **Thumbnail Caching**: @ar-nim (normalized BLOB storage, later removed)
 - **Persistence Layer**: @ar-nim (dedicated package, improved organization)
+- **EUC-KR Encoding**: @ar-nim (Korean chart character support)
+- **Stable Library IDs**: @ar-nim (sparse display ordering)
+- **TrueTypeFont Fix**: @ar-nim (OpenGL 3.3 Core Profile + FlatLaf theme colors)
 
 ### Special Thanks
 - **@SiriusDoma** - [CXO2](https://github.com/SirusDoma/CXO2) project for reference implementation of O2Jam game mechanics and thumbnail loading from OJN files
@@ -840,17 +855,34 @@ No code changes required - the codebase is already compatible.
 
 ---
 
-**Build Date**: March 29, 2026
+**Build Date**: March 30, 2026
 **Java Version**: 25 (LTS)
 **Build Tool**: Gradle 9.4.0
 **Status**: ✅ BUILD SUCCESSFUL
-**Total Commits**: 116+ in March 2026
+**Total Commits**: 130+ in March 2026
 **Lines Changed**: ~19,361 added, ~9,519 removed (net +9,842 lines)
 
 **Recent Updates (March 2026):**
 
-**Latest (March 29, 2026) - Commit `88b60b3`**:
+**Latest (March 30, 2026) - TrueTypeFont Rendering & FlatLaf Theming**:
+- ✅ **TrueTypeFont rendering fix** - OpenGL 3.3 Core Profile compatibility for key binding popup
+- ✅ **FlatLaf theme colors** - Popup now respects light/dark theme switching
+- ✅ **EUC-KR encoding support** - Proper Korean character rendering in O2Jam charts
+- ✅ **Thumbnail offset fix** - Read from correct offset (coverOffset + coverSize)
+
+**March 30, 2026 - Library & Database Improvements**:
+- ✅ **Thumbnail caching removed** - Simplified architecture, no more SQLite BLOB storage
+- ✅ **Stable library IDs** - Sparse display ordering for consistent song positioning
+- ✅ **CASCADE delete** - Automatic cleanup of orphaned chart data
+- ✅ **Critical bug fixes** - Library deletion and cache corruption fixes
+- ✅ **SQL extraction** - ChartDatabaseQueries for better code organization
+
+**March 29-30, 2026 - Performance & Encoding**:
+- ✅ **ZGC + AlwaysPreTouch** - Optimized memory management for low-latency gameplay
+- ✅ **EUC-KR priority encoding** - 90%+ Korean charts render correctly
 - ✅ **Dependency updates** - JDK, Jackson 3.1.0, SQLite 3.51.2.0
+
+**March 29, 2026 - Database Refactoring**:
 - ✅ **SQLite query fix** - Added missing JOIN to GET_CACHED_CHARTS_SQL
 - ✅ **Persistence layer refactor** - Moved to dedicated package
 - ✅ **Thumbnail storage normalization** - Eliminates 3x BLOB duplication

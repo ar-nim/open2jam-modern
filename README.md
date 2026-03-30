@@ -19,9 +19,9 @@ BUILD SUCCESSFUL in 8s
 
 ## From 2013 to 2026: A 13-Year Journey
 
-**Last commit in 2013**: September 14, 2013 (`11384b3` - "Should fix fractional time in issue #18")  
-**First modernization commit**: March 12, 2026 (`c8479cd` - "Complete modernization of the open2jam codebase")  
-**Current status**: Active development (March 2026)
+**Last commit in 2013**: September 14, 2013 (`11384b3` - "Should fix fractional time in issue #18")
+**First modernization commit**: March 12, 2026 (`c8479cd` - "Complete modernization of the open2jam codebase")
+**Current status**: Active development (March 30, 2026)
 
 ### Original Project (2010-2013)
 - **Java 6** with Swing GUI
@@ -39,12 +39,15 @@ BUILD SUCCESSFUL in 8s
 - **Gradle 9.4.0** build system with semantic versioning
 - **OpenGL 3.3 Core Profile** with shader-based batched rendering
 - **HiDPI UI** with FlatLaf look-and-feel and automatic scaling
-- **SQLite** chart cache with normalized thumbnail storage
+- **SQLite** chart metadata cache (thumbnail caching removed for simplicity)
+- **EUC-KR encoding** support for Korean O2Jam charts
+- **ZGC + AlwaysPreTouch** for low-latency memory management
 - Cross-platform (Windows, Linux, macOS, Apple Silicon)
 - Various under-the-hood improvements for modern display technology (Wayland on Linux, HiDPI, etc.)
 - Advanced keyboard configuration with auto-save and ESC-to-unbind
 - Security hardening for binary parsers (XXE protection, offset validation)
 - Dependency injection via AppContext pattern
+- Stable library IDs with sparse display ordering
 
 ## What's New for Players
 
@@ -79,10 +82,14 @@ These improvements ensure the game runs smoothly on modern systems:
 - **Pure Letterboxing** - Fullscreen renders at exact user resolution with HiDPI support
 - **Java 25 (LTS)** - Latest long-term support release with enhanced performance and modern language features
 - **Logging System** - Clean runtime with optional `-debug` flag for troubleshooting
-- **SQLite Chart Cache** - Normalized thumbnail storage, 90x faster scanning with transaction batching
+- **SQLite Chart Cache** - Chart metadata caching (thumbnail caching removed for simplicity)
 - **Security Hardening** - XXE protection, parser validation, SHA-1/SHA-256 integrity hashing
 - **HiDPI UI** - FlatLaf look-and-feel with automatic OS-based scaling and theme switching
 - **Dependency Injection** - AppContext pattern removes global state, improves testability
+- **EUC-KR Encoding** - Priority encoding for Korean O2Jam charts (90%+ compatibility)
+- **ZGC + AlwaysPreTouch** - Low-latency garbage collection for smooth gameplay
+- **Stable Library IDs** - Sparse display ordering for consistent song positioning
+- **TrueTypeFont Rendering** - OpenGL 3.3 Core Profile compatibility with FlatLaf theme colors
 
 ## Requirements
 
@@ -211,12 +218,12 @@ open2jam-modern/
 | **UI Scaling** | Manual | Automatic HiDPI | OS-based scaling, theme switching |
 | **Architecture** | Singleton pattern | AppContext DI | Better testability, explicit dependencies |
 
-**Total lines changed**: ~19,361 added, ~9,519 removed (net +9,842 lines) since 2013  
-**New files created**: 47 files (modern Java classes, documentation, build scripts)  
-**Files removed**: 90 files (legacy .form, build.xml, nbproject/, FMOD binaries, non-O2Jam parsers)  
-**Files modified**: 40 files (core modernization)  
-**Commits in 2013**: Last commit September 14, 2013  
-**Commits in March 2026**: 116+ commits
+**Total lines changed**: ~19,361 added, ~9,519 removed (net +9,842 lines) since 2013
+**New files created**: 47 files (modern Java classes, documentation, build scripts)
+**Files removed**: 90 files (legacy .form, build.xml, nbproject/, FMOD binaries, non-O2Jam parsers)
+**Files modified**: 40 files (core modernization)
+**Commits in 2013**: Last commit September 14, 2013
+**Commits in March 2026**: 130+ commits
 
 ## Major Removals from 2013 Version
 
@@ -372,7 +379,7 @@ See individual dependency licenses for details.
 - **Core modernization**: @ar-nim (Java 21+, LWJGL 3, OpenAL migration)
 - **FPS Limiter & Letterboxing**: @ar-nim
 - **Gameplay Enhancements**: @ar-nim (BeatJudgement, Lifebar restoration)
-- **Performance Optimizations**: @ar-nim (object pooling, entity matrix)
+- **Performance Optimizations**: @ar-nim (object pooling, entity matrix, ZGC + AlwaysPreTouch)
 - **Modern Display Support**: @ar-nim (Wayland, HiDPI, etc.)
 - **Auto-Save System**: @ar-nim (MusicSelection, Configuration)
 - **Keyboard Configuration**: @ar-nim (key binding fixes, ESC to unbind)
@@ -380,13 +387,16 @@ See individual dependency licenses for details.
 - **Logging System**: @ar-nim (`-debug` flag implementation)
 - **OpenGL 3.3 Core Profile**: @ar-nim (shader-based batched rendering, GLSL 3.30)
 - **HiDPI UI**: @ar-nim (FlatLaf integration, automatic scaling, theme switching)
-- **SQLite Chart Cache**: @ar-nim (normalized thumbnail storage, 90x faster scanning)
+- **SQLite Chart Cache**: @ar-nim (normalized thumbnail storage, later removed for simplicity)
 - **Security Hardening**: @ar-nim (XXE protection, parser validation, SHA-1/SHA-256 hashing)
 - **AppContext DI**: @ar-nim (dependency injection pattern, singleton removal)
 - **Sharp Bilinear Filtering**: @ar-nim (pixel-art rendering, UV insets)
 - **Audio Improvements**: @ar-nim (256-source pool, sine-law constant power panning, OJN volume fix)
 - **Semantic Versioning**: @ar-nim (git tag-based version detection)
 - **Code Quality**: @ar-nim (SonarLint/SonarQube fixes, encapsulation, string literal deduplication)
+- **EUC-KR Encoding**: @ar-nim (Korean chart character support)
+- **Stable Library IDs**: @ar-nim (sparse display ordering)
+- **TrueTypeFont Fix**: @ar-nim (OpenGL 3.3 Core Profile + FlatLaf theme colors)
 
 ### Special Thanks
 - **@SiriusDoma** - [CXO2](https://github.com/SirusDoma/CXO2) project for reference implementation of O2Jam game mechanics and thumbnail loading from OJN files
