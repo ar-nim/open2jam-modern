@@ -234,32 +234,43 @@ tasks.register('distZipAll') {
         // Create platform-specific directories
         platforms.each { platform ->
             def platformDir = file("${buildDir}/dist/${platform}")
-            platformDir.mkdirs()
+            def contentDir = file("${platformDir}/${platform}")  // Files go inside platform folder
+            contentDir.mkdirs()
 
             // Copy fatJar (platform-independent)
             copy {
                 from libsDir
                 include '*-all.jar'
-                into platformDir
+                into contentDir
             }
 
-            // Copy launch scripts for this platform
+            // Copy launch scripts for this platform (flatten structure)
             copy {
-                from file('scripts')
-                include "${platform}/**"
-                into platformDir
+                from file("scripts/${platform}")
+                include '*'
+                into contentDir
+            }
+            // Rename to .command for macOS (double-clickable)
+            if (platform.startsWith('macos')) {
+                file("${contentDir}/open2jam-modern").renameTo(file("${contentDir}/open2jam-modern.command"))
             }
 
             // Copy README and LICENSE
             copy {
                 from project.rootDir
                 include 'README.md', 'LICENSE'
-                into platformDir
+                into contentDir
             }
 
-            // Create ZIP for this platform
+            // Copy scripts README (launch instructions)
+            copy {
+                from file('scripts/README.txt')
+                into contentDir
+            }
+
+            // Create ZIP - files are already in platform-named directory
             ant.zip(destfile: "${libsDir}/open2jam-modern-${version}-${platform}.zip") {
-                fileset(dir: platformDir)
+                ant.fileset(dir: platformDir)
             }
             logger.lifecycle("Created: ${libsDir}/open2jam-modern-${version}-${platform}.zip")
         }
@@ -286,35 +297,46 @@ tasks.register('distZipCurrent') {
             platform = arch.contains('arm') || arch.contains('aarch64') ? 'linux-arm64' : 'linux-x86_64'
         }
         
-        def distDir = file("${buildDir}/dist/${platform}")
+        def platformDir = file("${buildDir}/dist/${platform}")
         def libsDir = file("${buildDir}/libs")
+        def contentDir = file("${platformDir}/${platform}")  // Files go inside platform folder
 
-        distDir.mkdirs()
+        contentDir.mkdirs()
 
         // Copy fatJar
         copy {
             from libsDir
             include '*-all.jar'
-            into distDir
+            into contentDir
         }
 
-        // Copy launch scripts for current platform
+        // Copy launch scripts for current platform (flatten structure)
         copy {
-            from file('scripts')
-            include "${platform}/**"
-            into distDir
+            from file("scripts/${platform}")
+            include '*'
+            into contentDir
+        }
+        // Rename to .command for macOS (double-clickable)
+        if (platform.startsWith('macos')) {
+            file("${contentDir}/open2jam-modern").renameTo(file("${contentDir}/open2jam-modern.command"))
         }
 
         // Copy README and LICENSE
         copy {
             from project.rootDir
             include 'README.md', 'LICENSE'
-            into distDir
+            into contentDir
         }
 
-        // Create ZIP
+        // Copy scripts README (launch instructions)
+        copy {
+            from file('scripts/README.txt')
+            into contentDir
+        }
+
+        // Create ZIP - files are already in platform-named directory
         ant.zip(destfile: "${libsDir}/open2jam-modern-${version}-${platform}.zip") {
-            fileset(dir: distDir)
+            ant.fileset(dir: platformDir)
         }
         logger.lifecycle("Created: ${libsDir}/open2jam-modern-${version}-${platform}.zip (detected: ${os.name} ${arch})")
     }

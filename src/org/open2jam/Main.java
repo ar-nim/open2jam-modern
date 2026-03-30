@@ -26,6 +26,9 @@ public class Main implements Runnable
         // LWJGL 3 handles native libraries automatically via Gradle dependencies
         // No need to set java.library.path manually
 
+        // Check if running with proper JVM tuning flags
+        checkJvmTuning();
+
         // Parse command-line arguments
         parseArguments(args);
 
@@ -174,6 +177,44 @@ public class Main implements Runnable
             return "solaris";
         }else{
             return os;
+        }
+    }
+
+    /**
+     * Check if JVM tuning flags are present, warn if running without them.
+     * This ensures users get optimal performance for rhythm gameplay.
+     */
+    private static void checkJvmTuning() {
+        boolean hasMaxRAMPercentage = System.getProperty("XX:MaxRAMPercentage") != null ||
+            java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+                .anyMatch(arg -> arg.contains("MaxRAMPercentage"));
+        
+        boolean hasZGC = java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+            .anyMatch(arg -> arg.contains("UseZGC"));
+        
+        // If neither flag is present, user likely ran JAR directly without launch script
+        if (!hasMaxRAMPercentage && !hasZGC) {
+            System.out.println("╔══════════════════════════════════════════════════════════════╗");
+            System.out.println("║  WARNING: Running without optimized JVM tuning flags!        ║");
+            System.out.println("║                                                              ║");
+            System.out.println("║  For best performance, please use the launch script:         ║");
+            System.out.println("║    ./open2jam-modern          (Linux)                        ║");
+            System.out.println("║    open2jam-modern.command    (macOS - double-click)         ║");
+            System.out.println("║    open2jam-modern.bat        (Windows)                      ║");
+            System.out.println("║                                                              ║");
+            System.out.println("║  The launch script configures:                               ║");
+            System.out.println("║    - Dynamic heap sizing (30% of RAM, max 16GB)              ║");
+            System.out.println("║    - ZGC for sub-millisecond GC pauses                       ║");
+            System.out.println("║    - Optimized settings for rhythm gameplay                  ║");
+            System.out.println("║                                                              ║");
+            System.out.println("║  Continuing in 3 seconds... (press Ctrl+C to cancel)         ║");
+            System.out.println("╚══════════════════════════════════════════════════════════════╝");
+            
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                // Continue anyway
+            }
         }
     }
 }
