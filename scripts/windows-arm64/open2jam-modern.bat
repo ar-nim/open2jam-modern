@@ -41,12 +41,15 @@ for /f "tokens=3" %%g in ('java -version 2^>^&1 ^| findstr /i "version"') do (
     set "JAVA_VERSION=%%g"
 )
 
-REM Set JVM options optimized for ARM64
-set "JVM_OPTS=-Xmx2G -XX:+UseG1GC -Djava.awt.headless=false -Dfile.encoding=UTF-8"
+REM Set JVM options with dynamic heap sizing (30% of system RAM)
+REM Capped at 16GB max RAM to prevent excessive heap on high-memory systems
+REM Optimized for ARM64 processors with ZGC for low-latency
+set "JVM_OPTS=-XX:MaxRAM=16G -XX:MinRAMPercentage=30.0 -XX:MaxRAMPercentage=30.0 -XX:+UseZGC -XX:+AlwaysPreTouch -XX:+ExplicitGCInvokesConcurrent -XX:ZAllocationSpikeTolerance=2 -Djava.awt.headless=false -Dfile.encoding=UTF-8"
 
 REM Launch the application
 echo Starting %APP_NAME%...
 echo Java: %JAVA_VERSION%
+echo Heap size: 30%% of system RAM (dynamic)
 java %JVM_OPTS% -jar "%JAR_FILE%" %*
 
 if %ERRORLEVEL% neq 0 (

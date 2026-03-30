@@ -680,8 +680,13 @@ public class Render implements GameWindowCallback
 	}
 	
         trueTypeFont = new TrueTypeFont(new Font("SansSerif", Font.BOLD, 14), false);
-        System.out.println("[DEBUG] Render font: " + trueTypeFont.getFont().getName() + 
+        System.out.println("[DEBUG] Render font: " + trueTypeFont.getFont().getName() +
                            " (family=" + trueTypeFont.getFont().getFamily() + ")");
+
+        // Force concurrent GC before loading song to minimize pauses during gameplay
+        // With -XX:+ExplicitGCInvokesConcurrent, this triggers concurrent ZGC cycle
+        // instead of stop-the-world full GC, hidden by 5-second loading screen
+        System.gc();
 
         // Non-blocking loading pause (5 seconds minimum)
         // Keep window visible with cover image, poll events to keep compositor happy
@@ -1732,6 +1737,11 @@ public class Render implements GameWindowCallback
         } catch (InterruptedException e) {
             // Ignore
         }
+
+        // Force concurrent GC after song ends (during result screen)
+        // This cleans up heap before returning to song selection menu
+        // With -XX:+ExplicitGCInvokesConcurrent, triggers concurrent ZGC cycle
+        System.gc();
 
         // Now safe to release audio
         soundSystem.release();

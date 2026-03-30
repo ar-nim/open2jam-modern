@@ -130,9 +130,13 @@ application {
     applicationDefaultJvmArgs = [
         '-Djava.library.path=${applicationDefaultJvmArgs}',
         '-Dopen2jam.version=' + version,
-        '-Xmx2G',
+        '-XX:MaxRAM=16G',
+        '-XX:MinRAMPercentage=30.0',
+        '-XX:MaxRAMPercentage=30.0',
         '-XX:+UseZGC',
-        '-XX:+AlwaysPreTouch'
+        '-XX:+AlwaysPreTouch',
+        '-XX:+ExplicitGCInvokesConcurrent',
+        '-XX:ZAllocationSpikeTolerance=2'
     ]
 }
 

@@ -48,11 +48,19 @@ JAVA_ARCH=$(java -d64 2>&1 | grep -q "64-Bit" && echo "64-bit" || echo "32-bit")
 echo "Starting $APP_NAME..."
 echo "Architecture: $ARCH_NAME"
 echo "Java: $JAVA_VERSION ($JAVA_ARCH)"
+echo "Heap size: 30% of system RAM (dynamic)"
 
-# Set JVM options
+# Set JVM options with dynamic heap sizing (30% of system RAM)
+# Capped at 16GB max RAM to prevent excessive heap on high-memory systems
+# Supports both Apple Silicon (M1/M2/M3) and Intel Macs
 JVM_OPTS=(
-    "-Xmx2G"
-    "-XX:+UseG1GC"
+    "-XX:MaxRAM=16G"
+    "-XX:MinRAMPercentage=30.0"
+    "-XX:MaxRAMPercentage=30.0"
+    "-XX:+UseZGC"
+    "-XX:+AlwaysPreTouch"
+    "-XX:+ExplicitGCInvokesConcurrent"
+    "-XX:ZAllocationSpikeTolerance=2"
     "-Djava.awt.headless=false"
     "-Dfile.encoding=UTF-8"
     "-Xdock:name=$APP_NAME"
