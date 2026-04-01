@@ -3,9 +3,7 @@ package org.open2jam.parsers;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.logging.Level;
@@ -129,8 +127,8 @@ public class OJNChart extends Chart {
 	if (!hasCover()) {
 	    return getNoImage();
 	}
-	try (RandomAccessFile f = new RandomAccessFile(source, "r")) {
-	    ByteBuffer buffer = f.getChannel().map(FileChannel.MapMode.READ_ONLY, coverOffset, coverSize);
+	try {
+	    ByteBuffer buffer = OJNFileReader.read(source, coverOffset, coverSize);
 	    ByteBufferInputStream bis = new ByteBufferInputStream(buffer);
 	    return ImageIO.read(bis);
 	} catch (IOException e) {

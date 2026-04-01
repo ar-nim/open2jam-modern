@@ -399,7 +399,7 @@ See individual dependency licenses for details.
 - **TrueTypeFont Fix**: @ar-nim (OpenGL 3.3 Core Profile + FlatLaf theme colors)
 
 ### Special Thanks
-- **@SiriusDoma** - [CXO2](https://github.com/SirusDoma/CXO2) project for reference implementation of O2Jam game mechanics and thumbnail loading from OJN files
+- **@SirusDoma** - [CXO2](https://github.com/SirusDoma/CXO2) project for reference implementation of O2Jam game mechanics and thumbnail loading from OJN files
 
 ### Technology Providers
 - **LWJGL**: [lwjgl.org](https://www.lwjgl.org/) - Lightweight Java Game Library
@@ -417,7 +417,7 @@ See individual dependency licenses for details.
 - [Java 25 Release Notes](https://openjdk.org/projects/jdk/25/)
 - [FlatLaf Documentation](https://www.flatlaf.org/)
 - [Original open2jam Repository](https://github.com/open2jamorg/open2jam)
-- [CXO2 - O2Jam C++ Implementation](https://github.com/SirusDoma/CXO2) by @SiriusDoma
+- [CXO2 - O2Jam C++ Re-implementation](https://github.com/SirusDoma/CXO2) by @SirusDoma
 - [Build Instructions](BUILD.md)
 - [Versioning Guide](docs/VERSIONING.md)
 - [FPS Limiter](docs/fps-limiter-feature.md)

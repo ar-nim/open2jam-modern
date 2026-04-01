@@ -2,10 +2,7 @@ package org.open2jam.parsers;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.channels.FileChannel;
 import java.util.Collections;
 import java.util.logging.Level;
 
@@ -34,14 +31,12 @@ class OJNParser {
 
     public static ChartList parseFile(File file) {
         ByteBuffer buffer;
-        try (RandomAccessFileChannelWrapper fileWrapper = new RandomAccessFileChannelWrapper(file)) {
-            buffer = fileWrapper.map(0, 300);  // OJN header is exactly 300 bytes
+        try {
+            buffer = OJNFileReader.read(file, 0, 300);  // OJN header is exactly 300 bytes
         } catch (IOException e) {
             Logger.global.log(Level.WARNING, "IO exception on reading OJN file {0}", file.getName());
             return new ChartList();
         }
-
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
 
         OJNChart easy = new OJNChart();
         OJNChart normal = new OJNChart();
@@ -178,12 +173,11 @@ class OJNParser {
 
     public static EventList parseChart(OJNChart chart) {
         EventList eventList = new EventList();
-        try (RandomAccessFileChannelWrapper fileWrapper = new RandomAccessFileChannelWrapper(chart.getSource())) {
+        try {
             int start = chart.noteOffset;
             int end = chart.noteOffsetEnd;
 
-            ByteBuffer buffer = fileWrapper.map(start, (int) ((long) end - start));
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            ByteBuffer buffer = OJNFileReader.read(chart.getSource(), start, end - start);
             readNoteBlock(eventList, buffer);
         } catch (java.io.FileNotFoundException e) {
             Logger.global.log(Level.WARNING, "File {0} not found !!", chart.getSource().getName());
@@ -191,29 +185,6 @@ class OJNParser {
             Logger.global.log(Level.WARNING, "IO exception on reading OJN file {0}", chart.getSource().getName());
         }
         return eventList;
-    }
-
-    /**
-     * Wrapper class for RandomAccessFile to enable try-with-resources.
-     */
-    private static class RandomAccessFileChannelWrapper implements AutoCloseable {
-        private final RandomAccessFile file;
-        private final FileChannel channel;
-
-        RandomAccessFileChannelWrapper(File file) throws IOException {
-            this.file = new RandomAccessFile(file.getAbsolutePath(), "r");
-            this.channel = this.file.getChannel();
-        }
-
-        ByteBuffer map(long start, long length) throws IOException {
-            return channel.map(FileChannel.MapMode.READ_ONLY, start, length);
-        }
-
-        @Override
-        public void close() throws IOException {
-            channel.close();
-            file.close();
-        }
     }
 
     /**
