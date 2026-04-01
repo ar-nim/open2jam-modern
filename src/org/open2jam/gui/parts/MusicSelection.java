@@ -8,7 +8,6 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -43,6 +42,7 @@ import org.open2jam.gui.ChartModelLoader;
 import org.open2jam.gui.ChartTableModel;
 import org.open2jam.parsers.Chart;
 import org.open2jam.parsers.ChartList;
+import org.open2jam.parsers.OJNFileReader;
 import org.open2jam.persistence.ChartDatabase;
 import org.open2jam.persistence.Library;
 import org.open2jam.render.DisplayMode;
@@ -1887,29 +1887,18 @@ public class MusicSelection extends javax.swing.JPanel
 
                             // Thumbnail is stored AFTER cover art
                             int thumbnailOffset = coverOffset + coverSize;
-                            
-                            try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
-                                // Seek to thumbnail position
-                                f.seek(thumbnailOffset);
-                                
-                                // Read BMP header (14 bytes) to get thumbnail size
-                                byte[] header = new byte[14];
-                                int bytesRead = f.read(header);
-                                
-                                if (bytesRead == 14 && header[0] == 0x42 && header[1] == 0x4D) {
-                                    // Valid BMP - extract size from bytes 2-5 (little-endian)
-                                    int thumbSize = (header[2] & 0xFF) |
-                                                   ((header[3] & 0xFF) << 8) |
-                                                   ((header[4] & 0xFF) << 16) |
-                                                   ((header[5] & 0xFF) << 24);
-                                    
-                                    if (thumbSize > 0 && thumbSize <= 10_000_000) {
-                                        // Read full thumbnail data
-                                        byte[] thumbData = new byte[thumbSize];
-                                        f.seek(thumbnailOffset);
-                                        f.readFully(thumbData);
-                                        return ImageIO.read(new java.io.ByteArrayInputStream(thumbData));
-                                    }
+
+                            // Read BMP header (14 bytes) to get thumbnail size
+                            java.nio.ByteBuffer header = OJNFileReader.read(sourceFile, thumbnailOffset, 14);
+
+                            if (header.remaining() >= 14 && header.get() == 0x42 && header.get() == 0x4D) {
+                                // Valid BMP - extract size from bytes 2-5 (little-endian)
+                                int thumbSize = header.getInt();
+
+                                if (thumbSize > 0 && thumbSize <= 10_000_000) {
+                                    // Read full thumbnail data
+                                    java.nio.ByteBuffer thumbBuffer = OJNFileReader.read(sourceFile, thumbnailOffset, thumbSize);
+                                    return ImageIO.read(new org.open2jam.parsers.utils.ByteBufferInputStream(thumbBuffer));
                                 }
                             }
                         }
@@ -1954,12 +1943,8 @@ public class MusicSelection extends javax.swing.JPanel
                         if (coverSize != null && coverSize > 0 && coverSize <= 10_000_000 &&
                             coverOffset != null && coverOffset > 0) {
 
-                            try (RandomAccessFile f = new RandomAccessFile(sourceFile, "r")) {
-                                f.seek(coverOffset);
-                                byte[] coverBytes = new byte[coverSize];
-                                f.readFully(coverBytes);
-                                return ImageIO.read(new java.io.ByteArrayInputStream(coverBytes));
-                            }
+                            java.nio.ByteBuffer buffer = OJNFileReader.read(sourceFile, coverOffset, coverSize);
+                            return ImageIO.read(new org.open2jam.parsers.utils.ByteBufferInputStream(buffer));
                         }
                     }
                     break;

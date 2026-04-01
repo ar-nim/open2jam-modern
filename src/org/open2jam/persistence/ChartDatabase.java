@@ -1,10 +1,9 @@
 package org.open2jam.persistence;
 
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -30,7 +29,9 @@ import org.open2jam.parsers.ChartList;
 import org.open2jam.parsers.ChartMetadata;
 import org.open2jam.parsers.ChartParser;
 import org.open2jam.parsers.OJNChart;
+import org.open2jam.parsers.OJNFileReader;
 import org.open2jam.parsers.SHA256Util;
+import org.open2jam.parsers.utils.ByteBufferInputStream;
 import org.open2jam.parsers.utils.Logger;
 import org.open2jam.util.DebugLogger;
 
@@ -610,14 +611,12 @@ public class ChartDatabase {
             return null;
         }
 
-        try (RandomAccessFile f = new RandomAccessFile(cached.getFullPath(), "r")) {
-            f.seek(coverOffset);
-            byte[] coverBytes = new byte[coverSize];
-            f.readFully(coverBytes);
+        try {
+            ByteBuffer buffer = OJNFileReader.read(new File(cached.getFullPath()), coverOffset, coverSize);
             if (DEBUG) {
                 Logger.global.info(() -> String.format("[DEBUG] getEmbeddedCover: Reading full cover from file (%d bytes)", coverSize));
             }
-            return ImageIO.read(new ByteArrayInputStream(coverBytes));
+            return ImageIO.read(new ByteBufferInputStream(buffer));
         } catch (IOException e) {
             Logger.global.log(Level.WARNING, e, () -> "Failed to read embedded cover from " + cached.getRelativePath());
             return null;
@@ -701,11 +700,9 @@ public class ChartDatabase {
                 return null;
             }
 
-            try (RandomAccessFile f = new RandomAccessFile(cached.getFullPath(), "r")) {
-                f.seek(coverOffset);
-                byte[] coverBytes = new byte[coverSize];
-                f.readFully(coverBytes);
-                return ImageIO.read(new ByteArrayInputStream(coverBytes));
+            try {
+                ByteBuffer buffer = OJNFileReader.read(new File(cached.getFullPath()), coverOffset, coverSize);
+                return ImageIO.read(new ByteBufferInputStream(buffer));
             } catch (IOException e) {
                 Logger.global.log(Level.WARNING, e, () -> "Failed to read embedded cover from " + cached.getRelativePath());
             }
