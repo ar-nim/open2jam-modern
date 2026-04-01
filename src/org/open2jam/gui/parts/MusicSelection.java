@@ -8,6 +8,7 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -1889,7 +1890,7 @@ public class MusicSelection extends javax.swing.JPanel
                             int thumbnailOffset = coverOffset + coverSize;
 
                             // Read BMP header (14 bytes) to get thumbnail size
-                            java.nio.ByteBuffer header = OJNFileReader.read(sourceFile, thumbnailOffset, 14);
+                            ByteBuffer header = OJNFileReader.read(sourceFile, thumbnailOffset, 14);
 
                             if (header.remaining() >= 14 && header.get() == 0x42 && header.get() == 0x4D) {
                                 // Valid BMP - extract size from bytes 2-5 (little-endian)
@@ -1897,7 +1898,7 @@ public class MusicSelection extends javax.swing.JPanel
 
                                 if (thumbSize > 0 && thumbSize <= 10_000_000) {
                                     // Read full thumbnail data
-                                    java.nio.ByteBuffer thumbBuffer = OJNFileReader.read(sourceFile, thumbnailOffset, thumbSize);
+                                    ByteBuffer thumbBuffer = OJNFileReader.read(sourceFile, thumbnailOffset, thumbSize);
                                     return ImageIO.read(new org.open2jam.parsers.utils.ByteBufferInputStream(thumbBuffer));
                                 }
                             }
@@ -1943,7 +1944,7 @@ public class MusicSelection extends javax.swing.JPanel
                         if (coverSize != null && coverSize > 0 && coverSize <= 10_000_000 &&
                             coverOffset != null && coverOffset > 0) {
 
-                            java.nio.ByteBuffer buffer = OJNFileReader.read(sourceFile, coverOffset, coverSize);
+                            ByteBuffer buffer = OJNFileReader.read(sourceFile, coverOffset, coverSize);
                             return ImageIO.read(new org.open2jam.parsers.utils.ByteBufferInputStream(buffer));
                         }
                     }
